@@ -1,0 +1,37 @@
+label: English
+flag: EN
+nav:
+  - title: Home
+    url: /en/
+  - title: Install
+    url: /en/install/
+  - title: Getting Started
+    url: /en/getting-started/
+  - title: Architecture
+    url: /en/architecture/
+  - title: Skills
+    url: /en/skills/
+  - title: Computing Environment
+    url: /en/computing-environment/
+  - title: Data Safety
+    url: /en/data-safety/
+  - title: Security
+    url: /en/security/
+  - title: Workspace
+    url: /en/workspace/
+  - title: Web GUI
+    url: /en/desktop-gui/
+  - title: Testing
+    url: /en/testing/
+  - title: Contributing
+    url: /en/contributing/
+strings:
+  home: Home
+  toc: Table of Contents
+  edit_page: Edit this page
+  last_updated: Last updated
+  switch_lang: 中文
+  switch_lang_url: /zh-CN/
+  powered_by: Powered by OpenClaw
+  tagline: "AI Academic Assistant — One Click, Everything You Need"
+  github: GitHub

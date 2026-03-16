@@ -1,0 +1,39 @@
+{
+  "id": "acaclaw-workspace",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "defaultRoot": {
+        "type": "string",
+        "description": "Default workspace root directory. Defaults to ~/AcaClaw"
+      },
+      "scaffold": {
+        "type": "boolean",
+        "description": "Create standard project directories on init. Default: true"
+      },
+      "injectTreeContext": {
+        "type": "boolean",
+        "description": "Inject workspace file tree into LLM prompt. Default: true"
+      },
+      "maxTreeDepth": {
+        "type": "number",
+        "description": "Maximum depth for file tree scanning. Default: 2"
+      }
+    }
+  },
+  "uiHints": {
+    "defaultRoot": {
+      "label": "Workspace Root",
+      "help": "Where research projects are stored. Default: ~/AcaClaw"
+    },
+    "scaffold": {
+      "label": "Create Scaffold",
+      "help": "Automatically create standard directories (data/, documents/, figures/, etc.)"
+    },
+    "injectTreeContext": {
+      "label": "Inject File Tree",
+      "help": "Tell the AI what files exist in your workspace"
+    }
+  }
+}

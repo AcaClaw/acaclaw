@@ -1,0 +1,24 @@
+{
+  "name": "@acaclaw/ui",
+  "version": "0.1.0",
+  "description": "AcaClaw web UI — serves the research assistant SPA at /",
+  "type": "module",
+  "license": "MIT",
+  "author": "Cosinx AI",
+  "peerDependencies": {
+    "openclaw": ">=2026.3.7"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "dependencies": {},
+  "openclaw": {
+    "extensions": [
+      {
+        "entry": "./index.ts"
+      }
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "declaration": true,
+    "noEmit": true,
+    "paths": {
+      "openclaw/plugin-sdk/*": ["./node_modules/openclaw/src/plugin-sdk/*"]
+    }
+  },
+  "include": ["plugins/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

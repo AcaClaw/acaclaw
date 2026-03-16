@@ -1,0 +1,19 @@
+{
+  "id": "acaclaw-compat-checker",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "minOpenClawVersion": {
+        "type": "string",
+        "default": "2026.3.7",
+        "description": "Minimum supported OpenClaw version"
+      },
+      "checkOnStartup": {
+        "type": "boolean",
+        "default": true,
+        "description": "Run compatibility checks when the gateway starts"
+      }
+    }
+  }
+}

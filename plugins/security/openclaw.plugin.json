@@ -1,0 +1,53 @@
+{
+  "id": "acaclaw-security",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "mode": {
+        "type": "string",
+        "enum": ["standard", "maximum"],
+        "default": "standard",
+        "description": "Security level: standard (workspace policy) or maximum (Docker sandbox)",
+        "uiHint": "Security mode"
+      },
+      "auditLogDir": {
+        "type": "string",
+        "default": "~/.acaclaw/audit",
+        "description": "Directory for audit log output",
+        "uiHint": "Audit log directory"
+      },
+      "enableNetworkPolicy": {
+        "type": "boolean",
+        "default": true,
+        "description": "Restrict network access to academic domains",
+        "uiHint": "Enable network allowlist"
+      },
+      "enableCredentialScrubbing": {
+        "type": "boolean",
+        "default": true,
+        "description": "Strip credentials from LLM output",
+        "uiHint": "Scrub credentials from output"
+      },
+      "enableInjectionDetection": {
+        "type": "boolean",
+        "default": true,
+        "description": "Warn on suspected prompt injection patterns",
+        "uiHint": "Detect prompt injection"
+      },
+      "customDenyCommands": {
+        "type": "array",
+        "items": { "type": "string" },
+        "default": [],
+        "description": "Additional shell commands to deny",
+        "uiHint": "Custom denied commands"
+      },
+      "customAllowedDomains": {
+        "type": "array",
+        "items": { "type": "string" },
+        "default": [],
+        "description": "Additional domains to allow for network access",
+        "uiHint": "Custom allowed domains"
+      }
+    }
+  }
+}

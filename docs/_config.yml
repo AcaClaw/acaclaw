@@ -1,0 +1,35 @@
+title: AcaClaw
+description: "AI Academic Assistant — One Click, Everything You Need"
+url: "https://acaclaw.github.io"
+baseurl: ""
+
+# Build
+markdown: kramdown
+highlighter: rouge
+permalink: pretty
+
+kramdown:
+  input: GFM
+  hard_wrap: false
+  syntax_highlighter: rouge
+
+# Exclude from build
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - README.md
+
+# Default front matter
+defaults:
+  - scope:
+      path: "en"
+    values:
+      layout: page
+      lang: en
+      lang_dir: en
+  - scope:
+      path: "zh-CN"
+    values:
+      layout: page
+      lang: zh-CN
+      lang_dir: zh-CN

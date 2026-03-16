@@ -1,0 +1,35 @@
+label: 中文
+flag: 中文
+nav:
+  - title: 首页
+    url: /zh-CN/
+  - title: 安装
+    url: /zh-CN/install/
+  - title: 快速开始
+    url: /zh-CN/getting-started/
+  - title: 架构设计
+    url: /zh-CN/architecture/
+  - title: 技能管理
+    url: /zh-CN/skills/
+  - title: 计算环境
+    url: /zh-CN/computing-environment/
+  - title: 数据安全
+    url: /zh-CN/data-safety/
+  - title: 安全架构
+    url: /zh-CN/security/
+  - title: 工作空间
+    url: /zh-CN/workspace/
+  - title: 桌面界面
+    url: /zh-CN/desktop-gui/
+  - title: 参与贡献
+    url: /zh-CN/contributing/
+strings:
+  home: 首页
+  toc: 目录
+  edit_page: 编辑本页
+  last_updated: 最后更新
+  switch_lang: EN
+  switch_lang_url: /en/
+  powered_by: 基于 OpenClaw
+  tagline: "AI 学术助手 — 一键安装，即刻可用"
+  github: GitHub

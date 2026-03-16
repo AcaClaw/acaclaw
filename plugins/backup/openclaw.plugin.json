@@ -1,0 +1,52 @@
+{
+  "id": "acaclaw-backup",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "backupDir": {
+        "type": "string",
+        "description": "Directory to store backups. Defaults to ~/.acaclaw/backups"
+      },
+      "retentionDays": {
+        "type": "number",
+        "description": "Number of days to keep backups before pruning. Default: 30"
+      },
+      "maxStorageGB": {
+        "type": "number",
+        "description": "Maximum storage in GB before oldest backups are pruned. Default: 10"
+      },
+      "checksumAlgorithm": {
+        "type": "string",
+        "description": "Hash algorithm for backup integrity. Default: sha256"
+      },
+      "excludePatterns": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Glob patterns for files to skip (e.g. node_modules, .git)"
+      },
+      "snapshotBeforeBatch": {
+        "type": "boolean",
+        "description": "Create a full snapshot before batch operations. Default: true"
+      }
+    }
+  },
+  "uiHints": {
+    "backupDir": {
+      "label": "Backup Directory",
+      "help": "Where file backups are stored. Default: ~/.acaclaw/backups"
+    },
+    "retentionDays": {
+      "label": "Retention (days)",
+      "help": "How many days to keep old backups"
+    },
+    "maxStorageGB": {
+      "label": "Max Storage (GB)",
+      "help": "Maximum disk space for backups"
+    },
+    "excludePatterns": {
+      "label": "Exclude Patterns",
+      "help": "File patterns to skip (e.g. *.tmp, node_modules)"
+    }
+  }
+}

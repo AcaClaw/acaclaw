@@ -1,0 +1,24 @@
+{
+  "name": "@acaclaw/backup",
+  "version": "0.1.0",
+  "description": "Automatic file backup for AcaClaw — backs up files before any modification",
+  "type": "module",
+  "license": "MIT",
+  "author": "Cosinx AI",
+  "peerDependencies": {
+    "openclaw": ">=2026.3.7"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@sinclair/typebox": "0.34.48"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

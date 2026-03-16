@@ -1,0 +1,8 @@
+{
+  "id": "acaclaw-ui",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

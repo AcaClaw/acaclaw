@@ -1,0 +1,21 @@
+{
+  "name": "@acaclaw/compat-checker",
+  "version": "0.1.0",
+  "description": "AcaClaw compatibility checker — validates OpenClaw upgrades and environment integrity",
+  "type": "module",
+  "license": "MIT",
+  "author": "Cosinx AI",
+  "peerDependencies": {
+    "openclaw": ">=2026.3.7"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://openclaw.ai/schemas/openclaw.json",
+  "gateway": {
+    "port": 2090,
+    "mode": "local",
+    "controlUi": {
+      "basePath": "/",
+      "root": "~/.openclaw-acaclaw/ui",
+      "dangerouslyDisableDeviceAuth": true
+    }
+  },
+  "agents": {
+    "defaults": {
+      "workspace": "~/AcaClaw",
+      "sandbox": {
+        "mode": "off"
+      }
+    }
+  },
+  "tools": {
+    "fs": {
+      "workspaceOnly": true
+    },
+    "exec": {
+      "applyPatch": {
+        "workspaceOnly": true
+      },
+      "pathPrepend": ["~/.acaclaw/miniforge3/bin"]
+    },
+    "deny": [
+      "gateway",
+      "cron",
+      "sessions_spawn",
+      "sessions_send",
+      "mcp_install",
+      "mcp_uninstall",
+      "config_set"
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "description": "AcaClaw curated skills manifest. Skills are installed from ClawHub or use OpenClaw bundled skills. Developed and published from github.com/acaclaw/acaclaw-skills. Each discipline has a self-contained Conda environment (e.g. acaclaw-bio) that includes all base packages (Python + R) plus discipline-specific ones. The active environment is auto-detected and injected into LLM context.",
+  "environment": {
+    "disciplines": {
+      "general": { "envName": "acaclaw", "file": "env/conda/environment-base.yml" },
+      "biology": { "envName": "acaclaw-bio", "file": "env/conda/environment-bio.yml" },
+      "chemistry": { "envName": "acaclaw-chem", "file": "env/conda/environment-chem.yml" },
+      "medicine": { "envName": "acaclaw-med", "file": "env/conda/environment-med.yml" },
+      "physics": { "envName": "acaclaw-phys", "file": "env/conda/environment-phys.yml" }
+    },
+    "notes": "Each discipline env is self-contained — includes all base packages (Python: numpy, scipy, pandas, matplotlib; R: tidyverse, ggplot2, dplyr; JupyterLab with IRkernel) plus discipline-specific packages. No overlay/update needed."
+  },
+  "skills": {
+    "core": [
+      { "name": "ai-humanizer", "source": "clawhub", "description": "Humanize AI-generated text" }
+    ],
+    "bundled_with_openclaw": [
+      "nano-pdf",
+      "clawhub",
+      "coding-agent",
+      "xurl",
+      "summarize"
+    ],
+    "notes": "Additional skills can be installed from the browser UI or via: clawhub install <skill-name>"
+  }
+}

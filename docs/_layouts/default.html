@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="{{ page.lang | default: 'en' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if page.title %}{{ page.title }} — {{ site.title }}{% else %}{{ site.title }}{% endif %}</title>
+  <meta name="description" content="{{ page.description | default: site.description }}">
+  <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+  <link rel="icon" type="image/svg+xml" href="{{ '/assets/logo/AcaClaw.svg' | relative_url }}">
+</head>
+<body>
+  {% assign lang = page.lang | default: "en" %}
+  {% assign t = site.data.i18n[lang] %}
+
+  <header class="site-header">
+    <div class="header-inner">
+      <a href="{{ '/' | relative_url }}{{ lang }}/" class="site-logo">
+        <img src="{{ '/assets/logo/AcaClaw.svg' | relative_url }}" alt="AcaClaw" class="site-logo-img">
+        {{ site.title }}
+      </a>
+      <nav class="header-nav">
+        <a href="https://github.com/acaclaw/acaclaw" class="nav-link" target="_blank" rel="noopener">{{ t.strings.github }}</a>
+        <a href="{{ t.strings.switch_lang_url | relative_url }}" class="lang-switch">{{ t.strings.switch_lang }}</a>
+      </nav>
+      <button class="mobile-menu-btn" aria-label="Menu" onclick="document.body.classList.toggle('sidebar-open')">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="site-wrapper">
+    <aside class="sidebar">
+      <nav class="sidebar-nav">
+        {% for item in t.nav %}
+          {% assign is_active = false %}
+          {% if page.url == item.url %}{% assign is_active = true %}{% endif %}
+          <a href="{{ item.url | relative_url }}" class="sidebar-link{% if is_active %} active{% endif %}">{{ item.title }}</a>
+        {% endfor %}
+      </nav>
+    </aside>
+
+    <main class="content">
+      {{ content }}
+    </main>
+  </div>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <span>{{ t.strings.powered_by }} · MIT License</span>
+      <span><a href="https://github.com/acaclaw/acaclaw">GitHub</a></span>
+    </div>
+  </footer>
+
+  <div class="sidebar-overlay" onclick="document.body.classList.remove('sidebar-open')"></div>
+</body>
+</html>

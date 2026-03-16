@@ -1,0 +1,35 @@
+{
+  "name": "acaclaw",
+  "version": "0.1.0",
+  "description": "Academic distribution of OpenClaw — AI-powered academic assistant",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "author": "Cosinx AI",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/acaclaw/acaclaw.git"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@sinclair/typebox": "0.34.48",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.7"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

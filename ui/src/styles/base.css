@@ -1,0 +1,276 @@
+/* AcaClaw UI — Clean professional design system */
+
+:root {
+  /* Primary palette — strong teal-blue */
+  --ac-primary: #0d9488;
+  --ac-primary-light: #2dd4bf;
+  --ac-primary-dark: #0f766e;
+  --ac-primary-bg: rgba(13, 148, 136, 0.06);
+  --ac-primary-bg-solid: #f0fdfa;
+
+  /* Neutrals — Apple-like zinc scale */
+  --ac-app-bg: #f4f4f5;
+  --ac-bg: #f4f4f5;
+  --ac-bg-surface: #ffffff;
+  --ac-bg-hover: rgba(0, 0, 0, 0.04);
+  --ac-bg-active: rgba(0, 0, 0, 0.08);
+  --ac-bg-elevated: #ffffff;
+  --ac-bg-inset: #f4f4f5;
+  --ac-border: #e4e4e7;
+  --ac-border-strong: #d4d4d8;
+  --ac-border-subtle: rgba(0, 0, 0, 0.04);
+
+  /* Text — strong hierarchy */
+  --ac-text: #18181b;
+  --ac-text-secondary: #3f3f46;
+  --ac-text-muted: #71717a;
+  --ac-text-tertiary: #a1a1aa;
+
+  /* Status */
+  --ac-success: #059669;
+  --ac-success-bg: #ecfdf5;
+  --ac-warning: #d97706;
+  --ac-warning-bg: #fffbeb;
+  --ac-error: #dc2626;
+  --ac-error-bg: #fef2f2;
+  --ac-info: #2563eb;
+  --ac-info-bg: #eff6ff;
+
+  /* Shadows — Apple-like soft depth */
+  --ac-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.03);
+  --ac-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  --ac-shadow-md: 0 10px 24px rgba(0, 0, 0, 0.05), 0 4px 10px rgba(0, 0, 0, 0.03);
+  --ac-shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.06), 0 10px 20px rgba(0, 0, 0, 0.04);
+  --ac-shadow-focus: 0 0 0 3px rgba(13, 148, 136, 0.15);
+
+  /* Sizing */
+  --ac-sidebar-width: 260px;
+  --ac-statusbar-height: 48px;
+  --ac-radius-xl: 20px;
+  --ac-radius-lg: 16px;
+  --ac-radius: 12px;
+  --ac-radius-sm: 8px;
+  --ac-radius-xs: 4px;
+  --ac-radius-full: 9999px;
+
+  /* Transitions */
+  --ac-transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --ac-transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ac-text);
+  background: var(--ac-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+a {
+  color: var(--ac-primary);
+  text-decoration: none;
+  transition: color var(--ac-transition-fast);
+}
+a:hover {
+  color: var(--ac-primary-dark);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* Utility classes */
+.card {
+  background: var(--ac-bg-surface);
+  border: 1px solid var(--ac-border);
+  border-radius: var(--ac-radius-lg);
+  padding: 32px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  transition: all var(--ac-transition);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 20px;
+  border-radius: var(--ac-radius-sm);
+  font-size: 13.5px;
+  font-weight: 500;
+  transition: all var(--ac-transition-fast);
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: var(--ac-text);
+  color: var(--ac-bg-surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+.btn-primary:hover {
+  background: #000;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+  transform: translateY(-0.5px);
+}
+.btn-primary:active {
+  transform: translateY(0);
+  background: var(--ac-text-secondary);
+}
+
+.btn-secondary {
+  background: var(--ac-bg-surface);
+  color: var(--ac-text);
+  border: 1px solid var(--ac-border-strong);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+.btn-secondary:hover {
+  background: var(--ac-bg-hover);
+}
+
+.btn-danger {
+  background: var(--ac-error);
+  color: #fff;
+  box-shadow: var(--ac-shadow-xs);
+}
+.btn-danger:hover {
+  opacity: 0.9;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: var(--ac-radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.badge-success {
+  background: var(--ac-success-bg);
+  color: var(--ac-success);
+}
+.badge-warning {
+  background: var(--ac-warning-bg);
+  color: var(--ac-warning);
+}
+.badge-error {
+  background: var(--ac-error-bg);
+  color: var(--ac-error);
+}
+
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.status-dot.online {
+  background: var(--ac-success);
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.15);
+}
+.status-dot.offline {
+  background: var(--ac-text-muted);
+}
+.status-dot.error {
+  background: var(--ac-error);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15);
+}
+
+.section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ac-text-muted);
+  margin-bottom: 12px;
+}
+
+.input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--ac-border);
+  border-radius: var(--ac-radius-sm);
+  background: var(--ac-bg-surface);
+  transition: all var(--ac-transition-fast);
+}
+.input:focus {
+  outline: none;
+  border-color: var(--ac-primary);
+  box-shadow: var(--ac-shadow-focus);
+}
+.input::placeholder {
+  color: var(--ac-text-tertiary);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ac-text-muted);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--ac-border);
+}
+td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ac-border-subtle);
+}
+tr:last-child td {
+  border-bottom: none;
+}
+tr:hover td {
+  background: var(--ac-bg-hover);
+}
+
+/* Scrollbar — refined */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* Selection */
+::selection {
+  background: rgba(13, 148, 136, 0.15);
+  color: var(--ac-text);
+}

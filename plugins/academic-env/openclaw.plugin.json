@@ -1,0 +1,20 @@
+{
+  "id": "acaclaw-academic-env",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "discipline": {
+        "type": "string",
+        "default": "general",
+        "enum": ["general", "biology", "chemistry", "medicine", "physics"],
+        "description": "Selected research discipline — determines which Conda env to activate (acaclaw, acaclaw-bio, etc.)"
+      },
+      "autoActivate": {
+        "type": "boolean",
+        "default": true,
+        "description": "Automatically prefix shell commands with conda run to use the discipline environment"
+      }
+    }
+  }
+}

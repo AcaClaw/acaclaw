@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -e
+CONFIG_PATH="$HOME/.openclaw-acaclaw/openclaw.json"
+
+if [ ! -f "$CONFIG_PATH" ]; then
+    echo "Error: Config not found at $CONFIG_PATH"
+    exit 1
+fi
+
+TOKEN=$(grep -o '"token": "[^"]*"' "$CONFIG_PATH" | head -1 | cut -d '"' -f 4)
+URL="http://localhost:2090/"
+if [ ! -z "$TOKEN" ]; then
+  URL="http://localhost:2090/#token=$TOKEN"
+fi
+
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS logic
+    if [ -d "/Applications/Microsoft Edge.app" ]; then
+        exec "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" --app="$URL" --window-size=1200,900
+    elif [ -d "/Applications/Google Chrome.app" ]; then
+        exec "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --app="$URL" --window-size=1200,900
+    else
+        open "$URL"
+    fi
+else
+    # Linux logic
+    # Wayland/X11 grouping fix for Chromium-based browsers: Use a user data dir to isolate the instance
+    TMP_PROFILE="/tmp/acaclaw_browser_profile"
+    mkdir -p "$TMP_PROFILE"
+    
+    if command -v microsoft-edge >/dev/null 2>&1; then
+        exec microsoft-edge --app="$URL" --window-size=1200,900 --class="AcaClaw" --user-data-dir="$TMP_PROFILE"
+    elif command -v google-chrome >/dev/null 2>&1; then
+        exec google-chrome --app="$URL" --window-size=1200,900 --class="AcaClaw" 
+    elif command -v chromium-browser >/dev/null 2>&1; then
+        exec chromium-browser --app="$URL" --window-size=1200,900 --class="AcaClaw"
+    elif command -v chromium >/dev/null 2>&1; then
+        exec chromium --app="$URL" --window-size=1200,900 --class="AcaClaw"
+    else
+        # Fallback to default browser
+        xdg-open "$URL"
+    fi
+fi
