@@ -1290,6 +1290,22 @@ export class StaffView extends LitElement {
     if (type === "skills" && gateway.state === "connected") {
       this._loadGatewaySkills();
     }
+    if (type === "config" && gateway.state === "connected") {
+      this._loadStaffPackages(staffId);
+    }
+  }
+
+  private async _loadStaffPackages(staffId: string) {
+    const staff = this._getStaff(staffId);
+    if (!staff) return;
+    try {
+      const res = await gateway.call<{ packages: Array<{ name: string; version: string; source: string }> }>(
+        "acaclaw.env.pip.list", { env: staff.condaEnv }
+      );
+      if (res?.packages) {
+        this._staffPkgs = { ...this._staffPkgs, [staffId]: res.packages };
+      }
+    } catch { /* gateway not ready */ }
   }
 
   private async _loadGatewaySkills() {
@@ -1390,12 +1406,9 @@ export class StaffView extends LitElement {
     this._pkgAction = { ...this._pkgAction, [key]: "installing" };
     this._appendLog(staffId, `Installing package "${name}"…`);
     try {
-      await gateway.call("acaclaw.env.pip.install", { packages: [name], env: staff?.condaEnv });
+      await gateway.call("acaclaw.env.pip.install", { packages: [name], env: staff?.condaEnv }, { timeoutMs: 300_000 });
       this._appendLog(staffId, `✓ Package "${name}" installed`);
-      const current = this._staffPkgs[staffId] ?? ENV_PACKAGES[staff?.condaEnv ?? ""] ?? [];
-      if (!current.find(p => p.name === name)) {
-        this._staffPkgs = { ...this._staffPkgs, [staffId]: [...current, { name, version: "latest", source: "pip" }] };
-      }
+      await this._loadStaffPackages(staffId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       this._appendLog(staffId, `✗ Failed to install "${name}": ${msg}`);
@@ -1411,10 +1424,9 @@ export class StaffView extends LitElement {
     this._pkgAction = { ...this._pkgAction, [key]: "removing" };
     this._appendLog(staffId, `Removing package "${pkgName}"…`);
     try {
-      await gateway.call("acaclaw.env.pip.install", { packages: [pkgName], env: staff?.condaEnv });
+      await gateway.call("acaclaw.env.pip.uninstall", { packages: [pkgName], env: staff?.condaEnv }, { timeoutMs: 300_000 });
       this._appendLog(staffId, `✓ Package "${pkgName}" removed`);
-      const current = this._staffPkgs[staffId] ?? ENV_PACKAGES[staff?.condaEnv ?? ""] ?? [];
-      this._staffPkgs = { ...this._staffPkgs, [staffId]: current.filter(p => p.name !== pkgName) };
+      await this._loadStaffPackages(staffId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       this._appendLog(staffId, `✗ Failed to remove "${pkgName}": ${msg}`);
@@ -1827,7 +1839,7 @@ export class StaffView extends LitElement {
           @change=${(e: Event) => {
             const val = (e.target as HTMLSelectElement).value;
             this._setEnv(staff.id, val);
-            this._staffPkgs = { ...this._staffPkgs, [staff.id]: [...(ENV_PACKAGES[val] ?? [])] };
+            this._loadStaffPackages(staff.id);
           }}
         >
           ${CONDA_ENVS.map(env => html`

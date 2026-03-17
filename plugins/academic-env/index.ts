@@ -180,7 +180,7 @@ const academicEnvPlugin = {
 		): Promise<{ code: number; output: string }> {
 			return new Promise((resolve) => {
 				const lines: string[] = [];
-				const proc = spawn(cmd, args, { shell: true, stdio: ["ignore", "pipe", "pipe"] });
+				const proc = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
 
 				const onData = (chunk: Buffer) => {
 					const text = stripAnsi(chunk.toString());
@@ -339,6 +339,36 @@ const academicEnvPlugin = {
 			respond(true, { environments });
 		});
 
+		// --- Gateway: acaclaw.env.pip.list ---
+		// List installed packages for a specific conda environment
+		api.registerGatewayMethod("acaclaw.env.pip.list", async ({ params, respond }) => {
+			const rawEnv = typeof params.env === "string" ? params.env : "";
+			const condaName = UI_TO_CONDA[rawEnv] ?? rawEnv;
+			const conda = findConda();
+
+			if (!conda.available || !conda.path) {
+				respond(true, { packages: [] });
+				return;
+			}
+
+			try {
+				const output = execSync(`"${conda.path}" list -n ${condaName} --json`, {
+					stdio: "pipe",
+					encoding: "utf-8",
+					timeout: 30_000,
+				});
+				const raw = JSON.parse(output) as Array<{ name: string; version: string; channel: string }>;
+				const packages = raw.map(p => ({
+					name: p.name,
+					version: p.version,
+					source: p.channel || "conda",
+				}));
+				respond(true, { packages });
+			} catch {
+				respond(true, { packages: [] });
+			}
+		});
+
 		// --- Gateway: acaclaw.env.pip.install ---
 		api.registerGatewayMethod("acaclaw.env.pip.install", async ({ params, respond, context }) => {
 			const packages = Array.isArray(params.packages) ? params.packages.filter((p: unknown): p is string => typeof p === "string") : [];
@@ -356,7 +386,7 @@ const academicEnvPlugin = {
 				return;
 			}
 
-			const pipCmd = `"${conda.path}" run --no-banner -n ${condaName} pip install ${packages.join(" ")}`;
+			const pipCmd = `"${conda.path}" run -n ${condaName} pip install ${packages.join(" ")}`;
 			context.broadcast("acaclaw.env.install.progress", { name: rawEnv, line: `$ ${pipCmd}` });
 
 			const result = await runWithProgress("bash", ["-c", pipCmd], context.broadcast, "acaclaw.env.install.progress", rawEnv);
@@ -365,6 +395,35 @@ const academicEnvPlugin = {
 				respond(true, { packages, installed: true });
 			} else {
 				respond(false, undefined, { code: "PIP_FAILED", message: `pip install failed (exit ${result.code})` });
+			}
+		});
+
+		// --- Gateway: acaclaw.env.pip.uninstall ---
+		api.registerGatewayMethod("acaclaw.env.pip.uninstall", async ({ params, respond, context }) => {
+			const packages = Array.isArray(params.packages) ? params.packages.filter((p: unknown): p is string => typeof p === "string") : [];
+			const rawEnv = typeof params.env === "string" ? params.env : "";
+			const condaName = UI_TO_CONDA[rawEnv] ?? rawEnv;
+			const conda = findConda();
+
+			if (!conda.available || !conda.path) {
+				respond(false, undefined, { code: "NO_CONDA", message: "Conda is not installed." });
+				return;
+			}
+
+			if (packages.length === 0) {
+				respond(false, undefined, { code: "NO_PACKAGES", message: "No packages specified." });
+				return;
+			}
+
+			const pipCmd = `"${conda.path}" run -n ${condaName} pip uninstall -y ${packages.join(" ")}`;
+			context.broadcast("acaclaw.env.uninstall.progress", { name: rawEnv, line: `$ ${pipCmd}` });
+
+			const result = await runWithProgress("bash", ["-c", pipCmd], context.broadcast, "acaclaw.env.uninstall.progress", rawEnv);
+
+			if (result.code === 0) {
+				respond(true, { packages, uninstalled: true });
+			} else {
+				respond(false, undefined, { code: "PIP_FAILED", message: `pip uninstall failed (exit ${result.code})` });
 			}
 		});
 
@@ -377,10 +436,9 @@ const academicEnvPlugin = {
 				return;
 			}
 
-			// Skills live in ~/.openclaw/skills/ (the "managed" dir shared by OpenClaw and AcaClaw).
-			// CONFIG_DIR = OPENCLAW_STATE_DIR ?? ~/.openclaw — same resolution as the gateway.
-			const stateDir = process.env.OPENCLAW_STATE_DIR?.trim() || join(homedir(), ".openclaw");
-			const skillsDir = join(stateDir, "skills");
+			// Skills live in the gateway's home directory (OPENCLAW_HOME).
+			const homeDir = process.env.OPENCLAW_HOME?.trim() || join(homedir(), ".openclaw");
+			const skillsDir = join(homeDir, "skills");
 
 			// Ensure skills directory exists
 			try { fs.mkdirSync(skillsDir, { recursive: true }); } catch {}
@@ -402,7 +460,7 @@ const academicEnvPlugin = {
 			}
 
 			// --workdir and --no-input are global flags (before the subcommand)
-			const args = ["--workdir", stateDir, "--no-input", "install", "--force", slug];
+			const args = ["--workdir", homeDir, "--no-input", "install", "--force", slug];
 			context.broadcast("acaclaw.skill.install.progress", { slug, line: `$ clawhub ${args.join(" ")}` });
 
 			const result = await runWithProgress(clawhubPath, args, context.broadcast, "acaclaw.skill.install.progress", slug);

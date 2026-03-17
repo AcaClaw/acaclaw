@@ -364,7 +364,7 @@ export class EnvironmentView extends LitElement {
     // Set demo defaults immediately so first render has data
     this._environments = [...DEMO_ENVS];
     this._packages = { ...DEMO_PKGS };
-    this._selectedEnv = "acaclaw";
+    this._selectedEnv = "aca";
     // If already connected, load immediately; otherwise wait for connection
     if (gateway.state === "connected") {
       this._loadEnvironments();
@@ -388,9 +388,27 @@ export class EnvironmentView extends LitElement {
       const res = await gateway.call<{ environments: CondaEnv[] }>("acaclaw.env.list");
       if (res?.environments) {
         this._environments = res.environments;
-        if (!this._selectedEnv) this._selectedEnv = (res.environments.find(e => e.active) ?? res.environments[0])?.name ?? "";
+        // Update selection if current env not in list
+        const validEnv = res.environments.find(e => e.name === this._selectedEnv);
+        if (!validEnv) {
+          this._selectedEnv = (res.environments.find(e => e.active) ?? res.environments[0])?.name ?? "";
+        }
+        await this._loadPackages();
       }
     } catch { /* keep demo data */ }
+  }
+
+  private async _loadPackages() {
+    if (!this._selectedEnv) return;
+    const env = this._environments.find(e => e.name === this._selectedEnv);
+    if (!env?.installed) return;
+    try {
+      const res = await gateway.call<{ packages: Array<{ name: string; version: string; source: string }> }>("acaclaw.env.pip.list", { env: this._selectedEnv });
+      if (res?.packages) {
+        const key = `${this._selectedEnv}:python`;
+        this._packages = { ...this._packages, [key]: res.packages };
+      }
+    } catch { /* keep demo/cached data */ }
   }
 
   private _pkgKey(): string {
@@ -436,9 +454,9 @@ export class EnvironmentView extends LitElement {
     const meta = TAB_META[this._activeTab];
     this._installing = true;
     try {
-      await gateway.call(meta.installAction, { packages: [pkg], env: this._selectedEnv });
+      await gateway.call(meta.installAction, { packages: [pkg], env: this._selectedEnv }, { timeoutMs: 300_000 });
       this._installQuery = "";
-      await this._loadEnvironments();
+      await this._loadPackages();
     } catch { /* handle error */ }
     this._installing = false;
   }
@@ -450,7 +468,7 @@ export class EnvironmentView extends LitElement {
         TAB_META[this._activeTab].installAction.replace("install", "uninstall"),
         { packages: [name], env: this._selectedEnv },
       );
-      await this._loadEnvironments();
+      await this._loadPackages();
     } catch { /* handle error */ }
     this._uninstalling = "";
   }
@@ -484,6 +502,7 @@ export class EnvironmentView extends LitElement {
   private _onEnvChange(e: Event) {
     this._selectedEnv = (e.target as HTMLSelectElement).value;
     this._searchQuery = "";
+    this._loadPackages();
   }
 
   override render() {
