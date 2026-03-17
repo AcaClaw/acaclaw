@@ -7,7 +7,20 @@ import {
 	initWorkspace,
 	readWorkspaceConfig,
 	SCAFFOLD_DIRS,
+	createProject,
+	listProjects,
+	deleteProject,
+	setActiveProject,
+	getActiveProject,
+	listProjectFiles,
+	listWorkspaceFiles,
+	createWorkspaceFolder,
+	createWorkspaceFile,
+	readWorkspaceFile,
+	projectsRoot,
+	readProjectConfig,
 } from "./workspace.js";
+import { join } from "node:path";
 
 const workspacePlugin = {
 	id: "acaclaw-workspace",
@@ -82,6 +95,138 @@ const workspacePlugin = {
 
 				return { output: lines.join("\n") };
 			},
+		});
+
+		// -------------------------------------------------------------------------
+		// Gateway: project management methods
+		// -------------------------------------------------------------------------
+
+		api.registerGatewayMethod("acaclaw.project.list", async ({ respond, context }) => {
+			const root = context?.workspaceDir ?? DEFAULT_WORKSPACE_ROOT;
+			const projects = listProjects(root);
+			const active = getActiveProject(root);
+			respond(true, { projects, activeProject: active });
+		});
+
+		api.registerGatewayMethod("acaclaw.project.create", async ({ params, respond, context }) => {
+			const root = context?.workspaceDir ?? DEFAULT_WORKSPACE_ROOT;
+			const { name, description, discipline, env } = params as {
+				name: string; description?: string; discipline?: string; env?: string;
+			};
+			if (!name) {
+				respond(false, { error: "Project name is required" });
+				return;
+			}
+			try {
+				const config = createProject(root, { name, description, discipline, env });
+				respond(true, { project: config });
+			} catch (err: unknown) {
+				respond(false, { error: (err as Error).message });
+			}
+		});
+
+		api.registerGatewayMethod("acaclaw.project.delete", async ({ params, respond, context }) => {
+			const root = context?.workspaceDir ?? DEFAULT_WORKSPACE_ROOT;
+			const { name } = params as { name: string };
+			if (!name) {
+				respond(false, { error: "Project name is required" });
+				return;
+			}
+			try {
+				deleteProject(root, name);
+				// If the deleted project was active, clear it
+				const active = getActiveProject(root);
+				if (active === name) {
+					setActiveProject(root, null);
+				}
+				respond(true, { deleted: name });
+			} catch (err: unknown) {
+				respond(false, { error: (err as Error).message });
+			}
+		});
+
+		api.registerGatewayMethod("acaclaw.project.setActive", async ({ params, respond, context }) => {
+			const root = context?.workspaceDir ?? DEFAULT_WORKSPACE_ROOT;
+			const { name } = params as { name: string | null };
+			try {
+				if (name) {
+					// Verify project exists
+					const projPath = join(projectsRoot(root), name);
+					const config = readProjectConfig(projPath);
+					if (!config) {
+						respond(false, { error: `Project "${name}" not found` });
+						return;
+					}
+				}
+				setActiveProject(root, name);
+				respond(true, { activeProject: name });
+			} catch (err: unknown) {
+				respond(false, { error: (err as Error).message });
+			}
+		});
+
+		api.registerGatewayMethod("acaclaw.project.files", async ({ params, respond, context }) => {
+			const root = context?.workspaceDir ?? DEFAULT_WORKSPACE_ROOT;
+			const { name, path: subPath } = params as { name: string; path?: string };
+			if (!name) {
+				respond(false, { error: "Project name is required" });
+				return;
+			}
+			const projPath = join(projectsRoot(root), name);
+			const files = listProjectFiles(projPath, subPath);
+			respond(true, { files, project: name, path: subPath ?? "" });
+		});
+
+		api.registerGatewayMethod("acaclaw.workspace.list", async ({ params, respond, context }) => {
+			const root = context?.workspaceDir ?? DEFAULT_WORKSPACE_ROOT;
+			const { path: subPath } = (params ?? {}) as { path?: string };
+			const files = listWorkspaceFiles(root, subPath);
+			respond(true, { files, path: subPath ?? "" });
+		});
+
+		api.registerGatewayMethod("acaclaw.workspace.readFile", async ({ params, respond, context }) => {
+			const root = context?.workspaceDir ?? DEFAULT_WORKSPACE_ROOT;
+			const { path: subPath } = params as { path: string };
+			if (!subPath) {
+				respond(false, { error: "File path is required" });
+				return;
+			}
+			try {
+				const preview = readWorkspaceFile(root, subPath);
+				respond(true, preview);
+			} catch (err: unknown) {
+				respond(false, { error: (err as Error).message });
+			}
+		});
+
+		api.registerGatewayMethod("acaclaw.workspace.createFolder", async ({ params, respond, context }) => {
+			const root = context?.workspaceDir ?? DEFAULT_WORKSPACE_ROOT;
+			const { path: subPath } = params as { path: string };
+			if (!subPath) {
+				respond(false, { error: "Folder path is required" });
+				return;
+			}
+			try {
+				createWorkspaceFolder(root, subPath);
+				respond(true, { created: subPath });
+			} catch (err: unknown) {
+				respond(false, { error: (err as Error).message });
+			}
+		});
+
+		api.registerGatewayMethod("acaclaw.workspace.createFile", async ({ params, respond, context }) => {
+			const root = context?.workspaceDir ?? DEFAULT_WORKSPACE_ROOT;
+			const { path: subPath, content } = params as { path: string; content?: string };
+			if (!subPath) {
+				respond(false, { error: "File path is required" });
+				return;
+			}
+			try {
+				createWorkspaceFile(root, subPath, content);
+				respond(true, { created: subPath });
+			} catch (err: unknown) {
+				respond(false, { error: (err as Error).message });
+			}
 		});
 
 		// -------------------------------------------------------------------------

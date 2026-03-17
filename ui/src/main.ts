@@ -76,7 +76,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "Platform",
     items: [
-      { id: "workspace", label: "Workspace", description: "Files & sessions" },
+      { id: "workspace", label: "Workspace", description: "Files & projects" },
       { id: "environment", label: "Environment", description: "Packages & envs" },
       { id: "backup", label: "Backup", description: "Snapshots & restore" },
       { id: "settings", label: "Settings", description: "Global preferences" },
