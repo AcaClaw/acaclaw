@@ -7,23 +7,25 @@ import "./views/chat.js";
 import "./views/usage.js";
 import "./views/skills.js";
 import "./views/workspace.js";
+import "./views/environment.js";
 import "./views/backup.js";
 import "./views/settings.js";
 import "./views/api-keys.js";
 import "./views/onboarding.js";
-import "./views/agents.js";
+import "./views/staff.js";
 
 // Import gateway controller
 import { gateway, GatewayState } from "./controllers/gateway.js";
 
 type Route =
   | "chat"
-  | "agents"
+  | "staff"
   | "monitor"
   | "api-keys"
   | "usage"
   | "skills"
   | "workspace"
+  | "environment"
   | "backup"
   | "settings"
   | "setup";
@@ -37,12 +39,13 @@ interface NavItem {
 /* Crisp 20×20 stroke-based SVG icons */
 const NAV_ICONS: Record<Route, ReturnType<typeof svg>> = {
   chat: svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v9a1 1 0 01-1 1H7l-4 3V4z"/></svg>`,
-  agents: svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v2"/><rect width="14" height="10" x="3" y="4" rx="2"/><path d="M8 9h.01"/><path d="M12 9h.01"/><path d="M7 14h6"/><path d="M5 14v2"/><path d="M15 14v2"/></svg>`,
+  staff: svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="6" r="2.5"/><path d="M2 16v-1a4 4 0 014-4h2a4 4 0 014 4v1"/><circle cx="14" cy="5" r="2"/><path d="M14 11a3.5 3.5 0 013.5 3.5V16"/></svg>`,
   monitor: svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="16" height="11" rx="2"/><path d="M10 13v4"/><path d="M6 17h8"/></svg>`,
   "api-keys": svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="7.5" r="3.5"/><path d="M10 10l7 7"/><path d="M14 14l2-2"/><path d="M16 16l2-2"/></svg>`,
   usage: svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17V10"/><path d="M7 17V6"/><path d="M11 17V9"/><path d="M15 17V3"/></svg>`,
   skills: svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v4M10 14v4M2 10h4m8 0h4"/><circle cx="10" cy="10" r="3"/></svg>`,
-  workspace: svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="16" height="12" rx="2"/><path d="M2 9h16"/><path d="M8 16V9"/></svg>`,
+  workspace: svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h5l2 2h5a1 1 0 011 1v8a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z"/></svg>`,
+  environment: svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="16" height="12" rx="2"/><path d="M2 9h16"/><path d="M8 16V9"/></svg>`,
   backup: svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 14.5A4.5 4.5 0 0 0 14 6h-.5a7.5 7.5 0 0 0-11 5.5 4.5 4.5 0 0 0 4.5 6h8a4.5 4.5 0 0 0 1.5-.2z"/><path d="M10 9v6"/><path d="M7 12l3-3 3 3"/></svg>`,
   settings: svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="3"/><path d="M17.4 11.2a7.3 7.3 0 0 0 0-2.4l1.6-1.3a.5.5 0 0 0 .1-.6l-1.5-2.6a.5.5 0 0 0-.6-.2l-1.9.8a7.3 7.3 0 0 0-2-1.2V2.5a.5.5 0 0 0-.5-.5H7.4a.5.5 0 0 0-.5.5v1.2a7.3 7.3 0 0 0-2 1.2l-1.9-.8a.5.5 0 0 0-.6.2L.9 6.9a.5.5 0 0 0 .1.6l1.6 1.3a7.3 7.3 0 0 0 0 2.4l-1.6 1.3a.5.5 0 0 0-.1.6l1.5 2.6c.1.2.4.3.6.2l1.9-.8a7.3 7.3 0 0 0 2 1.2v1.2a.5.5 0 0 0 .5.5h3.6a.5.5 0 0 0 .5-.5v-1.2a7.3 7.3 0 0 0 2-1.2l1.9.8a.5.5 0 0 0 .6-.2l1.5-2.6a.5.5 0 0 0-.1-.6l-1.6-1.3z"/></svg>`,
   setup: svg``,
@@ -58,7 +61,7 @@ const NAV_GROUPS: NavGroup[] = [
     title: "AI Work",
     items: [
       { id: "chat", label: "Chat", description: "Ask questions" },
-      { id: "agents", label: "Agents", description: "Agents & Work" },
+      { id: "staff", label: "Staff", description: "Your digital team" },
     ]
   },
   {
@@ -73,7 +76,8 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "Platform",
     items: [
-      { id: "workspace", label: "Workspace", description: "Local environment" },
+      { id: "workspace", label: "Workspace", description: "Files & sessions" },
+      { id: "environment", label: "Environment", description: "Packages & envs" },
       { id: "backup", label: "Backup", description: "Snapshots & restore" },
       { id: "settings", label: "Settings", description: "Global preferences" },
     ]
@@ -366,6 +370,20 @@ export class AcaClawApp extends LitElement {
       this._agentStatus = e.detail.agentStatus ?? this._agentStatus;
       this._tokenCount = e.detail.tokenCount ?? this._tokenCount;
     }) as EventListener);
+
+    // Navigate to Chat when an agent "💬 Chat" button is clicked
+    window.addEventListener("open-agent-chat", ((e: CustomEvent) => {
+      if (this._route === "chat") return; // Already on chat; let chat component handle it
+      const agentId = e.detail?.agentId;
+      this._navigate("chat");
+      // Re-dispatch after render so the newly-mounted chat component receives it
+      this.updateComplete.then(() => {
+        window.dispatchEvent(
+          new CustomEvent("open-agent-chat", { detail: { agentId } })
+        );
+      });
+    }) as EventListener);
+
     gateway.connect();
   }
 
@@ -385,8 +403,8 @@ export class AcaClawApp extends LitElement {
     switch (this._route) {
       case "chat":
         return html`<acaclaw-chat></acaclaw-chat>`;
-      case "agents":
-        return html`<acaclaw-agents></acaclaw-agents>`;
+      case "staff":
+        return html`<acaclaw-staff></acaclaw-staff>`;
       case "monitor":
         return html`<acaclaw-monitor></acaclaw-monitor>`;
       case "api-keys":
@@ -397,6 +415,8 @@ export class AcaClawApp extends LitElement {
         return html`<acaclaw-skills></acaclaw-skills>`;
       case "workspace":
         return html`<acaclaw-workspace></acaclaw-workspace>`;
+      case "environment":
+        return html`<acaclaw-environment></acaclaw-environment>`;
       case "backup":
         return html`<acaclaw-backup></acaclaw-backup>`;
       case "settings":

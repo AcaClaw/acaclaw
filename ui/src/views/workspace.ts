@@ -1,461 +1,406 @@
-import { LitElement, html, css } from "lit";
+import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { gateway } from "../controllers/gateway.js";
 
-interface CondaPackage {
+interface FileEntry {
   name: string;
-  version: string;
-  channel: string;
-  requiredBy: string;
+  type: "file" | "dir";
+  size?: number;
+  modified?: string;
+  children?: FileEntry[];
 }
 
-interface Environment {
-  name: string;
-  python: string;
-  rVersion: string;
-  condaVersion: string;
-  path: string;
-  sizeGB: number;
-  packages: CondaPackage[];
-  active: boolean;
+interface SessionLog {
+  id: string;
+  agentId: string;
+  agentName: string;
+  startedAt: string;
+  duration: string;
+  messageCount: number;
+  status: "completed" | "running" | "failed";
+}
+
+interface RecentJob {
+  id: string;
+  title: string;
+  agent: string;
+  finishedAt: string;
+  status: "success" | "error";
 }
 
 @customElement("acaclaw-workspace")
 export class WorkspaceView extends LitElement {
-  @state() private _environments: Environment[] = [];
-  @state() private _activeEnv: Environment | null = null;
-  @state() private _searchQuery = "";
-  @state() private _installingR = false;
-  @state() private _addingDiscipline = "";
+  @state() private _currentPath: string[] = [];
+  @state() private _entries: FileEntry[] = [];
+  @state() private _sessions: SessionLog[] = [];
+  @state() private _recentJobs: RecentJob[] = [];
+  @state() private _loading = false;
+  @state() private _activeTab: "files" | "sessions" | "jobs" = "files";
 
   static override styles = css`
-    :host {
-      display: block;
-    }
+    :host { display: block; }
     h1 {
-      font-size: 32px;
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      margin-bottom: 24px;
+      font-size: 32px; font-weight: 800;
+      letter-spacing: -0.03em; margin-bottom: 4px;
       color: var(--ac-text);
     }
+    .subtitle {
+      font-size: 14px; color: var(--ac-text-secondary);
+      margin-bottom: 24px;
+    }
+
+    .tabs {
+      display: flex; gap: 4px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--ac-border-subtle);
+      padding-bottom: 0;
+    }
+    .tab {
+      padding: 10px 20px;
+      font-size: 13px; font-weight: 500;
+      color: var(--ac-text-secondary);
+      cursor: pointer; border: none; background: none;
+      border-bottom: 2px solid transparent;
+      transition: all 0.15s;
+    }
+    .tab:hover { color: var(--ac-text); }
+    .tab.active {
+      color: var(--ac-primary);
+      border-bottom-color: var(--ac-primary);
+      font-weight: 600;
+    }
+
+    .breadcrumb {
+      display: flex; align-items: center; gap: 4px;
+      font-size: 13px; color: var(--ac-text-secondary);
+      margin-bottom: 16px; flex-wrap: wrap;
+    }
+    .breadcrumb-item {
+      cursor: pointer; padding: 2px 6px;
+      border-radius: 4px; transition: all 0.15s;
+    }
+    .breadcrumb-item:hover {
+      background: var(--ac-bg-hover); color: var(--ac-text);
+    }
+    .breadcrumb-sep { color: var(--ac-text-muted); }
+
+    .file-list {
+      display: flex; flex-direction: column;
+      border: 1px solid var(--ac-border-subtle);
+      border-radius: var(--ac-radius-lg);
+      overflow: hidden;
+    }
+    .file-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 16px;
+      font-size: 13px;
+      border-bottom: 1px solid var(--ac-border-subtle);
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .file-row:last-child { border-bottom: none; }
+    .file-row:hover { background: var(--ac-bg-hover); }
+    .file-icon { font-size: 16px; width: 24px; text-align: center; flex-shrink: 0; }
+    .file-name { flex: 1; font-weight: 500; color: var(--ac-text); }
+    .file-name.dir { color: var(--ac-primary); }
+    .file-meta { font-size: 12px; color: var(--ac-text-muted); }
+    .file-size { min-width: 60px; text-align: right; }
+    .file-modified { min-width: 120px; text-align: right; }
+    .file-open-btn {
+      padding: 3px 10px; font-size: 11px; font-weight: 500;
+      background: var(--ac-bg-surface);
+      border: 1px solid var(--ac-border);
+      border-radius: var(--ac-radius-full);
+      cursor: pointer; color: var(--ac-text-secondary);
+      transition: all 0.15s;
+    }
+    .file-open-btn:hover {
+      background: var(--ac-primary); color: #fff;
+      border-color: var(--ac-primary);
+    }
+
+    .empty-state {
+      padding: 48px 24px; text-align: center;
+      color: var(--ac-text-muted); font-size: 13px;
+    }
+    .empty-icon { font-size: 32px; margin-bottom: 12px; }
 
     .card {
       background: var(--ac-bg-surface);
       border: 1px solid var(--ac-border-subtle);
       border-radius: var(--ac-radius-lg);
-      padding: 32px;
-      margin-bottom: 24px;
-      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02), 0 2px 4px -1px rgba(0,0,0,0.02), 0 0 0 1px rgba(0,0,0,0.02);
-      transition: all var(--ac-transition);
+      padding: 24px; margin-bottom: 16px;
     }
-    .card h2 {
-      font-size: 18px;
-      font-weight: 700;
-      color: var(--ac-text);
-      margin-bottom: 20px;
-      letter-spacing: -0.02em;
+    .card h3 {
+      font-size: 14px; font-weight: 600;
+      color: var(--ac-text); margin-bottom: 12px;
     }
 
-    .env-header {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-bottom: 16px;
+    .session-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--ac-border-subtle);
+      font-size: 13px; cursor: pointer;
+      transition: background 0.12s;
     }
+    .session-row:hover { background: var(--ac-bg-hover); }
+    .session-row:last-child { border-bottom: none; }
+    .session-agent { font-weight: 500; color: var(--ac-text); min-width: 100px; }
+    .session-time { color: var(--ac-text-muted); font-size: 12px; min-width: 140px; }
+    .session-msgs { font-size: 12px; color: var(--ac-text-secondary); }
+    .session-duration { font-size: 12px; color: var(--ac-text-muted); min-width: 60px; text-align: right; }
+    .status-badge {
+      font-size: 11px; font-weight: 500;
+      padding: 2px 8px; border-radius: var(--ac-radius-full);
+    }
+    .status-badge.completed { background: var(--ac-success-bg); color: var(--ac-success); }
+    .status-badge.running { background: var(--ac-primary-bg); color: var(--ac-primary); }
+    .status-badge.failed { background: var(--ac-error-bg, #fef2f2); color: var(--ac-error); }
+    .status-badge.success { background: var(--ac-success-bg); color: var(--ac-success); }
+    .status-badge.error { background: var(--ac-error-bg, #fef2f2); color: var(--ac-error); }
 
-    .env-field {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 0;
-      font-size: 13px;
-    }
-    .env-field .label {
-      color: var(--ac-text-secondary);
-    }
-    .env-field .value {
-      font-weight: 500;
-    }
-
-    .install-r-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 12px;
-      background: var(--ac-primary-bg);
-      border: 1px solid var(--ac-primary);
-      border-radius: var(--ac-radius-full);
-      color: var(--ac-primary);
-      font-size: 12px;
-      font-weight: 500;
-      transition: all var(--ac-transition-fast);
-      cursor: pointer;
-    }
-    .install-r-btn:hover {
-      background: var(--ac-primary);
-      color: #fff;
-      box-shadow: var(--ac-shadow-xs);
-    }
-    .install-r-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .search-bar {
-      margin-bottom: 16px;
-    }
-    .search-input {
-      width: 100%;
-      padding: 8px 14px;
-      border: 1px solid var(--ac-border);
-      border-radius: var(--ac-radius-sm);
-      font-size: 13px;
-      background: var(--ac-bg);
-    }
-    .search-input:focus {
-      outline: none;
-      border-color: var(--ac-primary);
-      box-shadow: 0 0 0 3px var(--ac-primary-bg);
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    th {
-      text-align: left;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--ac-text-secondary);
-      padding: 10px 12px;
-      border-bottom: 1px solid var(--ac-border);
-    }
-    td {
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--ac-border);
-      font-size: 13px;
-    }
-    tr:last-child td {
-      border-bottom: none;
-    }
-
-    .env-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .env-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 16px;
-      background: var(--ac-bg-surface);
-      border: 1px solid var(--ac-border);
-      border-radius: var(--ac-radius);
-      cursor: pointer;
-      transition: all var(--ac-transition-fast);
-      box-shadow: var(--ac-shadow-xs);
-    }
-    .env-item:hover {
-      border-color: var(--ac-primary);
-      box-shadow: var(--ac-shadow-sm);
-      transform: translateY(-1px);
-    }
-    .env-item.active {
-      border-color: var(--ac-primary);
-      background: var(--ac-primary-bg);
-      box-shadow: 0 0 0 2px var(--ac-primary-bg), var(--ac-shadow-xs);
-    }
-    .env-item-left {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .env-indicator {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--ac-text-muted);
-    }
-    .env-indicator.active {
-      background: var(--ac-success);
-      box-shadow: 0 0 0 3px var(--ac-success-bg);
-    }
-    .env-name {
-      font-weight: 500;
-      font-size: 14px;
-    }
-    .env-size {
-      font-size: 12px;
-      color: var(--ac-text-muted);
-    }
-    .env-badge {
-      font-size: 11px;
-      color: var(--ac-primary);
-      font-weight: 500;
-    }
-
-    .discipline-actions {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .discipline-btn {
-      padding: 8px 16px;
-      background: var(--ac-bg-surface);
-      border: 1px solid var(--ac-border);
-      border-radius: var(--ac-radius-full);
-      font-size: 13px;
-      font-weight: 500;
-      transition: all var(--ac-transition-fast);
-      cursor: pointer;
-    }
-    .discipline-btn:hover {
-      background: var(--ac-bg-hover);
-      border-color: var(--ac-primary);
-      color: var(--ac-primary);
-      transform: translateY(-1px);
-    }
-    .discipline-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .pkg-count {
-      font-size: 12px;
-      color: var(--ac-text-muted);
-      margin-top: 12px;
-    }
+    .job-title { flex: 1; font-weight: 500; color: var(--ac-text); }
+    .job-agent { font-size: 12px; color: var(--ac-text-secondary); min-width: 100px; }
   `;
 
   override connectedCallback() {
     super.connectedCallback();
-    this._loadEnvironments();
+    this._loadFiles();
+    this._loadSessions();
+    this._loadRecentJobs();
   }
 
-  private async _loadEnvironments() {
+  private async _loadFiles() {
+    this._loading = true;
     try {
-      const res = await gateway.call<{
-        environments: Environment[];
-      }>("acaclaw.env.list");
-      if (res?.environments) {
-        this._environments = res.environments;
-        this._activeEnv =
-          res.environments.find((e) => e.active) ?? null;
+      const path = this._currentPath.length > 0
+        ? "~/AcaClaw/" + this._currentPath.join("/")
+        : "~/AcaClaw";
+      const res = await gateway.call<{ entries: FileEntry[] }>(
+        "acaclaw.workspace.list", { path }
+      );
+      if (res?.entries) {
+        this._entries = res.entries;
+        this._loading = false;
+        return;
       }
-    } catch {
-      // Show placeholder
-      this._activeEnv = {
-        name: "acaclaw",
-        python: "3.12.8",
-        rVersion: "not installed",
-        condaVersion: "Miniforge 24.11",
-        path: "~/.acaclaw/miniforge3/envs/acaclaw",
-        sizeGB: 1.4,
-        packages: [],
-        active: true,
-      };
-      this._environments = [this._activeEnv];
-    }
+    } catch { /* use demo data */ }
+    this._entries = this._demoFiles();
+    this._loading = false;
   }
 
-  private async _installR() {
-    this._installingR = true;
+  private async _loadSessions() {
     try {
-      await gateway.call("acaclaw.env.install", {
-        packages: ["r-base", "r-irkernel"],
-      });
-      await this._loadEnvironments();
-    } catch {
-      // handle error
-    }
-    this._installingR = false;
+      const res = await gateway.call<{ sessions: SessionLog[] }>(
+        "acaclaw.sessions.list"
+      );
+      if (res?.sessions) { this._sessions = res.sessions; return; }
+    } catch { /* demo */ }
+    this._sessions = this._demoSessions();
   }
 
-  private async _addDiscipline(discipline: string) {
-    this._addingDiscipline = discipline;
+  private async _loadRecentJobs() {
     try {
-      await gateway.call("acaclaw.env.install", { discipline });
-      await this._loadEnvironments();
-    } catch {
-      // handle error
-    }
-    this._addingDiscipline = "";
+      const res = await gateway.call<{ jobs: RecentJob[] }>(
+        "acaclaw.jobs.recent"
+      );
+      if (res?.jobs) { this._recentJobs = res.jobs; return; }
+    } catch { /* demo */ }
+    this._recentJobs = this._demoJobs();
   }
 
-  private async _switchEnv(name: string) {
+  private _demoFiles(): FileEntry[] {
+    if (this._currentPath.length === 0) {
+      return [
+        { name: "agents", type: "dir" },
+        { name: "data", type: "dir" },
+        { name: "documents", type: "dir" },
+        { name: "figures", type: "dir" },
+        { name: "notes", type: "dir" },
+        { name: "output", type: "dir" },
+        { name: "references", type: "dir" },
+        { name: "AGENTS.md", type: "file", size: 2048, modified: "2026-03-16" },
+        { name: "BOOTSTRAP.md", type: "file", size: 1024, modified: "2026-03-15" },
+        { name: "HEARTBEAT.md", type: "file", size: 512, modified: "2026-03-17" },
+        { name: "IDENTITY.md", type: "file", size: 3072, modified: "2026-03-14" },
+        { name: "README.md", type: "file", size: 1536, modified: "2026-03-16" },
+        { name: "SOUL.md", type: "file", size: 2560, modified: "2026-03-14" },
+        { name: "TOOLS.md", type: "file", size: 1280, modified: "2026-03-15" },
+        { name: "USER.md", type: "file", size: 1792, modified: "2026-03-14" },
+      ];
+    }
+    if (this._currentPath[0] === "agents") {
+      return [
+        { name: "biologist", type: "dir" },
+        { name: "medscientist", type: "dir" },
+        { name: "ai-researcher", type: "dir" },
+        { name: "data-analyst", type: "dir" },
+        { name: "cs-scientist", type: "dir" },
+      ];
+    }
+    if (this._currentPath[0] === "data") {
+      return [
+        { name: "datasets", type: "dir" },
+        { name: "raw", type: "dir" },
+        { name: "processed", type: "dir" },
+      ];
+    }
+    return [];
+  }
+
+  private _demoSessions(): SessionLog[] {
+    return [
+      { id: "s1", agentId: "data-analyst", agentName: "Dr. Bayes", startedAt: "2026-03-17 06:30", duration: "12m", messageCount: 8, status: "completed" },
+      { id: "s2", agentId: "biologist", agentName: "Dr. Gene", startedAt: "2026-03-16 22:15", duration: "25m", messageCount: 14, status: "completed" },
+      { id: "s3", agentId: "ai-researcher", agentName: "Dr. Turing", startedAt: "2026-03-16 18:00", duration: "8m", messageCount: 5, status: "completed" },
+    ];
+  }
+
+  private _demoJobs(): RecentJob[] {
+    return [
+      { id: "j1", title: "RNA-seq differential expression analysis", agent: "Dr. Gene", finishedAt: "2026-03-17 05:45", status: "success" },
+      { id: "j2", title: "Dataset normalization pipeline", agent: "Dr. Bayes", finishedAt: "2026-03-16 23:10", status: "success" },
+      { id: "j3", title: "Literature review — transformer architectures", agent: "Dr. Turing", finishedAt: "2026-03-16 19:30", status: "error" },
+    ];
+  }
+
+  private _navigateDir(name: string) {
+    this._currentPath = [...this._currentPath, name];
+    this._loadFiles();
+  }
+
+  private _navigateTo(index: number) {
+    this._currentPath = this._currentPath.slice(0, index);
+    this._loadFiles();
+  }
+
+  private async _openFile(name: string) {
+    const fullPath = this._currentPath.length > 0
+      ? "~/AcaClaw/" + this._currentPath.join("/") + "/" + name
+      : "~/AcaClaw/" + name;
     try {
-      await gateway.call("acaclaw.env.activate", { name });
-      await this._loadEnvironments();
+      await gateway.call("acaclaw.workspace.open", { path: fullPath });
     } catch {
-      // handle error
+      // Browser fallback — show a notification
     }
   }
 
-  private _filteredPackages(): CondaPackage[] {
-    const pkgs = this._activeEnv?.packages ?? [];
-    if (!this._searchQuery) return pkgs;
-    const q = this._searchQuery.toLowerCase();
-    return pkgs.filter((p) => p.name.toLowerCase().includes(q));
+  private _formatSize(bytes: number): string {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  private _renderBreadcrumb() {
+    return html`
+      <div class="breadcrumb">
+        <span class="breadcrumb-item" @click=${() => this._navigateTo(0)}>~/AcaClaw</span>
+        ${this._currentPath.map((seg, i) => html`
+          <span class="breadcrumb-sep">/</span>
+          <span class="breadcrumb-item" @click=${() => this._navigateTo(i + 1)}>${seg}</span>
+        `)}
+      </div>
+    `;
+  }
+
+  private _renderFiles() {
+    const dirs = this._entries.filter(e => e.type === "dir").sort((a, b) => a.name.localeCompare(b.name));
+    const files = this._entries.filter(e => e.type === "file").sort((a, b) => a.name.localeCompare(b.name));
+    const sorted = [...dirs, ...files];
+
+    if (sorted.length === 0) {
+      return html`<div class="empty-state"><div class="empty-icon">📂</div>Empty folder</div>`;
+    }
+
+    return html`
+      ${this._renderBreadcrumb()}
+      <div class="file-list">
+        ${this._currentPath.length > 0 ? html`
+          <div class="file-row" @click=${() => this._navigateTo(this._currentPath.length - 1)}>
+            <span class="file-icon">⬆️</span>
+            <span class="file-name">..</span>
+          </div>
+        ` : nothing}
+        ${sorted.map(entry => html`
+          <div class="file-row" @click=${() => entry.type === "dir" ? this._navigateDir(entry.name) : this._openFile(entry.name)}>
+            <span class="file-icon">${entry.type === "dir" ? "📁" : this._fileIcon(entry.name)}</span>
+            <span class="file-name ${entry.type === "dir" ? "dir" : ""}">${entry.name}</span>
+            <span class="file-meta file-size">${entry.size ? this._formatSize(entry.size) : ""}</span>
+            <span class="file-meta file-modified">${entry.modified ?? ""}</span>
+            ${entry.type === "file" ? html`
+              <button class="file-open-btn" @click=${(e: Event) => { e.stopPropagation(); this._openFile(entry.name); }}>Open</button>
+            ` : nothing}
+          </div>
+        `)}
+      </div>
+    `;
+  }
+
+  private _fileIcon(name: string): string {
+    const ext = name.split(".").pop()?.toLowerCase() ?? "";
+    const icons: Record<string, string> = {
+      md: "📝", txt: "📄", py: "🐍", r: "📊", csv: "📊",
+      json: "📋", yml: "⚙️", yaml: "⚙️", sh: "⚡",
+      pdf: "📕", png: "🖼️", jpg: "🖼️", svg: "🎨",
+      ipynb: "📓", html: "🌐", ts: "💠", js: "💛",
+    };
+    return icons[ext] ?? "📄";
+  }
+
+  private _renderSessions() {
+    if (this._sessions.length === 0) {
+      return html`<div class="empty-state"><div class="empty-icon">💬</div>No session history yet</div>`;
+    }
+    return html`
+      <div class="file-list">
+        ${this._sessions.map(s => html`
+          <div class="session-row">
+            <span class="session-agent">${s.agentName}</span>
+            <span class="session-time">${s.startedAt}</span>
+            <span class="session-msgs">${s.messageCount} messages</span>
+            <span class="session-duration">${s.duration}</span>
+            <span class="status-badge ${s.status}">${s.status}</span>
+          </div>
+        `)}
+      </div>
+    `;
+  }
+
+  private _renderJobs() {
+    if (this._recentJobs.length === 0) {
+      return html`<div class="empty-state"><div class="empty-icon">✅</div>No recent jobs</div>`;
+    }
+    return html`
+      <div class="file-list">
+        ${this._recentJobs.map(j => html`
+          <div class="session-row">
+            <span class="job-title">${j.title}</span>
+            <span class="job-agent">${j.agent}</span>
+            <span class="session-time">${j.finishedAt}</span>
+            <span class="status-badge ${j.status}">${j.status === "success" ? "completed" : "failed"}">${j.status}</span>
+          </div>
+        `)}
+      </div>
+    `;
   }
 
   override render() {
-    const env = this._activeEnv;
-
     return html`
-      <h1>Environment</h1>
+      <h1>Workspace</h1>
+      <div class="subtitle">Browse files, view session history, and track recent jobs</div>
 
-      <!-- Active Environment -->
-      <div class="card">
-        <h2>Active Environment</h2>
-        ${env
-          ? html`
-              <div class="env-header">
-                <div>
-                  <div class="env-field">
-                    <span class="label">Name</span>
-                    <span class="value">${env.name}</span>
-                  </div>
-                  <div class="env-field">
-                    <span class="label">Python</span>
-                    <span class="value">${env.python}</span>
-                  </div>
-                  <div class="env-field">
-                    <span class="label">R</span>
-                    <span class="value">
-                      ${env.rVersion === "not installed"
-                        ? html`${env.rVersion}
-                            <button
-                              class="install-r-btn"
-                              ?disabled=${this._installingR}
-                              @click=${this._installR}
-                            >
-                              ${this._installingR
-                                ? "Installing…"
-                                : "Install R"}
-                            </button>`
-                        : env.rVersion}
-                    </span>
-                  </div>
-                </div>
-                <div>
-                  <div class="env-field">
-                    <span class="label">Conda</span>
-                    <span class="value">${env.condaVersion}</span>
-                  </div>
-                  <div class="env-field">
-                    <span class="label">Path</span>
-                    <span class="value">${env.path}</span>
-                  </div>
-                  <div class="env-field">
-                    <span class="label">Size</span>
-                    <span class="value"
-                      >${env.sizeGB.toFixed(1)} GB</span
-                    >
-                  </div>
-                </div>
-              </div>
-            `
-          : html`<p
-              style="color: var(--ac-text-muted); font-size: 13px"
-            >
-              No environment detected
-            </p>`}
+      <div class="tabs">
+        <button class="tab ${this._activeTab === "files" ? "active" : ""}"
+          @click=${() => { this._activeTab = "files"; }}>📂 Files</button>
+        <button class="tab ${this._activeTab === "sessions" ? "active" : ""}"
+          @click=${() => { this._activeTab = "sessions"; }}>💬 Sessions</button>
+        <button class="tab ${this._activeTab === "jobs" ? "active" : ""}"
+          @click=${() => { this._activeTab = "jobs"; }}>✅ Recent Jobs</button>
       </div>
 
-      <!-- Installed Packages -->
-      <div class="card">
-        <h2>Installed Packages (${this._activeEnv?.packages.length ?? 0})</h2>
-        <div class="search-bar">
-          <input
-            class="search-input"
-            placeholder="Search packages…"
-            .value=${this._searchQuery}
-            @input=${(e: Event) =>
-              (this._searchQuery = (
-                e.target as HTMLInputElement
-              ).value)}
-          />
-        </div>
-        ${this._filteredPackages().length === 0
-          ? html`<p
-              style="color: var(--ac-text-muted); font-size: 13px"
-            >
-              ${this._searchQuery
-                ? "No packages match your search"
-                : "Connect to the gateway to view packages"}
-            </p>`
-          : html`
-              <table>
-                <thead>
-                  <tr>
-                    <th>Package</th>
-                    <th>Version</th>
-                    <th>Channel</th>
-                    <th>Required by</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${this._filteredPackages().map(
-                    (p) => html`
-                      <tr>
-                        <td>${p.name}</td>
-                        <td>${p.version}</td>
-                        <td>${p.channel}</td>
-                        <td>${p.requiredBy}</td>
-                      </tr>
-                    `,
-                  )}
-                </tbody>
-              </table>
-            `}
-      </div>
-
-      <!-- Other Environments -->
-      <div class="card">
-        <h2>Environments</h2>
-        <div class="env-list">
-          ${this._environments.map(
-            (e) => html`
-              <div
-                class="env-item ${e.active ? "active" : ""}"
-                @click=${() => this._switchEnv(e.name)}
-              >
-                <div class="env-item-left">
-                  <div
-                    class="env-indicator ${e.active ? "active" : ""}"
-                  ></div>
-                  <span class="env-name">${e.name}</span>
-                  <span class="env-size">${e.sizeGB.toFixed(1)} GB</span>
-                </div>
-                ${e.active
-                  ? html`<span class="env-badge">Active</span>`
-                  : ""}
-              </div>
-            `,
-          )}
-        </div>
-      </div>
-
-      <!-- Add Discipline -->
-      <div class="card">
-        <h2>Add Discipline</h2>
-        <div class="discipline-actions">
-          ${["biology", "chemistry", "medicine", "physics"].map(
-            (d) => html`
-              <button
-                class="discipline-btn"
-                ?disabled=${this._addingDiscipline === d}
-                @click=${() => this._addDiscipline(d)}
-              >
-                ${this._addingDiscipline === d
-                  ? "Installing…"
-                  : `+ ${d.charAt(0).toUpperCase() + d.slice(1)}`}
-              </button>
-            `,
-          )}
-        </div>
-      </div>
+      ${this._activeTab === "files" ? this._renderFiles() : nothing}
+      ${this._activeTab === "sessions" ? this._renderSessions() : nothing}
+      ${this._activeTab === "jobs" ? this._renderJobs() : nothing}
     `;
   }
 }
