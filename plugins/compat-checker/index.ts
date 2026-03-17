@@ -1,4 +1,4 @@
-import { Type } from "@sinclair/typebox";
+
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/acaclaw-compat-checker";
 import { resolveConfig, runCompatChecks } from "./compat-checker.js";
 
@@ -30,7 +30,7 @@ const compatCheckerPlugin = {
 			name: "compat_check",
 			description:
 				"Run AcaClaw compatibility checks: OpenClaw version, Node.js version, plugin SDK, environment.",
-			parameters: Type.Object({}),
+			parameters: { type: "object" as const, properties: {} },
 			async execute() {
 				const result = runCompatChecks(config);
 

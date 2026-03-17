@@ -34,7 +34,7 @@ const uiPlugin = {
     api.registerHttpRoute({
       path: "/",
       match: "prefix",
-      auth: "gateway",
+      auth: "plugin",
       handler: async (req, res, next) => {
         // Pass through reserved gateway paths
         if (RESERVED_PREFIXES.some((p) => req.url!.startsWith(p))) {

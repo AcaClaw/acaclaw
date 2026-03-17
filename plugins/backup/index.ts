@@ -1,4 +1,4 @@
-import { Type } from "@sinclair/typebox";
+
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/acaclaw-backup";
 import { resolveConfig, backupFile, listBackups, restoreFile } from "./backup.js";
 
@@ -77,17 +77,14 @@ const backupPlugin = {
       name: "backup_restore",
       description:
         "Restore a file from a previous backup. Use this when the user wants to undo a change or recover a previous version of a file.",
-      parameters: Type.Object({
-        filePath: Type.String({
-          description: "The original file path to restore",
-        }),
-        version: Type.Optional(
-          Type.Number({
-            description:
-              "Which version to restore (0 = most recent backup, 1 = one before that, etc.). Default: 0",
-          }),
-        ),
-      }),
+      parameters: {
+        type: "object" as const,
+        properties: {
+          filePath: { type: "string" as const, description: "The original file path to restore" },
+          version: { type: "number" as const, description: "Which version to restore (0 = most recent backup, 1 = one before that, etc.). Default: 0" },
+        },
+        required: ["filePath"],
+      },
       async execute(_id: string, params: { filePath: string; version?: number }) {
         const backups = await listBackups(params.filePath, config);
 
@@ -122,11 +119,13 @@ const backupPlugin = {
       name: "backup_list",
       description:
         "List all backup versions of a file. Shows when each backup was made, what tool triggered it, and file size.",
-      parameters: Type.Object({
-        filePath: Type.String({
-          description: "The file path to check for backups",
-        }),
-      }),
+      parameters: {
+        type: "object" as const,
+        properties: {
+          filePath: { type: "string" as const, description: "The file path to check for backups" },
+        },
+        required: ["filePath"],
+      },
       async execute(_id: string, params: { filePath: string }) {
         const backups = await listBackups(params.filePath, config);
 

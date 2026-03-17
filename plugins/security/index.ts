@@ -1,5 +1,5 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/acaclaw-security";
-import { Type } from "@sinclair/typebox";
+
 import {
 	checkDangerousCommand,
 	detectInjection,
@@ -146,9 +146,13 @@ const securityPlugin = {
 		api.registerTool({
 			name: "security_audit",
 			description: "View AcaClaw security audit log for a given date (YYYY-MM-DD). Shows all tool calls, blocks, and warnings.",
-			parameters: Type.Object({
-				date: Type.String({ description: "Date to query (YYYY-MM-DD). Defaults to today." }),
-			}),
+			parameters: {
+				type: "object" as const,
+				properties: {
+					date: { type: "string" as const, description: "Date to query (YYYY-MM-DD). Defaults to today." },
+				},
+				required: ["date"],
+			},
 			async execute(_id, params) {
 				const date = params.date || new Date().toISOString().slice(0, 10);
 				const entries = await readAuditLog(config.auditLogDir, date);
@@ -192,7 +196,7 @@ const securityPlugin = {
 		api.registerTool({
 			name: "security_status",
 			description: "Show current AcaClaw security configuration and mode.",
-			parameters: Type.Object({}),
+			parameters: { type: "object" as const, properties: {} },
 			async execute() {
 				const domains = getAllowedDomains(config.customAllowedDomains);
 				return {

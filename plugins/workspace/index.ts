@@ -1,5 +1,5 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/acaclaw-workspace";
-import { Type } from "@sinclair/typebox";
+
 import {
 	DEFAULT_WORKSPACE_ROOT,
 	buildWorkspaceContext,
@@ -44,7 +44,7 @@ const workspacePlugin = {
 			name: "workspace_info",
 			description:
 				"Show the current workspace: project name, discipline, file tree, and statistics. Use this to understand what files are available before working with them.",
-			parameters: Type.Object({}),
+			parameters: { type: "object" as const, properties: {} },
 			async execute(_id, _params, ctx) {
 				const workspaceDir = ctx?.workspaceDir;
 				if (!workspaceDir) {
