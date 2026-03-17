@@ -1,5 +1,5 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/acaclaw-academic-env";
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 import fs from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -167,6 +167,10 @@ const academicEnvPlugin = {
 		const envDir = fs.existsSync(pluginRelative) ? pluginRelative : repoCheckout;
 
 		/** Run a shell command, streaming each line to broadcast, resolve on exit */
+		// Strip ANSI escape codes and conda spinner/progress characters
+		const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*[A-Za-z]|\r/g, "");
+		const isSpinnerLine = (s: string) => /^[\\|\/-\s.]+$/.test(s) || /^\s*Collecting package metadata/.test(s) && s.includes('...');
+
 		function runWithProgress(
 			cmd: string,
 			args: string[],
@@ -179,10 +183,10 @@ const academicEnvPlugin = {
 				const proc = spawn(cmd, args, { shell: true, stdio: ["ignore", "pipe", "pipe"] });
 
 				const onData = (chunk: Buffer) => {
-					const text = chunk.toString();
+					const text = stripAnsi(chunk.toString());
 					for (const line of text.split("\n")) {
-						const trimmed = line.trimEnd();
-						if (!trimmed) continue;
+						const trimmed = line.trim();
+						if (!trimmed || isSpinnerLine(trimmed)) continue;
 						lines.push(trimmed);
 						broadcast(progressEvent, { name: envName, line: trimmed });
 					}
@@ -237,7 +241,13 @@ const academicEnvPlugin = {
 
 			context.broadcast("acaclaw.env.install.progress", { name: rawName, line: `$ conda ${args.join(" ")}` });
 
-			const result = await runWithProgress(cmd, args, context.broadcast, "acaclaw.env.install.progress", rawName);
+			let result = await runWithProgress(cmd, args, context.broadcast, "acaclaw.env.install.progress", rawName);
+
+			// Retry once on transient network errors (IncompleteRead, ConnectionError)
+			if (result.code !== 0 && /IncompleteRead|ConnectionError|Connection broken/i.test(result.output)) {
+				context.broadcast("acaclaw.env.install.progress", { name: rawName, line: "⟳ Network error — retrying…" });
+				result = await runWithProgress(cmd, args, context.broadcast, "acaclaw.env.install.progress", rawName);
+			}
 
 			if (result.code === 0) {
 				respond(true, { name: condaName, installed: true });
@@ -273,17 +283,60 @@ const academicEnvPlugin = {
 		api.registerGatewayMethod("acaclaw.env.list", async ({ respond }) => {
 			const conda = findConda();
 			if (!conda.available || !conda.path) {
-				respond(true, { envs: [] });
+				respond(true, { environments: [] });
 				return;
 			}
 
-			const envs: Array<{ name: string; exists: boolean; packages: number }> = [];
+			// Get conda version string
+			let condaVersion = "Miniforge";
+			try {
+				const ver = execSync(`"${conda.path}" --version`, { stdio: "pipe", encoding: "utf-8" }).trim();
+				condaVersion = ver.replace("conda ", "Miniforge ");
+			} catch { /* keep default */ }
+
+			// Get all conda envs ONCE (the most expensive call)
+			let envPaths: string[] = [];
+			try {
+				const envListJson = execSync(`"${conda.path}" env list --json`, { stdio: "pipe", encoding: "utf-8" });
+				envPaths = JSON.parse(envListJson).envs ?? [];
+			} catch { /* empty list */ }
+
+			const environments: Array<{
+				name: string; python: string; rVersion: string;
+				condaVersion: string; path: string; sizeGB: number;
+				active: boolean; installed: boolean;
+			}> = [];
+
 			for (const [uiId, condaName] of Object.entries(UI_TO_CONDA)) {
-				const disc = Object.entries(DISCIPLINE_ENVS).find(([, v]) => v === condaName)?.[0] ?? "general";
-				const status = detectEnvironment(disc);
-				envs.push({ name: uiId, exists: status.envExists, packages: status.installedPackages.length });
+				const envExists = envPaths.some((e: string) => e.endsWith(`/envs/${condaName}`) || e.endsWith(`/${condaName}`));
+
+				// Only fetch python/R version for installed envs
+				let python = "—";
+				let rVersion = "not installed";
+				if (envExists) {
+					try {
+						const ver = execSync(`"${conda.path}" run -n ${condaName} python --version`, { stdio: "pipe", encoding: "utf-8" }).trim();
+						python = ver.replace("Python ", "");
+					} catch { /* not available */ }
+					try {
+						const rOut = execSync(`"${conda.path}" run -n ${condaName} R --version`, { stdio: "pipe", encoding: "utf-8" }).trim();
+						const m = rOut.match(/R version (\S+)/);
+						if (m) rVersion = m[1];
+					} catch { /* not available */ }
+				}
+
+				environments.push({
+					name: uiId,
+					python,
+					rVersion,
+					condaVersion,
+					path: `~/.acaclaw/miniforge3/envs/${condaName}`,
+					sizeGB: 0,
+					active: false,
+					installed: envExists,
+				});
 			}
-			respond(true, { envs });
+			respond(true, { environments });
 		});
 
 		// --- Gateway: acaclaw.env.pip.install ---
@@ -312,6 +365,54 @@ const academicEnvPlugin = {
 				respond(true, { packages, installed: true });
 			} else {
 				respond(false, undefined, { code: "PIP_FAILED", message: `pip install failed (exit ${result.code})` });
+			}
+		});
+
+		// --- Gateway: acaclaw.skill.install ---
+		// Install a skill from ClawHub into the gateway's skills directory
+		api.registerGatewayMethod("acaclaw.skill.install", async ({ params, respond, context }) => {
+			const slug = typeof params.slug === "string" ? params.slug.trim() : "";
+			if (!slug) {
+				respond(false, undefined, { code: "MISSING_SLUG", message: "Missing skill slug" });
+				return;
+			}
+
+			// Skills live in ~/.openclaw/skills/ (the "managed" dir shared by OpenClaw and AcaClaw).
+			// CONFIG_DIR = OPENCLAW_STATE_DIR ?? ~/.openclaw — same resolution as the gateway.
+			const stateDir = process.env.OPENCLAW_STATE_DIR?.trim() || join(homedir(), ".openclaw");
+			const skillsDir = join(stateDir, "skills");
+
+			// Ensure skills directory exists
+			try { fs.mkdirSync(skillsDir, { recursive: true }); } catch {}
+
+			// Check if already installed
+			if (fs.existsSync(join(skillsDir, slug, "SKILL.md"))) {
+				respond(true, { slug, alreadyExists: true });
+				return;
+			}
+
+			// Find clawhub CLI
+			let clawhubPath = "clawhub";
+			try {
+				const resolved = execSync("which clawhub", { encoding: "utf-8" }).trim();
+				if (resolved) clawhubPath = resolved;
+			} catch {
+				respond(false, undefined, { code: "NO_CLAWHUB", message: "clawhub CLI not found. Run: npm i -g clawhub" });
+				return;
+			}
+
+			// --workdir and --no-input are global flags (before the subcommand)
+			const args = ["--workdir", stateDir, "--no-input", "install", "--force", slug];
+			context.broadcast("acaclaw.skill.install.progress", { slug, line: `$ clawhub ${args.join(" ")}` });
+
+			const result = await runWithProgress(clawhubPath, args, context.broadcast, "acaclaw.skill.install.progress", slug);
+
+			if (result.code === 0) {
+				context.broadcast("acaclaw.skill.install.progress", { slug, line: `✓ Skill "${slug}" installed` });
+				respond(true, { slug, installed: true });
+			} else {
+				context.broadcast("acaclaw.skill.install.progress", { slug, line: `✗ Install failed (exit ${result.code})` });
+				respond(false, undefined, { code: "INSTALL_FAILED", message: `clawhub install failed (exit ${result.code})` });
 			}
 		});
 
