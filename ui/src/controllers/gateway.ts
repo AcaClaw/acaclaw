@@ -97,7 +97,7 @@ class GatewayController extends EventTarget {
   }
 
   /** Send a request using the OpenClaw gateway protocol and return the payload. */
-  async call<T = unknown>(method: string, params?: unknown): Promise<T> {
+  async call<T = unknown>(method: string, params?: unknown, opts?: { timeoutMs?: number }): Promise<T> {
     if (!this._ws || this._ws.readyState !== WebSocket.OPEN) {
       throw new Error("Gateway not connected");
     }
@@ -106,6 +106,7 @@ class GatewayController extends EventTarget {
     const frame = { type: "req", id, method, params: params ?? {} };
     this._ws.send(JSON.stringify(frame));
 
+    const timeout = opts?.timeoutMs ?? 30_000;
     return new Promise<T>((resolve, reject) => {
       this._pending.set(id, {
         resolve: resolve as (v: unknown) => void,
@@ -116,7 +117,7 @@ class GatewayController extends EventTarget {
           this._pending.delete(id);
           reject(new Error(`Request ${method} timed out`));
         }
-      }, 30_000);
+      }, timeout);
     });
   }
 

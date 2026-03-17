@@ -520,7 +520,7 @@ export class OnboardingView extends LitElement {
       this._installProgress = 60;
       for (const d of this._selectedDisciplines) {
         if (d !== "general") {
-          await gateway.call("acaclaw.env.install", { discipline: d });
+          await gateway.call("acaclaw.env.install", { discipline: d }, { timeoutMs: 600_000 });
         }
       }
 

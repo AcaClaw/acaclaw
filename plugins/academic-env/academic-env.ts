@@ -159,7 +159,7 @@ export function detectEnvironment(discipline: string): EnvStatus {
 
 	// Get Python version
 	try {
-		const condaRun = `"${conda.path}" run --no-banner -n ${envName}`;
+		const condaRun = `"${conda.path}" run -n ${envName}`;
 		const version = execSync(`${condaRun} python --version`, {
 			stdio: "pipe",
 			encoding: "utf-8",
@@ -171,7 +171,7 @@ export function detectEnvironment(discipline: string): EnvStatus {
 
 	// Get R version
 	try {
-		const condaRun = `"${conda.path}" run --no-banner -n ${envName}`;
+		const condaRun = `"${conda.path}" run -n ${envName}`;
 		const rOut = execSync(`${condaRun} R --version`, {
 			stdio: "pipe",
 			encoding: "utf-8",
@@ -201,7 +201,7 @@ export function detectEnvironment(discipline: string): EnvStatus {
  * Build the conda run prefix for executing commands in the env.
  */
 export function condaRunPrefix(condaPath: string, envName: string): string {
-	return `"${condaPath}" run --no-banner -n ${envName}`;
+	return `"${condaPath}" run -n ${envName}`;
 }
 
 /**

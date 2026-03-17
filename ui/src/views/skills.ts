@@ -4,13 +4,12 @@ import { gateway } from "../controllers/gateway.js";
 
 interface Skill {
   name: string;
-  version: string;
   description: string;
   source: string;
-  category: string;
-  updateAvailable?: string;
-  enabled: boolean;
-  bundled?: boolean;
+  bundled: boolean;
+  disabled: boolean;
+  eligible: boolean;
+  install: Array<{ id: string; kind: string; label: string }>;
 }
 
 interface ClawHubSkill {
@@ -18,18 +17,30 @@ interface ClawHubSkill {
   description: string;
   author: string;
   category: string;
-  rating: number;
-  users: number;
   recommended?: boolean;
 }
+
+/** AcaClaw curated skills available on ClawHub */
+const CURATED_SKILLS: ClawHubSkill[] = [
+  { name: "ai-humanizer", description: "Humanize AI-generated text to sound natural and authentic", author: "acaclaw", category: "Writing", recommended: true },
+  { name: "paper-search", description: "Search arXiv, PubMed, Semantic Scholar, and CrossRef simultaneously", author: "acaclaw", category: "Research", recommended: true },
+  { name: "citation-manager", description: "Format references in APA, Vancouver, Nature, and 9000+ citation styles", author: "acaclaw", category: "Research", recommended: true },
+  { name: "data-analyst", description: "Statistical analysis from natural language — describe what you want, get results", author: "acaclaw", category: "Data Analysis", recommended: true },
+  { name: "figure-generator", description: "Publication-quality plots and charts ready for journal submission", author: "acaclaw", category: "Data Analysis" },
+  { name: "manuscript-assistant", description: "Draft, edit, and structure papers following journal guidelines", author: "acaclaw", category: "Writing" },
+  { name: "grant-writer", description: "Structure and draft grant proposals following funder templates", author: "acaclaw", category: "Writing" },
+  { name: "format-converter", description: "Convert between Word, PDF, LaTeX, and journal-specific templates", author: "acaclaw", category: "Documents" },
+  { name: "presentation-maker", description: "Generate slides from research notes or paper content", author: "acaclaw", category: "Documents" },
+];
 
 @customElement("acaclaw-skills")
 export class SkillsView extends LitElement {
   @state() private _tab: "installed" | "clawhub" = "installed";
   @state() private _installed: Skill[] = [];
-  @state() private _clawhub: ClawHubSkill[] = [];
   @state() private _searchQuery = "";
   @state() private _installing = "";
+  @state() private _installLog: string[] = [];
+  private _gatewayListener: EventListener | null = null;
 
   static override styles = css`
     :host {
@@ -213,7 +224,21 @@ export class SkillsView extends LitElement {
 
   override connectedCallback() {
     super.connectedCallback();
-    this._loadSkills();
+    if (gateway.state === "connected") {
+      this._loadSkills();
+    }
+    this._gatewayListener = ((e: CustomEvent) => {
+      if (e.detail.state === "connected") this._loadSkills();
+    }) as EventListener;
+    gateway.addEventListener("state-change", this._gatewayListener);
+  }
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    if (this._gatewayListener) {
+      gateway.removeEventListener("state-change", this._gatewayListener);
+      this._gatewayListener = null;
+    }
   }
 
   private async _loadSkills() {
@@ -222,56 +247,29 @@ export class SkillsView extends LitElement {
       if (res?.skills) {
         this._installed = res.skills;
       }
-    } catch {
-      // Default demo data for when gateway isn't running
-      this._installed = [
-        {
-          name: "paper-search",
-          version: "1.2.0",
-          description: "Search arXiv, PubMed, Semantic Scholar, CrossRef",
-          source: "ClawHub",
-          category: "Core Academic",
-          enabled: true,
-        },
-        {
-          name: "data-analyst",
-          version: "2.0.1",
-          description: "Statistical analysis from natural language",
-          source: "ClawHub",
-          category: "Core Academic",
-          enabled: true,
-        },
-        {
-          name: "citation-manager",
-          version: "1.0.0",
-          description:
-            "Format references in APA, Vancouver, Nature, etc.",
-          source: "ClawHub",
-          category: "Core Academic",
-          enabled: true,
-        },
-        {
-          name: "nano-pdf",
-          version: "bundled",
-          description: "Read and extract text from PDF files",
-          source: "OpenClaw",
-          category: "Foundation",
-          enabled: true,
-          bundled: true,
-        },
-      ];
-    }
+    } catch { /* gateway not ready — keep empty */ }
   }
 
-  private async _installSkill(name: string) {
+  private async _installSkill(name: string, installId?: string) {
     this._installing = name;
+    this._installLog = [];
     try {
-      await gateway.call("skills.install", { name });
+      const params: Record<string, unknown> = { name };
+      if (installId) params.installId = installId;
+      await gateway.call("skills.install", params, { timeoutMs: 300_000 });
+      this._installLog = [...this._installLog, `✓ ${name} installed`];
       await this._loadSkills();
-    } catch {
-      // handle error
+    } catch (err) {
+      this._installLog = [...this._installLog, `✗ Failed: ${err instanceof Error ? err.message : String(err)}`];
     }
     this._installing = "";
+  }
+
+  private async _toggleSkill(skillKey: string, enabled: boolean) {
+    try {
+      await gateway.call("skills.update", { skillKey, enabled });
+      await this._loadSkills();
+    } catch { /* ignore */ }
   }
 
   private _filteredInstalled(): Skill[] {
@@ -284,6 +282,19 @@ export class SkillsView extends LitElement {
     );
   }
 
+  private _filteredClawHub(): ClawHubSkill[] {
+    const installedNames = new Set(this._installed.map(s => s.name));
+    const available = CURATED_SKILLS.filter(s => !installedNames.has(s.name));
+    if (!this._searchQuery) return available;
+    const q = this._searchQuery.toLowerCase();
+    return available.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.description.toLowerCase().includes(q) ||
+        s.category.toLowerCase().includes(q),
+    );
+  }
+
   override render() {
     return html`
       <h1>Skills</h1>
@@ -291,17 +302,23 @@ export class SkillsView extends LitElement {
       <div class="tabs">
         <div
           class="tab ${this._tab === "installed" ? "active" : ""}"
-          @click=${() => (this._tab = "installed")}
+          @click=${() => { this._tab = "installed"; this._searchQuery = ""; }}
         >
-          Installed
+          Installed (${this._installed.length})
         </div>
         <div
           class="tab ${this._tab === "clawhub" ? "active" : ""}"
-          @click=${() => (this._tab = "clawhub")}
+          @click=${() => { this._tab = "clawhub"; this._searchQuery = ""; }}
         >
           ClawHub
         </div>
       </div>
+
+      ${this._installLog.length > 0 ? html`
+        <div style="margin-bottom: 16px; padding: 10px 14px; background: var(--ac-bg-surface); border: 1px solid var(--ac-border); border-radius: var(--ac-radius-sm); font-size: 12px; font-family: monospace; color: var(--ac-text-secondary)">
+          ${this._installLog.map(l => html`<div>${l}</div>`)}
+        </div>
+      ` : ""}
 
       ${this._tab === "installed"
         ? this._renderInstalled()
@@ -333,32 +350,31 @@ export class SkillsView extends LitElement {
                     <div class="skill-info">
                       <div class="skill-name">
                         ${s.name}
-                        <span class="skill-version"
-                          >${s.version}</span
-                        >
+                        ${s.bundled
+                          ? html`<span class="skill-version">bundled</span>`
+                          : html`<span class="skill-version">${s.source}</span>`}
                       </div>
                       <div class="skill-desc">${s.description}</div>
                       <div class="skill-meta">
-                        Source: ${s.source} · Category:
-                        ${s.category}
+                        ${s.eligible
+                          ? html`<span style="color: var(--ac-success)">✓ Eligible</span>`
+                          : html`<span style="color: var(--ac-text-muted)">Not eligible</span>`}
+                        ${s.disabled
+                          ? html` · <span style="color: var(--ac-warning)">Disabled</span>`
+                          : ""}
                       </div>
                     </div>
                     <div class="skill-actions">
-                      ${s.updateAvailable
-                        ? html`<button class="action-btn update-btn">
-                            Update to ${s.updateAvailable}
-                          </button>`
-                        : html`<span
-                            style="font-size: 12px; color: var(--ac-success)"
-                            >✓ Up to date</span
-                          >`}
                       ${s.bundled
                         ? html`<span
                             style="font-size: 11px; color: var(--ac-text-muted)"
                             >Bundled</span
                           >`
-                        : html`<button class="action-btn disable-btn">
-                            ${s.enabled ? "Disable" : "Enable"}
+                        : html`<button
+                            class="action-btn disable-btn"
+                            @click=${() => this._toggleSkill(s.name, s.disabled)}
+                          >
+                            ${s.disabled ? "Enable" : "Disable"}
                           </button>`}
                     </div>
                   </div>
@@ -374,6 +390,8 @@ export class SkillsView extends LitElement {
   }
 
   private _renderClawHub() {
+    const skills = this._filteredClawHub();
+
     return html`
       <div class="search-bar">
         <input
@@ -385,22 +403,19 @@ export class SkillsView extends LitElement {
         />
       </div>
 
-      ${this._clawhub.length === 0
+      ${skills.length === 0
         ? html`
             <div class="empty-state">
               <p>
-                Connect to the gateway to browse ClawHub skills, or
-                install skills via CLI:
+                ${CURATED_SKILLS.length === 0
+                  ? "No curated skills available."
+                  : "All curated skills are already installed!"}
               </p>
-              <code
-                style="display: block; margin-top: 8px; color: var(--ac-text-secondary)"
-                >clawhub install &lt;skill-name&gt;</code
-              >
             </div>
           `
         : html`
             <div class="skill-list">
-              ${this._clawhub.map(
+              ${skills.map(
                 (s) => html`
                   <div class="skill-item">
                     <div class="skill-info">
@@ -408,17 +423,13 @@ export class SkillsView extends LitElement {
                         ${s.name}
                         ${s.recommended
                           ? html`<span class="recommended-badge"
-                              >🏷️ Recommended</span
+                              >Recommended</span
                             >`
                           : ""}
                       </div>
                       <div class="skill-desc">${s.description}</div>
                       <div class="skill-meta">
-                        By @${s.author} · ${s.category} ·
-                        <span class="rating"
-                          >★ ${s.rating.toFixed(1)}
-                          (${s.users} users)</span
-                        >
+                        By @${s.author} · ${s.category}
                       </div>
                     </div>
                     <div class="skill-actions">

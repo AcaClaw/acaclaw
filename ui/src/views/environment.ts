@@ -357,13 +357,30 @@ export class EnvironmentView extends LitElement {
     .pkg-summary strong { color: var(--ac-text); }
   `;
 
+  private _gatewayListener: EventListener | null = null;
+
   override connectedCallback() {
     super.connectedCallback();
     // Set demo defaults immediately so first render has data
     this._environments = [...DEMO_ENVS];
     this._packages = { ...DEMO_PKGS };
     this._selectedEnv = "acaclaw";
-    this._loadEnvironments();
+    // If already connected, load immediately; otherwise wait for connection
+    if (gateway.state === "connected") {
+      this._loadEnvironments();
+    }
+    this._gatewayListener = ((e: CustomEvent) => {
+      if (e.detail.state === "connected") this._loadEnvironments();
+    }) as EventListener;
+    gateway.addEventListener("state-change", this._gatewayListener);
+  }
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    if (this._gatewayListener) {
+      gateway.removeEventListener("state-change", this._gatewayListener);
+      this._gatewayListener = null;
+    }
   }
 
   private async _loadEnvironments() {
@@ -407,7 +424,7 @@ export class EnvironmentView extends LitElement {
     if (!name) return;
     this._installingEnv = name;
     try {
-      await gateway.call("acaclaw.env.install", { name });
+      await gateway.call("acaclaw.env.install", { name }, { timeoutMs: 600_000 });
       await this._loadEnvironments();
     } catch { /* handle error */ }
     this._installingEnv = "";
@@ -457,7 +474,7 @@ export class EnvironmentView extends LitElement {
     if (!name || !this._isInstalledEnv()) return;
     this._removingEnv = name;
     try {
-      await gateway.call("acaclaw.env.remove", { name });
+      await gateway.call("acaclaw.env.remove", { name }, { timeoutMs: 600_000 });
       await this._loadEnvironments();
       this._selectedEnv = this._environments[0]?.name ?? "";
     } catch { /* handle error */ }

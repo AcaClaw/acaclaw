@@ -14,6 +14,7 @@ AcaClaw ships a curated set of academic skills — selected, tested, and maintai
 ## Table of Contents
 
 - [Skill Categories](#skill-categories)
+- [Where Skills Live](#where-skills-live)
 - [How Skills Are Selected](#how-skills-are-selected)
 - [Expand the Ecosystem, Don't Diverge](#expand-the-ecosystem-dont-diverge)
 - [Teamwork, Not Individual Heroics](#teamwork-not-individual-heroics)
@@ -38,47 +39,96 @@ These ship with OpenClaw itself. AcaClaw inherits them — no installation neede
 | `nano-pdf` | Read and extract text from PDF files |
 | `xurl` | Fetch and parse web content |
 | `coding-agent` | Write and execute code |
+| `summarize` | Summarize documents and text |
 | `clawhub` | Browse and install skills from ClawHub |
 
 **Selection rule**: AcaClaw never replaces or overrides foundation skills. If OpenClaw ships it, we use it.
 
-### Core Academic Skills
+### Core Academic Skills (Cross-Discipline)
 
-These are the skills every researcher needs regardless of discipline. Installed from ClawHub during AcaClaw setup.
+Recommended for every researcher regardless of discipline. Installed from ClawHub via the Staff panel.
 
-| Skill | What it does | Dependencies |
+| Skill | Category | What it does |
 |---|---|---|
-| `paper-search` | Search arXiv, PubMed, Semantic Scholar, CrossRef | requests, beautifulsoup4 |
-| `citation-manager` | Format references in APA, Vancouver, Nature, etc. | — |
-| `data-analyst` | Statistical analysis from natural language | numpy, scipy, pandas, statsmodels |
-| `figure-generator` | Publication-quality plots with Matplotlib | matplotlib, numpy |
-| `format-converter` | Convert between Word, PDF, and journal templates | pymupdf, openpyxl |
-| `math-solver` | Symbolic and numeric math with SymPy | sympy, numpy |
-| `manuscript-assistant` | Draft and structure papers following journal guidelines | — |
-| `slide-maker` | Generate presentations from research notes | — |
-| `grant-helper` | Structure and draft grant proposals | — |
-| `peer-reviewer` | Simulated peer review feedback | — |
+| `paper-search` | Literature | Search arXiv, PubMed, Semantic Scholar |
+| `academic-deep-research` | Literature | Transparent, rigorous research across academic databases with audit trail |
+| `citation-manager` | Writing | Format references in APA, Vancouver, Nature, etc. |
+| `academic-writing` | Writing | Expert agent for scholarly papers, literature reviews, methodology |
+| `ai-humanizer` | Writing | Detect and remove AI-typical writing patterns |
+| `data-analyst` | Data Analysis | Data visualisation, reports, SQL, spreadsheets |
+| `chart-image` | Data Analysis | Generate publication-quality chart images for papers |
+| `mermaid` | Presentation | Generate diagrams (flowcharts, sequence, class) from text |
 
 **Selection rule**: one best tool per job. If two skills do the same thing, we pick the better one and don't ship both.
 
 ### Discipline Skills
 
-Specialized skills for specific research fields. Installed when a user selects their discipline during setup. Each discipline skill is tied to its Conda environment.
+Specialized skills for specific research fields. Shown in the Staff panel when a staff member's discipline matches.
 
-| Skill | Discipline | What it does | Environment |
-|---|---|---|---|
-| `bio-tools` | Biology | Biopython, sequence analysis, genomics, BiocManager | `acaclaw-bio` |
-| `chem-tools` | Chemistry | RDKit, molecular visualization, reaction analysis | `acaclaw-chem` |
-| `med-tools` | Medicine | Clinical data analysis, DICOM, survival analysis | `acaclaw-med` |
-| `physics-tools` | Physics | Astropy, curve fitting, simulation analysis | `acaclaw-phys` |
-
-**Selection rule**: discipline skills must work in their corresponding Conda environment without conflicting with core academic skills.
+| Skill | Discipline | What it does |
+|---|---|---|
+| `bioskills` | Biology | 425 bioinformatics tools: RNA-seq, single-cell, variant calling, metagenomics |
+| `lobster-bio-dev` | Biology | Multi-agent bioinformatics engine for collaborative genomics pipelines |
+| `admet-prediction` | Biology, Chemistry, Medicine | ADMET prediction for drug/compound candidates |
+| `chemistry-query` | Chemistry | PubChem API: compound info, SMILES structures, synthesis routes |
+| `paramus-chemistry` | Chemistry | Hundreds of chemistry and scientific computing tools |
+| `clarity-research` | Chemistry, Biology | Search protein folding research data from Clarity Protocol |
+| `medical-research-toolkit` | Medicine | Query 14+ biomedical databases for drug repurposing and clinical trials |
+| `medical-clinicaltrials` | Medicine | Search ClinicalTrials.gov with advanced protocol filtering |
+| `pmc-harvest` | Medicine, Biology | Fetch full-text articles from PubMed Central |
+| `pubmed-edirect` | Medicine, Biology | Advanced PubMed search and retrieval via NCBI EDirect CLI |
+| `wolfram-alpha` | Physics, Mathematics | Complex calculations, physics simulations, unit conversions |
+| `acorn-prover` | Mathematics, Physics | Verify and write formal proofs using the Acorn theorem prover |
+| `arxiv-cli-tools` | Physics, Mathematics, CS | CLI tools for fetching arXiv papers |
+| `agentic-paper-digest` | AI / ML | Auto-fetch and summarize recent arXiv and Hugging Face AI/ML papers |
+| `arxiv-paper-reviews` | AI / ML | Fetch AI/ML papers and manage review notes via arXiv Crawler |
+| `github` | Computer Science | Interact with GitHub: issues, PRs, CI runs, advanced queries |
+| `docker-essentials` | Computer Science | Essential Docker commands for container management |
+| `git-essentials` | Computer Science | Essential Git commands for version control |
+| `geepers-data` | Earth & Environment | Fetch data from NASA, Census, climate APIs, arXiv, PubMed |
+| `biodiversity-corridor-calculator` | Earth & Environment | Analyse biodiversity corridors and ecological connectivity |
+| `autonomous-research` | Social Sciences | Multi-step independent research for qualitative or quantitative studies |
+| `limesurvey` | Social Sciences | Automate survey creation and management for data collection |
 
 ### Community Skills (ClawHub)
 
-Skills published by the broader OpenClaw community on ClawHub. Users install them on demand via `clawhub install <skill>`.
+Skills published by the broader OpenClaw community on ClawHub. Users install them on demand via the Staff panel or `clawhub install <skill>`.
 
 AcaClaw does not bundle community skills, but we curate a recommended list on [acaclaw.com/hub](https://acaclaw.com/hub) — see [Curating ClawHub Skills](#curating-clawhub-skills).
+
+---
+
+## Where Skills Live
+
+Skills are **shared between OpenClaw and AcaClaw**. Both use the same storage locations — there is no separate AcaClaw skill directory.
+
+### Storage Locations
+
+The gateway scans these directories in priority order (later overrides earlier):
+
+| Priority | Location | Description |
+|---|---|---|
+| 1 (lowest) | `skills.load.extraDirs` in config | Additional skill folders |
+| 2 | `<openclaw-package>/skills/` | Bundled with OpenClaw (foundation skills) |
+| 3 | **`~/.openclaw/skills/`** | Managed skills — **this is where ClawHub installs go** |
+| 4 | `~/.agents/skills/` | Personal agent skills |
+| 5 | `<workspace>/.agents/skills/` | Per-project agent skills |
+| 6 (highest) | `<workspace>/skills/` | Workspace skills (e.g. `~/AcaClaw/skills/`) |
+
+### What This Means for AcaClaw
+
+- **Skills installed via `clawhub install` go to `~/.openclaw/skills/`** (the managed dir)
+- Both vanilla OpenClaw and AcaClaw gateways see the same managed skills
+- You install a skill once; it's available everywhere
+- AcaClaw's `OPENCLAW_HOME` (`~/.openclaw-acaclaw/`) controls **config and plugins**, not skills
+- To override a skill for AcaClaw only, place it in `~/AcaClaw/skills/<skill>/` (workspace-level override)
+
+### Why Share?
+
+- **"Expand the ecosystem, don't diverge"** — skills belong to the OpenClaw ecosystem
+- No duplication — install once, use from any gateway
+- Switching between AcaClaw and vanilla OpenClaw is seamless
+- The `OPENCLAW_STATE_DIR` env var can override `~/.openclaw` if needed
 
 ---
 
