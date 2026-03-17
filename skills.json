@@ -23,5 +23,32 @@
       "summarize"
     ],
     "notes": "Additional skills can be installed from the browser UI or via: clawhub install <skill-name>"
+  },
+  "agents": {
+    "biologist": {
+      "discipline": "biology",
+      "condaEnv": "acaclaw-bio",
+      "skills": ["nano-pdf", "xurl", "coding-agent", "summarize"]
+    },
+    "medscientist": {
+      "discipline": "medicine",
+      "condaEnv": "acaclaw-med",
+      "skills": ["nano-pdf", "xurl", "coding-agent", "summarize"]
+    },
+    "ai-researcher": {
+      "discipline": "general",
+      "condaEnv": "acaclaw",
+      "skills": ["nano-pdf", "xurl", "coding-agent", "summarize"]
+    },
+    "data-analyst": {
+      "discipline": "general",
+      "condaEnv": "acaclaw",
+      "skills": ["nano-pdf", "xurl", "coding-agent", "summarize"]
+    },
+    "cs-scientist": {
+      "discipline": "general",
+      "condaEnv": "acaclaw",
+      "skills": ["nano-pdf", "xurl", "coding-agent", "summarize"]
+    }
   }
 }

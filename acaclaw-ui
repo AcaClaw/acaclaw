@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -e
-CONFIG_PATH="$HOME/.openclaw-acaclaw/openclaw.json"
+CONFIG_PATH="$HOME/.openclaw-acaclaw/.openclaw/openclaw.json"
 
 if [ ! -f "$CONFIG_PATH" ]; then
     echo "Error: Config not found at $CONFIG_PATH"

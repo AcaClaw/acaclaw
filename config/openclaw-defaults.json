@@ -15,7 +15,54 @@
       "sandbox": {
         "mode": "off"
       }
-    }
+    },
+    "list": [
+      {
+        "id": "biologist",
+        "name": "Dr. Gene",
+        "workspace": "~/AcaClaw/agents/biologist",
+        "identity": { "name": "Dr. Gene", "emoji": "🧬" },
+        "tools": {
+          "deny": ["gateway", "cron", "mcp_install", "mcp_uninstall", "config_set"]
+        }
+      },
+      {
+        "id": "medscientist",
+        "name": "Dr. Curie",
+        "workspace": "~/AcaClaw/agents/medscientist",
+        "identity": { "name": "Dr. Curie", "emoji": "🏥" },
+        "tools": {
+          "deny": ["gateway", "cron", "mcp_install", "mcp_uninstall", "config_set"]
+        }
+      },
+      {
+        "id": "ai-researcher",
+        "name": "Dr. Turing",
+        "workspace": "~/AcaClaw/agents/ai-researcher",
+        "identity": { "name": "Dr. Turing", "emoji": "🤖" },
+        "tools": {
+          "deny": ["gateway", "cron", "mcp_install", "mcp_uninstall", "config_set"]
+        }
+      },
+      {
+        "id": "data-analyst",
+        "name": "Dr. Bayes",
+        "workspace": "~/AcaClaw/agents/data-analyst",
+        "identity": { "name": "Dr. Bayes", "emoji": "📊" },
+        "tools": {
+          "deny": ["gateway", "cron", "mcp_install", "mcp_uninstall", "config_set"]
+        }
+      },
+      {
+        "id": "cs-scientist",
+        "name": "Dr. Knuth",
+        "workspace": "~/AcaClaw/agents/cs-scientist",
+        "identity": { "name": "Dr. Knuth", "emoji": "💻" },
+        "tools": {
+          "deny": ["gateway", "cron", "mcp_install", "mcp_uninstall", "config_set"]
+        }
+      }
+    ]
   },
   "tools": {
     "fs": {
