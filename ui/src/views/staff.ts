@@ -99,19 +99,112 @@ const ENV_PACKAGES: Record<string, EnvPackage[]> = {
   ],
 };
 
-/** Available skills that can be assigned to staff */
-export const AVAILABLE_SKILLS = [
-  { id: "nano-pdf", name: "nano-pdf", description: "Read and extract text from PDF files", category: "Foundation", default: true },
-  { id: "xurl", name: "xurl", description: "Fetch and read web pages", category: "Foundation", default: true },
-  { id: "coding-agent", name: "coding-agent", description: "Write and execute code", category: "Foundation", default: true },
-  { id: "summarize", name: "summarize", description: "Summarize documents and text", category: "Foundation", default: true },
-  { id: "paper-search", name: "paper-search", description: "Search arXiv, PubMed, Semantic Scholar", category: "Academic", default: false },
-  { id: "citation-manager", name: "citation-manager", description: "Format references in APA, Vancouver, Nature", category: "Academic", default: false },
-  { id: "data-analyst", name: "data-analyst", description: "Statistical analysis from natural language", category: "Academic", default: false },
-  { id: "ai-humanizer", name: "ai-humanizer", description: "Humanize AI-generated text", category: "Utility", default: false },
+/**
+ * Discipline tags for skill filtering.
+ * "cross" = cross-discipline (available to all staff).
+ * Others match StaffMember.discipline (case-insensitive).
+ */
+type SkillDiscipline = "cross" | "biology" | "medicine" | "chemistry" | "physics" | "mathematics"
+  | "ai" | "cs" | "statistics" | "ecology" | "earth-environment" | "social-sciences" | "engineering" | "linguistics";
+
+interface AvailableSkill {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  default: boolean;
+  disciplines: SkillDiscipline[];
+}
+
+/** Available skills that can be assigned to staff, tagged by discipline */
+export const AVAILABLE_SKILLS: AvailableSkill[] = [
+  // ── Foundation (all disciplines) ──
+  { id: "nano-pdf", name: "nano-pdf", description: "Read and extract text from PDF files", category: "Foundation", default: true, disciplines: ["cross"] },
+  { id: "xurl", name: "xurl", description: "Fetch and read web pages", category: "Foundation", default: true, disciplines: ["cross"] },
+  { id: "agentic-coding", name: "agentic-coding", description: "Write and execute code", category: "Foundation", default: true, disciplines: ["cross"] },
+  { id: "summarize", name: "summarize", description: "Summarize documents and text", category: "Foundation", default: true, disciplines: ["cross"] },
+
+  // ── Cross-discipline academic ──
+  { id: "literature-search", name: "literature-search", description: "Search arXiv, PubMed, Semantic Scholar", category: "Literature", default: false, disciplines: ["cross"] },
+  { id: "academic-citation-manager", name: "academic-citation-manager", description: "Format references in APA, Vancouver, Nature", category: "Writing", default: false, disciplines: ["cross"] },
+  { id: "data-analyst", name: "data-analyst", description: "Data visualisation, reports, SQL, spreadsheets", category: "Data Analysis", default: false, disciplines: ["cross"] },
+  { id: "ai-humanizer", name: "ai-humanizer", description: "Detect and remove AI-typical writing patterns", category: "Writing", default: false, disciplines: ["cross"] },
+  { id: "academic-deep-research", name: "academic-deep-research", description: "Transparent, rigorous research across academic databases with audit trail", category: "Literature", default: false, disciplines: ["cross"] },
+  { id: "academic-writing", name: "academic-writing", description: "Expert agent for scholarly papers, literature reviews, methodology", category: "Writing", default: false, disciplines: ["cross"] },
+  { id: "mermaid", name: "mermaid", description: "Generate diagrams (flowcharts, sequence, class) from text", category: "Presentation", default: false, disciplines: ["cross"] },
+  { id: "chart-image", name: "chart-image", description: "Generate publication-quality chart images for papers", category: "Data Analysis", default: false, disciplines: ["cross"] },
+
+  // ── Biology & Life Sciences ──
+  { id: "bioskills", name: "bioskills", description: "425 bioinformatics tools: RNA-seq, single-cell, variant calling, metagenomics", category: "Biology", default: false, disciplines: ["biology"] },
+  { id: "lobster-bio-dev", name: "lobster-bio-dev", description: "Multi-agent bioinformatics engine for collaborative genomics pipelines", category: "Biology", default: false, disciplines: ["biology"] },
+  { id: "admet-prediction", name: "admet-prediction", description: "ADMET prediction for drug/compound candidates — ADME and toxicity", category: "Biology", default: false, disciplines: ["biology", "chemistry", "medicine"] },
+
+  // ── Chemistry ──
+  { id: "chemistry-query", name: "chemistry-query", description: "PubChem API: compound info, SMILES structures, synthesis routes", category: "Chemistry", default: false, disciplines: ["chemistry", "biology"] },
+  { id: "paramus-chemistry", name: "paramus-chemistry", description: "Hundreds of chemistry and scientific computing tools in one skill pack", category: "Chemistry", default: false, disciplines: ["chemistry"] },
+  { id: "clarity-research", name: "clarity-research", description: "Search protein folding research data from Clarity Protocol", category: "Chemistry", default: false, disciplines: ["chemistry", "biology"] },
+
+  // ── Medicine & Health ──
+  { id: "medical-research-toolkit", name: "medical-research-toolkit", description: "Query 14+ biomedical databases for drug repurposing and clinical trials", category: "Medicine", default: false, disciplines: ["medicine"] },
+  { id: "clinical-data-extractor", name: "clinical-data-extractor", description: "Extract and search clinical trials data with advanced filtering", category: "Medicine", default: false, disciplines: ["medicine"] },
+  { id: "pmc-harvest", name: "pmc-harvest", description: "Fetch full-text articles from PubMed Central", category: "Medicine", default: false, disciplines: ["medicine", "biology"] },
+  { id: "pubmed-edirect", name: "pubmed-edirect", description: "Advanced PubMed search and retrieval via NCBI EDirect CLI", category: "Medicine", default: false, disciplines: ["medicine", "biology"] },
+
+  // ── Physics & Mathematics ──
+  { id: "wolfram-alpha", name: "wolfram-alpha", description: "Complex calculations, physics simulations, unit conversions", category: "Physics / Math", default: false, disciplines: ["physics", "mathematics"] },
+  { id: "acorn-prover", name: "acorn-prover", description: "Verify and write formal proofs using the Acorn theorem prover", category: "Physics / Math", default: false, disciplines: ["mathematics", "physics"] },
+  { id: "arxiv-cli-tools", name: "arxiv-cli-tools", description: "CLI tools for fetching arXiv papers in physics, math, and CS", category: "Physics / Math", default: false, disciplines: ["physics", "mathematics", "cs"] },
+
+  // ── AI & Machine Learning ──
+  { id: "agentic-paper-digest-skill", name: "agentic-paper-digest-skill", description: "Auto-fetch and summarize recent arXiv and Hugging Face AI/ML papers", category: "AI / ML", default: false, disciplines: ["ai"] },
+  { id: "arxiv-paper-reviews", name: "arxiv-paper-reviews", description: "Fetch AI/ML papers and manage review notes via arXiv Crawler", category: "AI / ML", default: false, disciplines: ["ai"] },
+
+  // ── Computer Science ──
+  { id: "github", name: "github", description: "Interact with GitHub: issues, PRs, CI runs, advanced queries", category: "Computer Science", default: false, disciplines: ["cs"] },
+  { id: "docker-essentials", name: "docker-essentials", description: "Essential Docker commands for container management and debugging", category: "Computer Science", default: false, disciplines: ["cs"] },
+  { id: "git-essentials", name: "git-essentials", description: "Essential Git commands for version control and collaboration", category: "Computer Science", default: false, disciplines: ["cs"] },
+
+  // ── Earth & Environment ──
+  { id: "geepers-data", name: "geepers-data", description: "Fetch data from NASA, Census, climate APIs, arXiv, PubMed", category: "Earth & Env", default: false, disciplines: ["ecology", "earth-environment", "biology"] },
+  { id: "biodiversity-corridor-calculator", name: "biodiversity-corridor-calculator", description: "Analyse biodiversity corridors and ecological connectivity patterns", category: "Earth & Env", default: false, disciplines: ["ecology", "earth-environment"] },
+
+  // ── Social Sciences ──
+  { id: "autonomous-research", name: "autonomous-research", description: "Multi-step independent research for qualitative or quantitative studies", category: "Social Sciences", default: false, disciplines: ["social-sciences"] },
+  { id: "survey-designer", name: "survey-designer", description: "Design and manage surveys for research data collection", category: "Social Sciences", default: false, disciplines: ["social-sciences"] },
 ];
 
 const DEFAULT_SKILLS = AVAILABLE_SKILLS.filter((s) => s.default).map((s) => s.id);
+
+/** Map StaffMember.discipline display string → SkillDiscipline tag(s) */
+function disciplineTags(staffDiscipline: string): SkillDiscipline[] {
+  const key = staffDiscipline.toLowerCase();
+  const map: Record<string, SkillDiscipline[]> = {
+    "general": [], // General sees cross-discipline only
+    "biology": ["biology"],
+    "medicine": ["medicine"],
+    "chemistry": ["chemistry"],
+    "physics": ["physics"],
+    "mathematics": ["mathematics"],
+    "ai / machine learning": ["ai"],
+    "statistics": ["statistics"],
+    "computer science": ["cs"],
+    "ecology": ["ecology", "earth-environment", "biology"],
+    "linguistics": ["linguistics", "social-sciences"],
+    "engineering": ["engineering"],
+    "social sciences": ["social-sciences"],
+    "earth science": ["earth-environment"],
+  };
+  return map[key] ?? [];
+}
+
+/** Check if a skill matches a staff member's discipline */
+function skillMatchesDiscipline(skill: AvailableSkill, staffDiscipline: string): boolean {
+  // cross-discipline skills are always visible
+  if (skill.disciplines.includes("cross")) return true;
+  // check overlap between staff's discipline tags and skill's discipline tags
+  const tags = disciplineTags(staffDiscipline);
+  return skill.disciplines.some(d => tags.includes(d));
+}
 
 /** Prebuilt staff templates for +New */
 const PREBUILT_TEMPLATES: Omit<StaffMember, "skills" | "envInstalled">[] = [
@@ -206,6 +299,7 @@ interface StaffCustomization {
   icon?: string;
   name?: string;
   photoUrl?: string;
+  skills?: string[];
 }
 
 function loadStaffCustomizations(): Record<string, StaffCustomization> {
@@ -231,7 +325,7 @@ function applyCustomizations(staff: StaffMember[]): StaffMember[] {
   const base = staff.map((s) => {
     const c = customs[s.id];
     if (!c) return s;
-    return { ...s, ...(c.name && { name: c.name }), ...(c.icon !== undefined && { icon: c.icon }), ...(c.photoUrl !== undefined && { photoUrl: c.photoUrl || undefined }) };
+    return { ...s, ...(c.name && { name: c.name }), ...(c.icon !== undefined && { icon: c.icon }), ...(c.photoUrl !== undefined && { photoUrl: c.photoUrl || undefined }), ...(c.skills && { skills: c.skills }) };
   });
   const existingIds = new Set(base.map((s) => s.id));
   const added = loadAddedStaff().filter((s) => !existingIds.has(s.id));
@@ -267,6 +361,50 @@ export class StaffView extends LitElement {
   @state() private _searchQuery: Record<string, string> = {};
   @state() private _searchResults: Array<{ id: string; name: string; description: string; category: string }> = [];
   @state() private _searching = false;
+  /** Gateway-reported skills from skills.status */
+  @state() private _gatewaySkills: Array<{
+    name: string; description: string; source: string; bundled: boolean;
+    disabled: boolean; eligible: boolean;
+    install: Array<{ id: string; kind: string; label: string }>;
+  }> = [];
+  /** Per-skill install state */
+  @state() private _skillInstalling: Record<string, boolean> = {};
+  /** Skill install log lines */
+  @state() private _skillInstallLog: string[] = [];
+
+  private _gatewayListener: EventListener | null = null;
+
+  override connectedCallback() {
+    super.connectedCallback();
+    // If already connected, sync immediately; otherwise wait for connection
+    if (gateway.state === "connected") {
+      this._syncEnvStatus();
+    }
+    this._gatewayListener = ((e: CustomEvent) => {
+      if (e.detail.state === "connected") this._syncEnvStatus();
+    }) as EventListener;
+    gateway.addEventListener("state-change", this._gatewayListener);
+  }
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    if (this._gatewayListener) {
+      gateway.removeEventListener("state-change", this._gatewayListener);
+      this._gatewayListener = null;
+    }
+  }
+
+  private async _syncEnvStatus() {
+    try {
+      const res = await gateway.call<{ environments: Array<{ name: string; installed: boolean }> }>("acaclaw.env.list");
+      if (!res?.environments) return;
+      const envMap = new Map(res.environments.map(e => [e.name, e.installed]));
+      this._staff = this._staff.map(s => {
+        const installed = envMap.get(s.condaEnv);
+        return installed !== undefined ? { ...s, envInstalled: installed } : s;
+      });
+    } catch { /* gateway not connected yet — keep defaults */ }
+  }
 
   static override styles = css`
     :host {
@@ -1135,6 +1273,10 @@ export class StaffView extends LitElement {
       if (s.name !== d.name) c.name = s.name;
       if (s.icon !== d.icon) c.icon = s.icon;
       if (s.photoUrl) c.photoUrl = s.photoUrl;
+      // Always persist skills (even if same as default, to capture additions)
+      const defaultSkills = d.skills.slice().sort().join(",");
+      const currentSkills = s.skills.slice().sort().join(",");
+      if (currentSkills !== defaultSkills) c.skills = s.skills;
       if (Object.keys(c).length) customs[s.id] = c;
     }
     try {
@@ -1145,6 +1287,89 @@ export class StaffView extends LitElement {
 
   private _openPanel(staffId: string, type: PanelType) {
     this._panel = { staffId, type };
+    if (type === "skills" && gateway.state === "connected") {
+      this._loadGatewaySkills();
+    }
+  }
+
+  private async _loadGatewaySkills() {
+    try {
+      const res = await gateway.call<{ skills: typeof this._gatewaySkills }>("skills.status");
+      if (res?.skills) this._gatewaySkills = res.skills;
+    } catch { /* gateway not ready */ }
+  }
+
+  private async _installGatewaySkill(skillName: string, installId: string) {
+    this._skillInstalling = { ...this._skillInstalling, [skillName]: true };
+    this._skillInstallLog = [`\u25b6 Installing ${skillName} (${installId})\u2026`];
+    try {
+      const res = await gateway.call<{
+        ok: boolean; message: string; stdout: string; stderr: string; code: number | null;
+      }>("skills.install", { name: skillName, installId }, { timeoutMs: 300_000 });
+      // Append stdout/stderr lines
+      if (res?.stdout) {
+        for (const line of res.stdout.split("\n").filter(Boolean)) {
+          this._skillInstallLog = [...this._skillInstallLog, line];
+        }
+      }
+      if (res?.stderr) {
+        for (const line of res.stderr.split("\n").filter(Boolean)) {
+          this._skillInstallLog = [...this._skillInstallLog, `\u26a0 ${line}`];
+        }
+      }
+      if (res?.ok) {
+        this._skillInstallLog = [...this._skillInstallLog, `\u2713 ${skillName} installed successfully`];
+      } else {
+        this._skillInstallLog = [...this._skillInstallLog, `\u2717 ${res?.message ?? "Install failed"}`];
+      }
+      await this._loadGatewaySkills();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this._skillInstallLog = [...this._skillInstallLog, `\u2717 Failed: ${msg}`];
+      console.error(`Failed to install skill ${skillName}:`, err);
+    } finally {
+      const { [skillName]: _, ...rest } = this._skillInstalling;
+      this._skillInstalling = rest;
+    }
+  }
+
+  private async _installClawHubSkill(staffId: string, slug: string) {
+    this._skillInstalling = { ...this._skillInstalling, [slug]: true };
+    this._skillInstallLog = [`▶ Installing "${slug}" from ClawHub…`];
+
+    const unsub = gateway.onNotification("acaclaw.skill.install.progress", (data: unknown) => {
+      const d = data as { slug?: string; name?: string; line?: string };
+      const matchSlug = d?.slug === slug || d?.name === slug;
+      if (matchSlug && d?.line) {
+        console.log(`[skill-install] ${d.line}`);
+        this._skillInstallLog = [...this._skillInstallLog, d.line];
+      }
+    });
+
+    try {
+      console.log(`[skill-install] calling acaclaw.skill.install slug=${slug}`);
+      const res = await gateway.call<{ ok: boolean; slug: string; installed?: boolean; alreadyExists?: boolean }>("acaclaw.skill.install", { slug }, { timeoutMs: 120_000 });
+      console.log(`[skill-install] result:`, res);
+      if (res?.alreadyExists) {
+        this._skillInstallLog = [...this._skillInstallLog, `✓ "${slug}" is already installed`];
+      } else if (res?.installed) {
+        this._skillInstallLog = [...this._skillInstallLog, `✓ "${slug}" installed successfully`];
+      }
+      if (res?.installed || res?.alreadyExists) {
+        console.log(`[skill-install] adding "${slug}" to staff ${staffId}`);
+        this._addSkillToStaff(staffId, slug);
+        this.requestUpdate();
+      }
+      await this._loadGatewaySkills();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[skill-install] error:`, err);
+      this._skillInstallLog = [...this._skillInstallLog, `✗ Failed: ${msg}`];
+    } finally {
+      unsub();
+      const { [slug]: _, ...rest } = this._skillInstalling;
+      this._skillInstalling = rest;
+    }
   }
 
   private _closePanel() {
@@ -1207,6 +1432,7 @@ export class StaffView extends LitElement {
         skills: has ? s.skills.filter((sk) => sk !== skillId) : [...s.skills, skillId],
       };
     });
+    this._persistStaff();
   }
 
 
@@ -1300,7 +1526,7 @@ export class StaffView extends LitElement {
     });
 
     try {
-      await gateway.call("acaclaw.env.install", { name: staff?.condaEnv });
+      await gateway.call("acaclaw.env.install", { name: staff?.condaEnv }, { timeoutMs: 600_000 });
       this._appendLog(staffId, "✓ Environment installed successfully");
       this._staff = this._staff.map((s) =>
         s.id === staffId ? { ...s, envInstalled: true } : s
@@ -1332,7 +1558,7 @@ export class StaffView extends LitElement {
     });
 
     try {
-      await gateway.call("acaclaw.env.remove", { name: staff?.condaEnv });
+      await gateway.call("acaclaw.env.remove", { name: staff?.condaEnv }, { timeoutMs: 600_000 });
       this._appendLog(staffId, "✓ Environment removed");
       this._staff = this._staff.map((s) =>
         s.id === staffId ? { ...s, envInstalled: false } : s
@@ -1354,6 +1580,7 @@ export class StaffView extends LitElement {
       if (s.id !== staffId) return s;
       return { ...s, skills: s.skills.filter((sk) => sk !== skillId) };
     });
+    this._persistStaff();
   }
 
   private _addSkillToStaff(staffId: string, skillId: string) {
@@ -1362,6 +1589,7 @@ export class StaffView extends LitElement {
       if (s.skills.includes(skillId)) return s;
       return { ...s, skills: [...s.skills, skillId] };
     });
+    this._persistStaff();
   }
 
   private _searchClawhub(staffId: string) {
@@ -1577,8 +1805,8 @@ export class StaffView extends LitElement {
               <div class="panel-footer">
                 <button
                   class="btn-panel-action"
-                  @click=${this._closePanel}
-                >Done</button>
+                  @click=${() => { this._persistStaff(); this._closePanel(); }}
+                >Close</button>
               </div>
             `
           : ""}
@@ -1667,16 +1895,62 @@ export class StaffView extends LitElement {
   }
 
   private _renderSkillsPanel(staff: StaffMember) {
-    const bundledSkills = ["nano-pdf", "xurl", "coding-agent", "summarize"];
     const query = this._searchQuery[staff.id] ?? "";
+    // Merge AVAILABLE_SKILLS + gateway skills into unified list
+    const seenNames = new Set<string>();
+    const allSkills: Array<{
+      id: string; name: string; description: string; category: string;
+      installed: boolean; bundled: boolean; eligible: boolean;
+      installOptions: Array<{ id: string; kind: string; label: string }>;
+      disciplines: SkillDiscipline[];
+    }> = [];
+    // Gateway skills first
+    for (const gw of this._gatewaySkills) {
+      seenNames.add(gw.name);
+      const avail = AVAILABLE_SKILLS.find(a => a.id === gw.name);
+      allSkills.push({
+        id: gw.name, name: gw.name,
+        description: avail?.description ?? gw.description,
+        category: avail?.category ?? (gw.bundled ? "Foundation" : gw.source),
+        installed: gw.eligible, bundled: gw.bundled, eligible: gw.eligible,
+        installOptions: gw.install ?? [],
+        disciplines: avail?.disciplines ?? ["cross"],
+      });
+    }
+    // Then AVAILABLE_SKILLS not in gateway
+    for (const av of AVAILABLE_SKILLS) {
+      if (seenNames.has(av.id)) continue;
+      allSkills.push({
+        id: av.id, name: av.name, description: av.description,
+        category: av.category, installed: false, bundled: false,
+        eligible: false, installOptions: [],
+        disciplines: av.disciplines,
+      });
+    }
+
+    // Filter skills by this staff member's discipline
+    const relevantSkills = allSkills.filter(s =>
+      skillMatchesDiscipline({ disciplines: s.disciplines } as AvailableSkill, staff.discipline)
+    );
+
+    // Group by category, preserving order
+    const categoryOrder: string[] = [];
+    const byCategory = new Map<string, typeof relevantSkills>();
+    for (const skill of relevantSkills) {
+      if (!byCategory.has(skill.category)) {
+        categoryOrder.push(skill.category);
+        byCategory.set(skill.category, []);
+      }
+      byCategory.get(skill.category)!.push(skill);
+    }
+
     return html`
       <div class="panel-section-title">Assigned Skills (${staff.skills.length})</div>
       <div class="skill-pills" style="margin-bottom:20px">
         ${staff.skills.map(sk => {
-          const info = AVAILABLE_SKILLS.find(a => a.id === sk);
-          const isBundled = bundledSkills.includes(sk);
+          const info = allSkills.find(a => a.id === sk);
           return html`
-            <span class="skill-pill ${isBundled ? "bundled" : ""}" title="${info?.description ?? sk}">
+            <span class="skill-pill ${info?.bundled ? "bundled" : ""}" title="${info?.description ?? sk}">
               ${info?.name ?? sk}
               <span class="remove-x" @click=${() => this._removeSkillFromStaff(staff.id, sk)}>\u00d7</span>
             </span>
@@ -1703,7 +1977,7 @@ export class StaffView extends LitElement {
               <button class="search-result-add" @click=${() => {
                 this._addSkillToStaff(staff.id, r.id);
                 if (!AVAILABLE_SKILLS.find(a => a.id === r.id)) {
-                  AVAILABLE_SKILLS.push({ ...r, default: false });
+                  AVAILABLE_SKILLS.push({ ...r, default: false, disciplines: ["cross"] });
                 }
                 this._searchResults = this._searchResults.filter(x => x.id !== r.id);
               }}>+ Add</button>
@@ -1712,23 +1986,74 @@ export class StaffView extends LitElement {
         </div>
       ` : ""}
 
-      <div class="panel-section-title">All Available Skills</div>
-      ${AVAILABLE_SKILLS.map((skill) => {
-        const assigned = staff.skills.includes(skill.id);
-        return html`
-          <div
-            class="skill-check-item ${assigned ? "assigned" : ""}"
-            @click=${() => this._toggleSkill(staff.id, skill.id)}
-          >
-            <div class="skill-checkbox">${assigned ? "\u2713" : ""}</div>
-            <div class="skill-check-info">
-              <div class="skill-check-name">${skill.name}</div>
-              <div class="skill-check-desc">${skill.description}</div>
-              <div class="skill-check-cat">${skill.category}</div>
+      <div class="panel-section-title" style="margin-bottom:4px">
+        Recommended for ${staff.discipline}
+        <span style="font-size:11px;color:var(--ac-text-muted);font-weight:normal;margin-left:6px">(${relevantSkills.length} skills)</span>
+      </div>
+      ${categoryOrder.map(cat => html`
+        <div style="margin-top:12px;margin-bottom:6px;font-size:12px;font-weight:600;color:var(--ac-text-muted);text-transform:uppercase;letter-spacing:0.5px">${cat}</div>
+        ${byCategory.get(cat)!.map((skill) => {
+          const assigned = staff.skills.includes(skill.id);
+          const installing = this._skillInstalling[skill.name] ?? false;
+          const hasInstaller = skill.installOptions.length > 0;
+          return html`
+            <div
+              class="skill-check-item ${assigned ? "assigned" : ""}"
+              @click=${() => this._toggleSkill(staff.id, skill.id)}
+            >
+              <div class="skill-checkbox">${assigned ? "\u2713" : ""}</div>
+              <div class="skill-check-info">
+                <div class="skill-check-name">
+                  ${skill.name}
+                  ${skill.bundled ? html`<span style="font-size:10px;color:#16a34a;margin-left:4px">BUNDLED</span>` : ""}
+                </div>
+                <div class="skill-check-desc">${skill.description}</div>
+              </div>
+              ${assigned ? html`
+                <button class="search-result-add" style="flex-shrink:0;background:#fef2f2;color:#ef4444;border-color:#fecaca"
+                  @click=${(e: Event) => { e.stopPropagation(); this._removeSkillFromStaff(staff.id, skill.id); }}>Remove</button>
+              ` : html`
+                ${hasInstaller && !skill.eligible && !skill.bundled ? html`
+                  <button class="search-result-add" style="flex-shrink:0;background:var(--ac-primary);color:#fff;border-color:var(--ac-primary)"
+                    ?disabled=${installing}
+                    @click=${(e: Event) => {
+                      e.stopPropagation();
+                      this._installGatewaySkill(skill.name, skill.installOptions[0].id);
+                      this._addSkillToStaff(staff.id, skill.id);
+                    }}>
+                    ${installing ? "Installing\u2026" : "\u{1F4E6} Install"}
+                  </button>
+                ` : html`
+                  ${skill.bundled || skill.eligible ? html`
+                    <button class="search-result-add" style="flex-shrink:0"
+                      @click=${(e: Event) => { e.stopPropagation(); this._addSkillToStaff(staff.id, skill.id); }}>+ Add</button>
+                  ` : html`
+                    <button class="search-result-add" style="flex-shrink:0;background:var(--ac-primary);color:#fff;border-color:var(--ac-primary)"
+                      ?disabled=${installing}
+                      @click=${(e: Event) => { e.stopPropagation(); this._installClawHubSkill(staff.id, skill.id); }}>
+                      ${installing ? "Installing…" : "Install"}
+                    </button>
+                  `}
+                `}
+              `}
             </div>
+          `;
+        })}
+      `)}
+
+      ${this._skillInstallLog.length > 0 ? html`
+        <div class="panel-section-title" style="margin-top:20px">Install Log</div>
+        <div class="install-status-bar" style="max-height:200px;overflow-y:auto">
+          ${this._skillInstallLog.map(line => html`
+            <div class="status-line ${line.startsWith("\u2717") ? "error" : line.startsWith("\u2713") ? "success" : ""}">${line}</div>
+          `)}
+        </div>
+        ${Object.keys(this._skillInstalling).length === 0 ? html`
+          <div class="status-bar-actions">
+            <button class="status-bar-dismiss" @click=${() => { this._skillInstallLog = []; }}>Clear log</button>
           </div>
-        `;
-      })}
+        ` : ""}
+      ` : ""}
     `;
   }
 }
