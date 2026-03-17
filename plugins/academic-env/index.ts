@@ -228,11 +228,11 @@ const academicEnvPlugin = {
 			if (yamlFile) {
 				const yamlPath = join(envDir, yamlFile);
 				cmd = conda.path;
-				args = ["env", "create", "-f", yamlPath, "--yes"];
+				args = ["env", "create", "-f", yamlPath];
 			} else {
 				// No YAML — create from base and name it accordingly
 				cmd = conda.path;
-				args = ["create", "-n", condaName, "python=3.12", "--yes"];
+				args = ["create", "-n", condaName, "python=3.12", "-y"];
 			}
 
 			context.broadcast("acaclaw.env.install.progress", { name: rawName, line: `$ conda ${args.join(" ")}` });
