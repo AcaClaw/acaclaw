@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { access, copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { homedir } from "node:os";
+import { execFile } from "node:child_process";
 
 export type BackupConfig = {
   backupDir: string;
@@ -276,4 +277,146 @@ export async function restoreFile(
   const absOriginal = resolve(originalPath);
   await mkdir(dirname(absOriginal), { recursive: true });
   await copyFile(backupPath, absOriginal);
+}
+
+// ---------------------------------------------------------------------------
+// Snapshot — full workspace tar.gz (Layer B)
+// ---------------------------------------------------------------------------
+
+export type SnapshotManifest = {
+  snapshotTime: string;
+  workspaceDir: string;
+  archivePath: string;
+  archiveSize: number;
+  archiveChecksum: string;
+  excludePatterns: string[];
+};
+
+function snapshotsDir(config: BackupConfig): string {
+  return join(config.backupDir, "snapshots");
+}
+
+/**
+ * Create a tar.gz snapshot of `workspaceDir`.
+ * Returns the snapshot manifest on success.
+ */
+export async function createSnapshot(
+  workspaceDir: string,
+  config: BackupConfig,
+): Promise<SnapshotManifest> {
+  const absWs = resolve(workspaceDir);
+  const now = new Date();
+  const ts = now.toISOString().replace(/[:.]/g, "-");
+  const dir = snapshotsDir(config);
+  await mkdir(dir, { recursive: true });
+
+  const archiveName = `snapshot-${ts}.tar.gz`;
+  const archivePath = join(dir, archiveName);
+
+  // Build tar exclude args
+  const excludeArgs: string[] = [];
+  for (const p of config.excludePatterns) {
+    excludeArgs.push("--exclude", p);
+  }
+
+  // Create tar.gz — run tar with execFile (no shell) to avoid injection
+  await new Promise<void>((res, rej) => {
+    execFile(
+      "tar",
+      ["-czf", archivePath, ...excludeArgs, "-C", dirname(absWs), basename(absWs)],
+      { maxBuffer: 10 * 1024 * 1024 },
+      (err) => (err ? rej(err) : res()),
+    );
+  });
+
+  const archiveStat = await stat(archivePath);
+  const archiveChecksum = await computeChecksum(archivePath, config.checksumAlgorithm);
+
+  const manifest: SnapshotManifest = {
+    snapshotTime: now.toISOString(),
+    workspaceDir: absWs,
+    archivePath,
+    archiveSize: archiveStat.size,
+    archiveChecksum,
+    excludePatterns: config.excludePatterns,
+  };
+
+  const manifestPath = join(dir, `snapshot-${ts}.manifest.json`);
+  await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+
+  return manifest;
+}
+
+/**
+ * List existing snapshots, newest first.
+ */
+export async function listSnapshots(config: BackupConfig): Promise<SnapshotManifest[]> {
+  const dir = snapshotsDir(config);
+  try {
+    const entries = await readdir(dir);
+    const manifests: SnapshotManifest[] = [];
+    for (const entry of entries) {
+      if (!entry.endsWith(".manifest.json")) continue;
+      const raw = await readFile(join(dir, entry), "utf-8");
+      manifests.push(JSON.parse(raw) as SnapshotManifest);
+    }
+    return manifests.sort((a, b) => b.snapshotTime.localeCompare(a.snapshotTime));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Scan backup dir and return aggregate stats (total size, file count, backup entries).
+ */
+export async function getBackupStats(config: BackupConfig): Promise<{
+  totalSizeBytes: number;
+  fileCount: number;
+  entries: { time: string; file: string; size: number; date: string }[];
+}> {
+  let totalSize = 0;
+  let fileCount = 0;
+  const entries: { time: string; file: string; size: number; date: string }[] = [];
+
+  try {
+    const topLevel = await readdir(config.backupDir);
+    for (const wsDir of topLevel) {
+      if (wsDir === "snapshots" || wsDir === ".trash") continue;
+      const filesDir = join(config.backupDir, wsDir, "files");
+      try {
+        const dateDirs = await readdir(filesDir);
+        for (const dateDir of dateDirs) {
+          const dirPath = join(filesDir, dateDir);
+          const dirStat = await stat(dirPath);
+          if (!dirStat.isDirectory()) continue;
+          const files = await readdir(dirPath);
+          for (const file of files) {
+            if (file.endsWith(".meta.json")) {
+              const metaPath = join(dirPath, file);
+              const raw = await readFile(metaPath, "utf-8");
+              const meta: BackupMetadata = JSON.parse(raw);
+              const backupFile = file.replace(/\.meta\.json$/, "");
+              const backupPath = join(dirPath, backupFile);
+              let size = meta.originalSize;
+              try {
+                const bs = await stat(backupPath);
+                size = bs.size;
+                totalSize += size;
+              } catch { /* backup file may be missing */ }
+              fileCount++;
+              entries.push({
+                time: meta.backupTime,
+                file: meta.workspaceRelativePath || meta.originalPath,
+                size,
+                date: dateDir,
+              });
+            }
+          }
+        }
+      } catch { /* not a workspace backup dir */ }
+    }
+  } catch { /* backup dir may not exist */ }
+
+  entries.sort((a, b) => b.time.localeCompare(a.time));
+  return { totalSizeBytes: totalSize, fileCount, entries };
 }

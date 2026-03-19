@@ -116,6 +116,7 @@ export class EnvironmentView extends LitElement {
   @state() private _environments: CondaEnv[] = [];
   @state() private _packages: Record<string, Pkg[]> = {};
   @state() private _searchQuery = "";
+  @state() private _loadingPkgs = false;
   @state() private _installQuery = "";
   @state() private _installing = false;
   @state() private _uninstalling = "";
@@ -361,10 +362,10 @@ export class EnvironmentView extends LitElement {
 
   override connectedCallback() {
     super.connectedCallback();
-    // Set demo defaults immediately so first render has data
     this._environments = [...DEMO_ENVS];
-    this._packages = { ...DEMO_PKGS };
+    this._packages = {};
     this._selectedEnv = "aca";
+    this._loadingPkgs = true;
     // If already connected, load immediately; otherwise wait for connection
     if (gateway.state === "connected") {
       this._loadEnvironments();
@@ -401,14 +402,16 @@ export class EnvironmentView extends LitElement {
   private async _loadPackages() {
     if (!this._selectedEnv) return;
     const env = this._environments.find(e => e.name === this._selectedEnv);
-    if (!env?.installed) return;
+    if (!env?.installed) { this._loadingPkgs = false; return; }
+    this._loadingPkgs = true;
     try {
       const res = await gateway.call<{ packages: Array<{ name: string; version: string; source: string }> }>("acaclaw.env.pip.list", { env: this._selectedEnv });
       if (res?.packages) {
         const key = `${this._selectedEnv}:python`;
         this._packages = { ...this._packages, [key]: res.packages };
       }
-    } catch { /* keep demo/cached data */ }
+    } catch { /* keep cached data */ }
+    this._loadingPkgs = false;
   }
 
   private _pkgKey(): string {
@@ -606,7 +609,7 @@ export class EnvironmentView extends LitElement {
       <div class="card">
         <h2>Installed ${meta.label} Packages — ${this._selectedEnv}</h2>
         <div class="pkg-summary">
-          <span><strong>${allPkgs.length}</strong> packages</span>
+          <span>${this._loadingPkgs ? "Loading…" : html`<strong>${allPkgs.length}</strong> packages`}</span>
         </div>
         <div class="search-bar">
           <input class="search-input" placeholder="Search ${meta.label.toLowerCase()} packages…"

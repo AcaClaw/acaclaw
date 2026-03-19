@@ -50,6 +50,12 @@ export interface TreeNode {
 /** Default workspace root — researcher-friendly, visible in home dir */
 export const DEFAULT_WORKSPACE_ROOT = join(homedir(), "AcaClaw");
 
+/** Infrastructure directory for AcaClaw (hidden) */
+const INFRA_DIR = join(homedir(), ".acaclaw");
+
+/** Workdir overrides file — per-agent custom working directories */
+const WORKDIR_OVERRIDES_FILE = join(INFRA_DIR, "workdir-overrides.json");
+
 /** Metadata directory inside each workspace */
 const META_DIR = ".acaclaw";
 
@@ -365,6 +371,59 @@ function formatSize(bytes: number): string {
 	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
 	if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 	return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+// --- Workdir Overrides ---
+
+interface WorkdirOverrides {
+	[agentId: string]: string;
+}
+
+function readWorkdirOverrides(): WorkdirOverrides {
+	try {
+		if (existsSync(WORKDIR_OVERRIDES_FILE)) {
+			return JSON.parse(readFileSync(WORKDIR_OVERRIDES_FILE, "utf-8")) as WorkdirOverrides;
+		}
+	} catch {
+		// Corrupted file — return empty
+	}
+	return {};
+}
+
+function writeWorkdirOverrides(overrides: WorkdirOverrides): void {
+	mkdirSync(INFRA_DIR, { recursive: true });
+	writeFileSync(WORKDIR_OVERRIDES_FILE, JSON.stringify(overrides, null, 2) + "\n");
+}
+
+/**
+ * Get the effective workdir for an agent.
+ * Returns the override if set, otherwise the provided default.
+ */
+export function getEffectiveWorkdir(agentId: string, defaultWorkdir: string): string {
+	const overrides = readWorkdirOverrides();
+	return overrides[agentId] ?? defaultWorkdir;
+}
+
+/**
+ * Set a workdir override for an agent.
+ * Pass null to clear the override and revert to default.
+ */
+export function setWorkdirOverride(agentId: string, workdir: string | null): void {
+	const overrides = readWorkdirOverrides();
+	if (workdir === null) {
+		delete overrides[agentId];
+	} else {
+		const absPath = resolve(workdir.replace(/^~/, homedir()));
+		overrides[agentId] = absPath;
+	}
+	writeWorkdirOverrides(overrides);
+}
+
+/**
+ * Get all workdir overrides.
+ */
+export function getAllWorkdirOverrides(): WorkdirOverrides {
+	return readWorkdirOverrides();
 }
 
 // --- Project Management ---

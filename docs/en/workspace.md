@@ -104,6 +104,12 @@ The workspace plugin manages project structure, file tree scanning, and LLM cont
 ├── workspace_info tool
 │   └── Show project metadata, file tree, statistics
 │
+├── acaclaw.workspace.getWorkdir gateway method
+│   └── Returns resolved workdir for a given agent
+│
+├── acaclaw.workspace.setWorkdir gateway method
+│   └── Updates workdir for a given agent (persists to config)
+│
 ├── acaclaw-workspace init CLI command
 │   └── Create workspace with scaffold directories
 │
@@ -167,6 +173,88 @@ Backups are organized per workspace using the stable workspace ID:
   "originalChecksum": "sha256:...",
   "backupChecksum": "sha256:..."
 }
+```
+
+---
+
+## Working Directory (Workdir)
+
+The **working directory** is the folder where agents read, write, and generate files. It is displayed in the **top-right** of the Chat view so users always know which directory is active.
+
+### Visibility
+
+The Chat header shows the current workdir as a path badge:
+
+```
+┌──────────────────────────────────────────────────┐
+│  Chat                           📁 ~/AcaClaw     │
+│                                    [Change]       │
+├──────────────────────────────────────────────────┤
+│  [ General ] [ 🧬 Dr. Gene ] [ 🤖 Dr. Turing ]  │
+│  ...                                              │
+```
+
+- Each agent tab shows the workdir of the **currently active agent**
+- The General tab uses the global default (`agents.defaults.workspace`)
+- Per-agent tabs show the agent's own workspace (e.g. `~/AcaClaw/agents/biologist`)
+
+### Changing the workdir
+
+Users can change the workdir from the Chat view:
+
+1. Click the path badge or **Change** button in the top-right
+2. Enter a new absolute path in the dialog
+3. The change is persisted via the gateway and takes effect immediately
+
+The workdir can also be changed via CLI:
+
+```bash
+# Change global default
+openclaw config set agents.defaults.workspace ~/my-research
+
+# Change a specific agent's workspace
+openclaw config set agents.list.0.workspace ~/my-research/biology
+```
+
+### Prompt injection
+
+The workdir is injected into **every LLM prompt** via the workspace plugin's `before_prompt_build` hook. The agent always knows its working directory:
+
+```
+## Workspace
+Working directory: /home/user/AcaClaw/agents/biologist
+Project: biologist
+Files: 42 (1.3 MB)
+
+Directory structure:
+  data/
+    raw/
+    processed/
+  ...
+
+IMPORTANT: All file operations are restricted to this workspace directory.
+```
+
+This ensures the agent:
+- Knows where to read and write files
+- Cannot operate outside the workspace boundary
+- Sees the current file tree for context
+
+### Gateway methods
+
+| Method | Description |
+|--------|-------------|
+| `acaclaw.workspace.getWorkdir` | Returns the resolved workdir path for a given agent |
+| `acaclaw.workspace.setWorkdir` | Updates the workdir for a given agent (persists to config) |
+
+### Data flow
+
+```
+User clicks "Change" in Chat UI
+  → gateway.call("acaclaw.workspace.setWorkdir", { agentId, path })
+  → Workspace plugin validates path, updates config
+  → UI updates path badge
+  → Next LLM prompt picks up new workdir via before_prompt_build hook
 ```
 
 ---

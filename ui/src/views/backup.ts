@@ -18,6 +18,13 @@ interface BackupSettings {
   trashSizeMB: number;
 }
 
+interface SnapshotEntry {
+  time: string;
+  size: string;
+  sizeBytes: number;
+  workspace: string;
+}
+
 @customElement("acaclaw-backup")
 export class BackupView extends LitElement {
   @state() private _tab: "files" | "trash" | "snapshots" | "settings" =
@@ -31,10 +38,17 @@ export class BackupView extends LitElement {
     trashAutoEmptyDays: 30,
     trashSizeMB: 0,
   };
-  @state() private _totalSizeMB = 0;
+  @state() private _totalSize = "0 B";
   @state() private _fileCount = 0;
+  @state() private _snapshotCount = 0;
+  @state() private _snapshotSize = "0 B";
+  @state() private _backupDir = "";
   @state() private _searchQuery = "";
   @state() private _restoring = "";
+  @state() private _snapshots: SnapshotEntry[] = [];
+  @state() private _snapshotting = false;
+  @state() private _snapshotError = "";
+  @state() private _snapshotSuccess = "";
 
   static override styles = css`
     :host {
@@ -239,24 +253,81 @@ export class BackupView extends LitElement {
       color: var(--ac-text-muted);
       font-size: 13px;
     }
+
+    .snapshot-btn {
+      padding: 10px 24px;
+      background: var(--ac-primary);
+      color: #fff;
+      border: none;
+      border-radius: var(--ac-radius-sm);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all var(--ac-transition-fast);
+    }
+    .snapshot-btn:hover:not(:disabled) {
+      opacity: 0.9;
+      box-shadow: var(--ac-shadow-md);
+    }
+    .snapshot-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .snapshot-msg {
+      margin-top: 12px;
+      font-size: 13px;
+      padding: 8px 14px;
+      border-radius: var(--ac-radius-sm);
+    }
+    .snapshot-msg.success {
+      background: var(--ac-success-bg, #ecfdf5);
+      color: var(--ac-success, #059669);
+    }
+    .snapshot-msg.error {
+      background: var(--ac-error-bg, #fef2f2);
+      color: var(--ac-error, #dc2626);
+    }
+    .snapshot-list {
+      margin-top: 20px;
+    }
   `;
 
   override connectedCallback() {
     super.connectedCallback();
     this._loadBackups();
+    this._loadSnapshots();
+    gateway.addEventListener("state-change", this._handleGatewayState);
   }
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    gateway.removeEventListener("state-change", this._handleGatewayState);
+  }
+
+  private _handleGatewayState = (e: Event) => {
+    if ((e as CustomEvent).detail?.state === "connected") {
+      this._loadBackups();
+      this._loadSnapshots();
+    }
+  };
 
   private async _loadBackups() {
     try {
       const res = await gateway.call<{
         backups: BackupEntry[];
-        totalSizeMB: number;
+        totalSize: string;
         fileCount: number;
+        snapshotCount: number;
+        snapshotSize: string;
+        backupDir: string;
       }>("acaclaw.backup.list");
       if (res) {
         this._backups = res.backups ?? [];
-        this._totalSizeMB = res.totalSizeMB ?? 0;
+        this._totalSize = res.totalSize ?? "0 B";
         this._fileCount = res.fileCount ?? 0;
+        this._snapshotCount = res.snapshotCount ?? 0;
+        this._snapshotSize = res.snapshotSize ?? "0 B";
+        this._backupDir = res.backupDir ?? "";
       }
     } catch {
       // Gateway unavailable
@@ -271,6 +342,32 @@ export class BackupView extends LitElement {
       // handle error
     }
     this._restoring = "";
+  }
+
+  private async _loadSnapshots() {
+    try {
+      const res = await gateway.call<{ snapshots: SnapshotEntry[] }>("acaclaw.backup.snapshotList");
+      if (res?.snapshots) this._snapshots = res.snapshots;
+    } catch { /* gateway unavailable */ }
+  }
+
+  private async _createSnapshot() {
+    this._snapshotting = true;
+    this._snapshotError = "";
+    this._snapshotSuccess = "";
+    try {
+      const res = await gateway.call<{ snapshotTime: string; archiveSize: number }>(
+        "acaclaw.backup.snapshot",
+      );
+      if (res?.snapshotTime) {
+        const sizeMB = ((res.archiveSize ?? 0) / 1024 / 1024).toFixed(1);
+        this._snapshotSuccess = `Snapshot created (${sizeMB} MB)`;
+        await this._loadSnapshots();
+      }
+    } catch (err) {
+      this._snapshotError = err instanceof Error ? err.message : "Snapshot failed";
+    }
+    this._snapshotting = false;
   }
 
   private _filteredBackups(): BackupEntry[] {
@@ -323,14 +420,23 @@ export class BackupView extends LitElement {
     const backups = this._filteredBackups();
 
     return html`
+      ${this._backupDir
+        ? html`<div class="card" style="margin-bottom: 16px; padding: 12px 16px; font-size: 13px; color: var(--ac-text-secondary)">
+            <strong>Storage:</strong> <code style="font-size: 12px; background: var(--ac-bg-secondary, #f3f4f6); padding: 2px 6px; border-radius: 4px">${this._backupDir}</code>
+          </div>`
+        : ""}
       <div class="stats">
         <div class="stat-card">
-          <div class="stat-label">Total Size</div>
-          <div class="stat-value">${this._totalSizeMB} MB</div>
+          <div class="stat-label">Total Storage</div>
+          <div class="stat-value">${this._totalSize}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Files Backed Up</div>
+          <div class="stat-label">File Backups</div>
           <div class="stat-value">${this._fileCount}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Snapshots</div>
+          <div class="stat-value">${this._snapshotCount} (${this._snapshotSize})</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Retention</div>
@@ -418,11 +524,52 @@ export class BackupView extends LitElement {
     return html`
       <div class="card">
         <h2>Workspace Snapshots</h2>
-        <p style="color: var(--ac-text-secondary); font-size: 13px">
-          ${this._settings.snapshotsEnabled
-            ? "Full workspace snapshots are enabled."
-            : "Workspace snapshots are disabled. Enable them in Settings to create periodic full copies of your workspace."}
+        <p style="color: var(--ac-text-secondary); font-size: 13px; margin-bottom: 20px">
+          Create a full backup of your workspace. Snapshots are stored as compressed archives in ~/.acaclaw/backups/snapshots/.
         </p>
+        <button
+          class="snapshot-btn"
+          ?disabled=${this._snapshotting}
+          @click=${() => this._createSnapshot()}
+        >
+          ${this._snapshotting ? "Creating snapshot…" : "Backup Now"}
+        </button>
+        ${this._snapshotSuccess
+          ? html`<div class="snapshot-msg success">${this._snapshotSuccess}</div>`
+          : ""}
+        ${this._snapshotError
+          ? html`<div class="snapshot-msg error">${this._snapshotError}</div>`
+          : ""}
+
+        ${this._snapshots.length > 0
+          ? html`
+              <div class="snapshot-list">
+                <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">Previous Snapshots</h3>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Size</th>
+                      <th>Workspace</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${this._snapshots.map(
+                      (s) => html`
+                        <tr>
+                          <td>${new Date(s.time).toLocaleString()}</td>
+                          <td>${s.size}</td>
+                          <td>${s.workspace}</td>
+                        </tr>
+                      `,
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            `
+          : html`<div class="empty-state" style="padding: 20px 0">
+              No snapshots yet.
+            </div>`}
       </div>
     `;
   }

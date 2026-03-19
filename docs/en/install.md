@@ -20,20 +20,28 @@ permalink: /en/install/
 
 ## Overview
 
-AcaClaw installation is a two-phase process:
+AcaClaw installation is a two-step process:
 
-| Phase | Interface | What happens |
+| Step | Interface | What happens |
 |---|---|---|
-| **Phase 1** | Terminal (one command) | Downloads and installs OpenClaw, AcaClaw plugins, Miniforge, and academic skills |
-| **Phase 2** | Browser (GUI wizard) | Guides you through discipline selection, AI provider setup, workspace configuration, and security level |
+| **Step 1** | Terminal (one command) | Downloads and installs OpenClaw, AcaClaw plugins, Miniforge, and academic skills |
+| **Step 2** | Browser (GUI wizard) | Guides you through discipline selection, AI provider setup, workspace configuration, and security level |
 
-Phase 1 requires a terminal because it installs system packages — things like Node.js packages, Conda environments, and CLI tools. This is the only time you need a terminal.
+Step 1 requires a terminal because it installs system packages — things like Node.js packages, Conda environments, and CLI tools. This is the only time you need a terminal.
 
-Phase 2 opens automatically in your browser once installation finishes. The GUI wizard handles every interactive choice — no terminal menus, no typing config values manually.
+Step 2 opens automatically in your browser once installation finishes. The GUI wizard handles every interactive choice — no terminal menus, no typing config values manually.
 
 AcaClaw does not run a separate GUI application. It serves its own browser UI on the same gateway port (`http://localhost:2090`). OpenClaw's built-in admin UI remains available at `http://localhost:2090/admin` for advanced features. One gateway, one port, two frontends.
 
 After install, you never need the terminal again. Skills, discipline packages, configuration, and backup are all managed through the browser GUI. See [Web GUI](/en/desktop-gui/) for details.
+
+### Platform Support
+
+| Platform | Status | Notes |
+|---|---|---|
+| **Linux** (Ubuntu, Debian, Fedora, etc.) | **Phase 1 — Available now** | Full support via CLI install script |
+| **macOS** (Intel & Apple Silicon) | **Phase 1 — Available now** | Full support via CLI install script |
+| **Windows (WSL2)** | **Phase 2 — Coming soon** | Will be available in a future release |
 
 ---
 
@@ -182,33 +190,6 @@ The browser never runs commands directly. It sends WebSocket messages to the gat
 
 ## Platform-Specific Notes
 
-### macOS
-
-```bash
-curl -fsSL https://acaclaw.com/install.sh | bash
-```
-
-- Requires Xcode Command Line Tools (the script prompts you if missing)
-- Gatekeeper does not interfere — the script installs CLI tools and npm packages, not unsigned `.app` bundles
-- The browser wizard opens via `open http://localhost:2090/`
-
-### Windows
-
-Use Git Bash, WSL, or PowerShell:
-
-```bash
-# Git Bash or WSL
-curl -fsSL https://acaclaw.com/install.sh | bash
-```
-
-```powershell
-# PowerShell (future)
-irm https://acaclaw.com/install.ps1 | iex
-```
-
-- SmartScreen does not interfere — no `.exe` is downloaded
-- The browser wizard opens via `start http://localhost:2090/`
-
 ### Linux
 
 ```bash
@@ -217,7 +198,27 @@ curl -fsSL https://acaclaw.com/install.sh | bash
 
 - Works on any distribution with Node.js 22+
 - The browser wizard opens via `xdg-open http://localhost:2090/`
-- If no display server is available (headless/SSH), the script falls back to terminal prompts and prints the URL to visit manually
+- If no display server is available (headless/SSH), the script prints the URL to visit manually
+- **Desktop integration**: installs a `.desktop` file — AcaClaw appears in your app launcher and can be pinned to the dock
+
+### macOS
+
+```bash
+curl -fsSL https://acaclaw.com/install.sh | bash
+```
+
+- Supports both Intel (x86_64) and Apple Silicon (arm64)
+- Requires Xcode Command Line Tools (the script prompts you if missing)
+- Gatekeeper does not interfere — the script installs CLI tools and npm packages, not unsigned `.app` bundles
+- The browser wizard opens via `open http://localhost:2090/`
+- **Desktop integration** — 3-layer launch guarantee:
+  1. **Dock / Launchpad**: `AcaClaw.app` in `~/Applications/` — search "AcaClaw" in Spotlight or Launchpad
+  2. **Desktop icon**: Finder alias on `~/Desktop/` — always visible, double-click to launch
+  3. **Browser bookmark**: `http://localhost:2090/` — if layers 1 and 2 both fail, this always works
+
+### Windows (WSL2) — Phase 2
+
+> WSL2 support is planned for Phase 2 and is not yet available. The install script will be tested and adapted for the WSL2 environment in a future release.
 
 ---
 

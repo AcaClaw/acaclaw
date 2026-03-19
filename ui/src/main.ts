@@ -338,6 +338,23 @@ export class AcaClawApp extends LitElement {
     }
     .statusbar-mini .status-dot.online { background: var(--ac-success); }
     .statusbar-mini .status-dot.offline { background: var(--ac-error); }
+    .statusbar-mini .gateway-status {
+      cursor: pointer;
+      border-radius: 6px;
+      padding: 2px 6px 2px 0;
+      margin: -2px -6px -2px 0;
+      transition: background 0.15s;
+    }
+    .statusbar-mini .gateway-status:hover {
+      background: var(--ac-hover, rgba(255,255,255,0.06));
+    }
+    .statusbar-mini .gateway-status.reconnecting .status-dot {
+      animation: pulse-dot 1s ease-in-out infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
     
     .statusbar-mini .status-icon {
       display: flex;
@@ -458,6 +475,12 @@ export class AcaClawApp extends LitElement {
     return this._gatewayState === "connected" ? "online" : "offline";
   }
 
+  private _onStatusClick() {
+    if (this._gatewayState === "disconnected") {
+      gateway.reconnectNow();
+    }
+  }
+
   override render() {
     if (this._route === "setup") {
       return html`<acaclaw-onboarding></acaclaw-onboarding>`;
@@ -508,7 +531,9 @@ export class AcaClawApp extends LitElement {
           </div>
           <div class="sidebar-footer">
             <div class="statusbar-mini">
-              <div class="item">
+              <div class="item gateway-status ${this._gatewayState === "connecting" ? "reconnecting" : ""}"
+                   title=${this._gatewayState === "disconnected" ? "Click to reconnect" : this._gatewayState === "connecting" ? "Reconnecting…" : "Connected to gateway"}
+                   @click=${this._onStatusClick}>
                 <span class="status-dot ${this._gatewayDotClass()}"></span>
                 <span class="status-text">${this._gatewayLabel()}</span>
               </div>

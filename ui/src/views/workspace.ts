@@ -341,12 +341,18 @@ export class WorkspaceView extends LitElement {
     super.connectedCallback();
     this._loadFiles();
     window.addEventListener("keydown", this._handlePreviewKeydown);
+    gateway.addEventListener("state-change", this._handleGatewayState);
   }
 
   override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("keydown", this._handlePreviewKeydown);
+    gateway.removeEventListener("state-change", this._handleGatewayState);
   }
+
+  private _handleGatewayState = (e: Event) => {
+    if ((e as CustomEvent).detail?.state === "connected") this._loadFiles();
+  };
 
   // --- Data loading ---
 

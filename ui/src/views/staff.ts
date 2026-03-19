@@ -332,6 +332,11 @@ function applyCustomizations(staff: StaffMember[]): StaffMember[] {
   return [...base, ...added];
 }
 
+/** Returns STAFF_MEMBERS with localStorage customizations (name, icon, photoUrl) applied. */
+export function getCustomizedStaff(): StaffMember[] {
+  return applyCustomizations(STAFF_MEMBERS.map((s) => ({ ...s, skills: [...s.skills] })));
+}
+
 @customElement("acaclaw-staff")
 export class StaffView extends LitElement {
   @state() private _staff: StaffMember[] = applyCustomizations(STAFF_MEMBERS.map((s) => ({ ...s, skills: [...s.skills] })));

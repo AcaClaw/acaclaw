@@ -49,9 +49,15 @@ PLATFORM="$(detect_platform)"
 
 find_icon() {
     local candidates=(
-        "${SCRIPT_DIR}/../public/logo/acaclaw-logo.png"
-        "${SCRIPT_DIR}/../ui/src/logo/acaclaw-logo.png"
-        "${SCRIPT_DIR}/../public/logo/acaclaw-logo.svg"
+        "${SCRIPT_DIR}/../public/logo/AcaClaw.png"
+        "${SCRIPT_DIR}/../ui/src/logo/AcaClaw.png"
+        "${SCRIPT_DIR}/../ui/public/logo/AcaClaw.png"
+        "${SCRIPT_DIR}/../docs/assets/logo/AcaClaw.png"
+        "${SCRIPT_DIR}/../public/logo/AcaClaw.svg"
+        "${SCRIPT_DIR}/../ui/src/logo/AcaClaw.svg"
+        "${SCRIPT_DIR}/../ui/public/logo/AcaClaw.svg"
+        "${SCRIPT_DIR}/../ui/src/public/logo/AcaClaw.svg"
+        "${SCRIPT_DIR}/../docs/assets/logo/AcaClaw.svg"
     )
     for c in "${candidates[@]}"; do
         if [[ -f "$c" ]]; then
@@ -80,26 +86,39 @@ install_linux() {
 
     mkdir -p "$desktop_dir"
 
-    # Copy icon if available
     local icon_path=""
     if icon_src="$(find_icon)"; then
         mkdir -p "$icon_dir"
-        cp "$icon_src" "${icon_dir}/acaclaw.png" 2>/dev/null || true
-        icon_path="acaclaw"
+        if [[ "$icon_src" == *.svg ]]; then
+            if command -v rsvg-convert &>/dev/null; then
+                rsvg-convert -w 256 -h 256 "$icon_src" -o "${icon_dir}/acaclaw.png" 2>/dev/null && icon_path="acaclaw"
+            elif command -v inkscape &>/dev/null; then
+                inkscape -w 256 -h 256 "$icon_src" -o "${icon_dir}/acaclaw.png" 2>/dev/null && icon_path="acaclaw"
+            elif command -v convert &>/dev/null; then
+                convert -background none -resize 256x256 "$icon_src" "${icon_dir}/acaclaw.png" 2>/dev/null && icon_path="acaclaw"
+            fi
+            if [[ -z "$icon_path" ]]; then
+                local svg_icon_dir="${HOME}/.local/share/icons/hicolor/scalable/apps"
+                mkdir -p "$svg_icon_dir"
+                cp "$icon_src" "${svg_icon_dir}/acaclaw.svg" 2>/dev/null && icon_path="acaclaw"
+            fi
+        else
+            cp "$icon_src" "${icon_dir}/acaclaw.png" 2>/dev/null || true
+            icon_path="acaclaw"
+        fi
     fi
 
     cat > "$desktop_file" <<DESKTOP
 [Desktop Entry]
 Type=Application
 Name=AcaClaw
-Comment=AI-powered academic research assistant
+Comment=AI Co-Scientist — your dedicated AI research partner
 Exec=bash ${SCRIPT_DIR}/start.sh
 Icon=${icon_path:-utilities-terminal}
 Terminal=false
 Categories=Science;Education;Development;
 Keywords=research;ai;academic;science;
-StartupWMClass=AcaClaw
-StartupNotify=true
+StartupNotify=false
 DESKTOP
 
     chmod +x "$desktop_file"
@@ -114,64 +133,89 @@ DESKTOP
 }
 
 # ===================================================================
-# macOS: .command script in ~/Applications/
+# macOS: 3-layer launch guarantee
+#   Layer 1: .app via osacompile (Dock / Launchpad / Spotlight)
+#   Layer 2: Desktop shortcut (Finder alias or .command fallback)
+#   Layer 3: Browser URL (always works)
 # ===================================================================
 
 install_macos() {
     local app_dir="${HOME}/Applications"
-    local command_file="${app_dir}/AcaClaw.command"
+    local app_bundle="${app_dir}/AcaClaw.app"
+    local start_script="${SCRIPT_DIR}/start.sh"
+    local acaclaw_url="http://localhost:2090/"
 
     if [[ "$REMOVE" == "true" ]]; then
-        rm -f "$command_file"
-        log "Desktop shortcut removed"
+        rm -rf "$app_bundle"
+        osascript -e 'tell application "Finder" to try' -e 'delete alias file "AcaClaw" of desktop' -e 'end try' 2>/dev/null || true
+        rm -f "${HOME}/Desktop/AcaClaw.command" 2>/dev/null || true
+        log "AcaClaw.app and Desktop shortcut removed"
         return
     fi
 
     mkdir -p "$app_dir"
 
-    cat > "$command_file" <<COMMAND
-#!/usr/bin/env bash
-# AcaClaw Desktop Launcher
-# Double-click this file in Finder to start AcaClaw
-exec bash "${SCRIPT_DIR}/start.sh"
-COMMAND
+    # Layer 1: .app via osacompile
+    log "Layer 1: Creating AcaClaw.app..."
+    osacompile -o "$app_bundle" -e "do shell script \"bash '${start_script}'\"" 2>/dev/null
 
-    chmod +x "$command_file"
-
-    # Set a custom icon if iconutil is available and we have a source icon
-    if icon_src="$(find_icon)" && command -v sips &>/dev/null; then
-        local iconset_dir
-        iconset_dir="$(mktemp -d)/AcaClaw.iconset"
-        mkdir -p "$iconset_dir"
-        # Generate required sizes from the source PNG
-        for size in 16 32 64 128 256 512; do
-            sips -z "$size" "$size" "$icon_src" --out "${iconset_dir}/icon_${size}x${size}.png" &>/dev/null || true
-        done
-        if command -v iconutil &>/dev/null; then
-            local icns_file="${ACACLAW_DATA_DIR}/AcaClaw.icns"
-            mkdir -p "$ACACLAW_DATA_DIR"
-            iconutil -c icns "$iconset_dir" -o "$icns_file" 2>/dev/null || true
-            if [[ -f "$icns_file" ]]; then
-                # Apply custom icon to the .command file via Finder metadata
-                python3 -c "
-import subprocess, sys
-icns = '${icns_file}'
-target = '${command_file}'
-# Use osascript (AppleScript) to set custom icon — works without extra deps
-subprocess.run([
-    'osascript', '-e',
-    'use framework \"AppKit\"',
-    '-e', 'set iconImage to (current application\\'s NSImage\\'s alloc()\\'s initWithContentsOfFile:\"' + icns + '\")',
-    '-e', '(current application\\'s NSWorkspace\\'s sharedWorkspace()\\'s setIcon:iconImage forFile:\"' + target + '\" options:0)',
-], capture_output=True)
-" 2>/dev/null || true
-            fi
+    if [[ -d "$app_bundle" ]]; then
+        local resources_dir="${app_bundle}/Contents/Resources"
+        if icon_src="$(find_icon)" && command -v sips &>/dev/null && command -v iconutil &>/dev/null; then
+            local iconset_dir
+            iconset_dir="$(mktemp -d)/AcaClaw.iconset"
+            mkdir -p "$iconset_dir"
+            for size in 16 32 128 256 512; do
+                sips -z "$size" "$size" "$icon_src" --out "${iconset_dir}/icon_${size}x${size}.png" &>/dev/null || true
+                local retina=$((size * 2))
+                if [[ $retina -le 1024 ]]; then
+                    sips -z "$retina" "$retina" "$icon_src" --out "${iconset_dir}/icon_${size}x${size}@2x.png" &>/dev/null || true
+                fi
+            done
+            iconutil -c icns "$iconset_dir" -o "${resources_dir}/applet.icns" 2>/dev/null || true
+            rm -rf "$(dirname "$iconset_dir")"
         fi
-        rm -rf "$(dirname "$iconset_dir")"
+        touch "$app_bundle"
+        log "  ✓ ~/Applications/AcaClaw.app (Launchpad, Spotlight, drag to Dock)"
+    else
+        warn "  ✗ AcaClaw.app creation failed — layers 2 and 3 still available"
     fi
 
-    log "Desktop shortcut installed: ${BOLD}${command_file}${NC}"
-    log "Double-click AcaClaw.command in Finder, or add it to the Dock"
+    # Layer 2: Desktop shortcut
+    log "Layer 2: Creating Desktop shortcut..."
+    if [[ -d "$app_bundle" ]]; then
+        osascript -e "
+            tell application \"Finder\"
+                try
+                    delete alias file \"AcaClaw\" of desktop
+                end try
+                make new alias file at desktop to POSIX file \"${app_bundle}\" with properties {name:\"AcaClaw\"}
+            end tell
+        " 2>/dev/null
+        if [[ $? -eq 0 ]]; then
+            log "  ✓ ~/Desktop/AcaClaw (double-click to launch)"
+        else
+            local command_file="${HOME}/Desktop/AcaClaw.command"
+            printf '#!/usr/bin/env bash\nbash "%s"\n' "${start_script}" > "$command_file"
+            chmod +x "$command_file"
+            log "  ✓ ~/Desktop/AcaClaw.command (double-click to launch)"
+        fi
+    else
+        local command_file="${HOME}/Desktop/AcaClaw.command"
+        printf '#!/usr/bin/env bash\nbash "%s"\n' "${start_script}" > "$command_file"
+        chmod +x "$command_file"
+        log "  ✓ ~/Desktop/AcaClaw.command (double-click to launch)"
+    fi
+
+    # Layer 3: Browser URL
+    log "Layer 3: Browser bookmark"
+    log "  ✓ ${acaclaw_url} (bookmark this URL — always works)"
+
+    echo ""
+    log "How to open AcaClaw:"
+    log "  1. Launchpad / Spotlight → search 'AcaClaw'"
+    log "  2. Double-click AcaClaw on your Desktop"
+    log "  3. Open ${BOLD}${acaclaw_url}${NC} in any browser"
 }
 
 # ===================================================================

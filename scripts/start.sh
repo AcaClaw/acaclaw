@@ -9,6 +9,44 @@
 #   bash start.sh --status     # Check if gateway is running
 set -euo pipefail
 
+# --- PATH bootstrap (desktop launchers don't source .bashrc) ---
+# When launched from a .desktop file / dock / Launchpad, the shell has a
+# minimal system PATH.  We need node/openclaw, so set up fnm/nvm if present.
+# Important: stop as soon as openclaw is found to avoid later tools (nvm)
+# overriding the correct Node version set by earlier tools (fnm).
+_try_bootstrap() {
+    command -v openclaw &>/dev/null && return 0
+
+    # fnm (preferred — respects .node-version / default alias)
+    FNM_PATH="${HOME}/.local/share/fnm"
+    if [[ -d "$FNM_PATH" ]]; then
+        export PATH="${FNM_PATH}:${PATH}"
+        eval "$(${FNM_PATH}/fnm env 2>/dev/null)" 2>/dev/null || true
+    fi
+    command -v openclaw &>/dev/null && return 0
+
+    # nvm (only if fnm didn't provide openclaw)
+    export NVM_DIR="${HOME}/.nvm"
+    if [[ -s "${NVM_DIR}/nvm.sh" ]]; then
+        source "${NVM_DIR}/nvm.sh" 2>/dev/null || true
+    fi
+    command -v openclaw &>/dev/null && return 0
+
+    # Homebrew (macOS)
+    if [[ -x "/opt/homebrew/bin/brew" ]]; then
+        eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null)" 2>/dev/null || true
+    elif [[ -x "/usr/local/bin/brew" ]]; then
+        eval "$(/usr/local/bin/brew shellenv 2>/dev/null)" 2>/dev/null || true
+    fi
+    command -v openclaw &>/dev/null && return 0
+
+    # Common additional paths
+    for d in "${HOME}/.npm-global/bin" "${HOME}/.cargo/bin" "${HOME}/.acaclaw/miniforge3/bin"; do
+        [[ -d "$d" ]] && export PATH="${d}:${PATH}"
+    done
+}
+_try_bootstrap
+
 ACACLAW_PORT="${ACACLAW_PORT:-2090}"
 ACACLAW_STATE_DIR="${HOME}/.openclaw-acaclaw"
 ACACLAW_CONFIG="${ACACLAW_STATE_DIR}/openclaw.json"
@@ -98,12 +136,23 @@ gateway_pid() {
     fi
 
     # Fallback: search for the process by pattern
+    # Node.js may rewrite the process title, so try multiple patterns
     local pid
     pid="$(pgrep -f "openclaw.*--profile acaclaw.*gateway" 2>/dev/null | head -1)" || true
     if [[ -n "$pid" ]]; then
         echo "$pid"
         return 0
     fi
+
+    # Fallback: check if systemd service is running (Node.js rewrites process titles)
+    if command -v systemctl &>/dev/null && systemctl --user is-active acaclaw-gateway.service &>/dev/null 2>&1; then
+        pid="$(systemctl --user show acaclaw-gateway.service --property=MainPID --value 2>/dev/null)" || true
+        if [[ -n "$pid" && "$pid" != "0" ]]; then
+            echo "$pid"
+            return 0
+        fi
+    fi
+
     return 1
 }
 
@@ -112,11 +161,9 @@ is_gateway_running() {
 }
 
 is_port_responding() {
-    # Check if the gateway HTTP endpoint is actually responding
     if command -v curl &>/dev/null; then
-        curl -sf --max-time 2 "http://127.0.0.1:${ACACLAW_PORT}/health" &>/dev/null
+        curl -sf --max-time 2 "http://127.0.0.1:${ACACLAW_PORT}/" &>/dev/null
     else
-        # Fallback: just check the port
         (echo > "/dev/tcp/127.0.0.1/${ACACLAW_PORT}") 2>/dev/null
     fi
 }
@@ -172,26 +219,75 @@ except Exception:
     pass
 " 2>/dev/null)" || true
         if [[ -n "$token" ]]; then
-            sed -i "s|</head>|  <meta name=\"oc-token\" content=\"${token}\" />\n  </head>|" "$ui_index"
+            if [[ "$PLATFORM" == "macos" ]]; then
+                sed -i '' "s|</head>|  <meta name=\"oc-token\" content=\"${token}\" />\\
+  </head>|" "$ui_index"
+            else
+                sed -i "s|</head>|  <meta name=\"oc-token\" content=\"${token}\" />\n  </head>|" "$ui_index"
+            fi
             log "Auth token injected into UI"
         fi
     fi
 }
 ensure_token_in_html
 
-if is_gateway_running; then
+# --- Stale lock cleanup (non-fatal) ---
+if [[ -f "$ACACLAW_PID_FILE" ]]; then
+    stale_pid="$(cat "$ACACLAW_PID_FILE" 2>/dev/null)" || true
+    if [[ -n "$stale_pid" ]] && ! kill -0 "$stale_pid" 2>/dev/null; then
+        rm -f "$ACACLAW_PID_FILE"
+    fi
+fi
+
+# --- Service detection ---
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SYSTEMD_UNIT="${HOME}/.config/systemd/user/acaclaw-gateway.service"
+USE_SERVICE=false
+if [[ -f "$SYSTEMD_UNIT" ]] && command -v systemctl &>/dev/null; then
+    USE_SERVICE=true
+fi
+
+# --- Start gateway ---
+if is_gateway_running && is_port_responding; then
     pid="$(gateway_pid)"
     log "Gateway already running (PID $pid)"
+elif is_gateway_running; then
+    pid="$(gateway_pid)"
+    log "Gateway already running (PID $pid)"
+elif [[ "$USE_SERVICE" == "true" ]]; then
+    log "Starting AcaClaw gateway via systemd service..."
+    if systemctl --user start acaclaw-gateway.service 2>/dev/null; then
+        # Service accepted the start command. Wait a short time for the port —
+        # if it isn't ready yet, that's OK (gateway needs ~30-45s to boot).
+        # The browser will open either way; user can refresh.
+        if wait_for_gateway; then
+            log "Gateway ready on port ${ACACLAW_PORT} ✓ (managed by systemd)"
+        elif systemctl --user is-active acaclaw-gateway.service &>/dev/null; then
+            log "Gateway service is starting (managed by systemd) — may need a moment"
+        else
+            warn "systemd service stopped unexpectedly — falling back to direct start"
+            nohup openclaw --profile acaclaw gateway run \
+                --bind loopback --port "$ACACLAW_PORT" --force \
+                >> "$ACACLAW_LOG_FILE" 2>&1 &
+            echo "$!" > "$ACACLAW_PID_FILE"
+            log "Gateway starting (PID $!)..."
+        fi
+    else
+        warn "systemd start failed — falling back to direct start"
+        nohup openclaw --profile acaclaw gateway run \
+            --bind loopback --port "$ACACLAW_PORT" --force \
+            >> "$ACACLAW_LOG_FILE" 2>&1 &
+        echo "$!" > "$ACACLAW_PID_FILE"
+        log "Gateway starting (PID $!)..."
+    fi
 else
     log "Starting AcaClaw gateway on port ${ACACLAW_PORT}..."
 
-    # Start gateway in background using AcaClaw's isolated profile
     nohup openclaw --profile acaclaw gateway run \
         --bind loopback --port "$ACACLAW_PORT" --force \
         >> "$ACACLAW_LOG_FILE" 2>&1 &
     GATEWAY_PID=$!
 
-    # Save PID for later management
     echo "$GATEWAY_PID" > "$ACACLAW_PID_FILE"
 
     log "Gateway starting (PID $GATEWAY_PID)..."
@@ -212,17 +308,35 @@ if [[ "$NO_BROWSER" == "true" ]]; then
     exit 0
 fi
 
-# The auth token is baked into the UI HTML via the oc-token meta tag
-# (injected by ensure_token_in_html above). No need for URL hash tokens.
+# Wait until the gateway is actually serving before opening the app window,
+# so the user sees the UI immediately instead of ERR_CONNECTION_REFUSED.
+if ! is_port_responding; then
+    log "Waiting for gateway to be ready..."
+    _ready_wait=0
+    while [[ $_ready_wait -lt 60 ]]; do
+        is_port_responding && break
+        sleep 1
+        _ready_wait=$((_ready_wait + 1))
+    done
+fi
+
 URL="http://localhost:${ACACLAW_PORT}/"
 
-open_browser() {
+open_app_window() {
+    # Open AcaClaw as a standalone app window (no address bar, no tabs).
+    # Must use the real browser binary (not the wrapper) with --profile-directory
+    # and --app=URL, matching how Edge/Chrome create their own web app launchers.
     case "$PLATFORM" in
         macos)
-            open "$URL" 2>/dev/null
+            if [[ -d "/Applications/Microsoft Edge.app" ]]; then
+                open -na "Microsoft Edge" --args --app="$URL" 2>/dev/null
+            elif [[ -d "/Applications/Google Chrome.app" ]]; then
+                open -na "Google Chrome" --args --app="$URL" 2>/dev/null
+            else
+                open "$URL" 2>/dev/null
+            fi
             ;;
         wsl2)
-            # WSL2: use Windows browser via powershell.exe or cmd.exe
             if command -v powershell.exe &>/dev/null; then
                 powershell.exe -NoProfile -Command "Start-Process '${URL}'" 2>/dev/null
             elif command -v cmd.exe &>/dev/null; then
@@ -234,19 +348,20 @@ open_browser() {
             fi
             ;;
         linux)
-            if [[ -n "${DISPLAY:-}" ]] || [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
-                # Graphical session available
-                if command -v xdg-open &>/dev/null; then
-                    xdg-open "$URL" 2>/dev/null
-                elif command -v sensible-browser &>/dev/null; then
-                    sensible-browser "$URL" 2>/dev/null
-                elif command -v gnome-open &>/dev/null; then
-                    gnome-open "$URL" 2>/dev/null
-                else
-                    return 1
-                fi
+            if [[ -z "${DISPLAY:-}" ]] && [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
+                return 1
+            fi
+            # Use the real browser binary with --profile-directory and --app=URL
+            # (same format Edge uses for its own installed web apps)
+            if [[ -x "/opt/microsoft/msedge/microsoft-edge" ]]; then
+                /opt/microsoft/msedge/microsoft-edge --profile-directory=Default --app="$URL" &
+            elif [[ -x "/opt/google/chrome/google-chrome" ]]; then
+                /opt/google/chrome/google-chrome --profile-directory=Default --app="$URL" &
+            elif command -v chromium-browser &>/dev/null; then
+                chromium-browser --app="$URL" &
+            elif command -v xdg-open &>/dev/null; then
+                xdg-open "$URL" 2>/dev/null
             else
-                # Headless — no display server
                 return 1
             fi
             ;;
@@ -256,10 +371,10 @@ open_browser() {
     esac
 }
 
-if open_browser; then
-    log "Browser opened: ${BOLD}${URL}${NC}"
+if open_app_window; then
+    log "AcaClaw opened: ${BOLD}${URL}${NC}"
 else
-    log "Could not open browser automatically."
+    log "Could not open AcaClaw automatically."
     log "Open this URL in your browser:"
     echo ""
     echo -e "  ${BOLD}${URL}${NC}"

@@ -340,7 +340,9 @@ const academicEnvPlugin = {
 		});
 
 		// --- Gateway: acaclaw.env.pip.list ---
-		// List installed packages for a specific conda environment
+		// List installed Python packages for a specific conda environment.
+		// Uses `pip list` (Python-only) instead of `conda list` (which includes
+		// system libraries like alsa-lib, binutils, etc. that aren't Python packages).
 		api.registerGatewayMethod("acaclaw.env.pip.list", async ({ params, respond }) => {
 			const rawEnv = typeof params.env === "string" ? params.env : "";
 			const condaName = UI_TO_CONDA[rawEnv] ?? rawEnv;
@@ -352,16 +354,33 @@ const academicEnvPlugin = {
 			}
 
 			try {
-				const output = execSync(`"${conda.path}" list -n ${condaName} --json`, {
+				const condaRun = `"${conda.path}" run -n ${condaName}`;
+
+				// Get Python packages via pip (excludes system/C libraries)
+				const pipOutput = execSync(`${condaRun} pip list --format=json`, {
 					stdio: "pipe",
 					encoding: "utf-8",
 					timeout: 30_000,
 				});
-				const raw = JSON.parse(output) as Array<{ name: string; version: string; channel: string }>;
-				const packages = raw.map(p => ({
+				const pipPkgs = JSON.parse(pipOutput) as Array<{ name: string; version: string }>;
+
+				// Cross-reference with conda list to get channel/source info
+				const normalize = (n: string) => n.toLowerCase().replace(/-/g, "_");
+				let condaChannels = new Map<string, string>();
+				try {
+					const condaOutput = execSync(`"${conda.path}" list -n ${condaName} --json`, {
+						stdio: "pipe",
+						encoding: "utf-8",
+						timeout: 30_000,
+					});
+					const condaAll = JSON.parse(condaOutput) as Array<{ name: string; channel: string }>;
+					condaChannels = new Map(condaAll.map(p => [normalize(p.name), p.channel]));
+				} catch { /* source info unavailable — default to "pip" */ }
+
+				const packages = pipPkgs.map(p => ({
 					name: p.name,
 					version: p.version,
-					source: p.channel || "conda",
+					source: condaChannels.get(normalize(p.name)) || "pip",
 				}));
 				respond(true, { packages });
 			} catch {

@@ -267,6 +267,18 @@ class GatewayController extends EventTarget {
     this._pending.clear();
   }
 
+  /** Immediately attempt reconnection (cancels any pending auto-reconnect). */
+  reconnectNow() {
+    if (this._state === "connected" || this._state === "connecting") return;
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
+    this._ws?.close();
+    this._ws = null;
+    this.connect();
+  }
+
   private _scheduleReconnect() {
     if (this._reconnectTimer) return;
     this._reconnectTimer = setTimeout(() => {

@@ -1,6 +1,15 @@
 
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/acaclaw-backup";
-import { resolveConfig, backupFile, listBackups, restoreFile } from "./backup.js";
+import { resolveConfig, backupFile, listBackups, restoreFile, createSnapshot, listSnapshots, getBackupStats } from "./backup.js";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
 
 // Tools that modify files and need pre-backup
 const FILE_WRITE_TOOLS = new Set([
@@ -140,6 +149,58 @@ const backupPlugin = {
 
         return `${backups.length} backup(s) for ${params.filePath}:\n${lines.join("\n")}`;
       },
+    });
+
+    // -------------------------------------------------------------------------
+    // Gateway methods — called by the backup UI
+    // -------------------------------------------------------------------------
+
+    api.registerGatewayMethod("acaclaw.backup.list", async ({ respond }) => {
+      const stats = await getBackupStats(config);
+      const snapshots = await listSnapshots(config);
+      const snapshotTotalBytes = snapshots.reduce((sum, s) => sum + s.archiveSize, 0);
+      const combinedBytes = stats.totalSizeBytes + snapshotTotalBytes;
+      respond(true, {
+        backups: stats.entries.map((e) => ({
+          time: e.time,
+          file: e.file,
+          size: formatSize(e.size),
+          date: e.date,
+        })),
+        totalSize: formatSize(combinedBytes),
+        fileCount: stats.fileCount,
+        snapshotCount: snapshots.length,
+        snapshotSize: formatSize(snapshotTotalBytes),
+        backupDir: config.backupDir,
+      });
+    });
+
+    api.registerGatewayMethod("acaclaw.backup.snapshot", async ({ respond, context }) => {
+      const workspaceDir = context?.workspaceDir ?? join(homedir(), "AcaClaw");
+      try {
+        const manifest = await createSnapshot(workspaceDir, config);
+        respond(true, {
+          snapshotTime: manifest.snapshotTime,
+          archiveSize: manifest.archiveSize,
+          archivePath: manifest.archivePath,
+        });
+      } catch (err) {
+        respond(false, {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    });
+
+    api.registerGatewayMethod("acaclaw.backup.snapshotList", async ({ respond }) => {
+      const snapshots = await listSnapshots(config);
+      respond(true, {
+        snapshots: snapshots.map((s) => ({
+          time: s.snapshotTime,
+          size: formatSize(s.archiveSize),
+          sizeBytes: s.archiveSize,
+          workspace: s.workspaceDir,
+        })),
+      });
     });
 
     // -------------------------------------------------------------------------

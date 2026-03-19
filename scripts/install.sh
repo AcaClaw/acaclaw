@@ -128,7 +128,7 @@ log "npm $(npm --version) ✓"
 header "Step 1: OpenClaw"
 
 if check_command openclaw; then
-	OC_VERSION="$(openclaw --version 2>/dev/null | head -1 | grep -oP '\d+\.\d+\.\d+' || echo "unknown")"
+	OC_VERSION="$(openclaw --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")"
 	log "OpenClaw ${OC_VERSION} already installed ✓"
 else
 	log "Installing OpenClaw..."
@@ -256,6 +256,14 @@ if [[ -d "${REPO_PLUGINS_DIR}/compat-checker" ]]; then
 	log "@acaclaw/compat-checker installed ✓"
 else
 	warn "@acaclaw/compat-checker: npm package not yet published (install from source)"
+fi
+
+log "Installing @acaclaw/ui (plugin)..."
+if [[ -d "${REPO_PLUGINS_DIR}/ui" ]]; then
+	cp -r "${REPO_PLUGINS_DIR}/ui" "${ACACLAW_PLUGINS_DIR}/acaclaw-ui"
+	log "@acaclaw/ui (plugin) installed ✓"
+else
+	warn "@acaclaw/ui plugin: not found at ${REPO_PLUGINS_DIR}/ui"
 fi
 
 log "Installing @acaclaw/ui..."
@@ -455,7 +463,12 @@ t = c.get('gateway', {}).get('auth', {}).get('token', '')
 print(t)
 " 2>/dev/null)
 	if [[ -n "$GATEWAY_TOKEN" ]]; then
-		sed -i "s|</head>|<meta name=\"oc-token\" content=\"${GATEWAY_TOKEN}\" />\n  </head>|" "$ACAC_UI_INDEX"
+		if [[ "$OS" == "macos" ]]; then
+			sed -i '' "s|</head>|<meta name=\"oc-token\" content=\"${GATEWAY_TOKEN}\" />\\
+  </head>|" "$ACAC_UI_INDEX"
+		else
+			sed -i "s|</head>|<meta name=\"oc-token\" content=\"${GATEWAY_TOKEN}\" />\n  </head>|" "$ACAC_UI_INDEX"
+		fi
 		log "Gateway token injected into UI ✓"
 	fi
 fi
@@ -487,7 +500,7 @@ if [[ ! -d "$WORKSPACE_DIR" ]]; then
   "name": "AcaClaw",
 	"discipline": "general",
   "createdAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "workspaceId": "AcaClaw-$(echo -n "${WORKSPACE_DIR}" | sha256sum | head -c 12)"
+  "workspaceId": "AcaClaw-$(echo -n "${WORKSPACE_DIR}" | shasum -a 256 2>/dev/null | head -c 12 || sha256sum 2>/dev/null | head -c 12)"
 }
 WSJSON
 
@@ -625,6 +638,18 @@ else
 	warn "OpenClaw not found — start the gateway manually:"
 	warn "  openclaw --profile acaclaw gateway run --bind loopback --port 2090"
 	warn "Then visit http://localhost:2090/"
+fi
+
+# --- Install auto-restart service ---
+
+header "Auto-Restart Service"
+
+SERVICE_SCRIPT="${SCRIPT_DIR}/acaclaw-service.sh"
+if [[ -f "$SERVICE_SCRIPT" ]]; then
+	log "Installing gateway auto-restart service..."
+	bash "$SERVICE_SCRIPT" install 2>/dev/null || warn "Service install failed (non-fatal — gateway still works, just won't auto-restart)"
+else
+	log "Service script not found — skipping"
 fi
 
 # --- Install desktop shortcut ---

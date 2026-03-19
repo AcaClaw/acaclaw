@@ -19,8 +19,61 @@ import {
 	readWorkspaceFile,
 	projectsRoot,
 	readProjectConfig,
+	getEffectiveWorkdir,
+	setWorkdirOverride,
+	getAllWorkdirOverrides,
 } from "./workspace.js";
 import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+
+/** Build agent identity context from SOUL.md + config for LLM injection. */
+function buildIdentityContext(api: OpenClawPluginApi, sessionKey: string, workspaceDir: string): string {
+	// General chat session ("main") always gets Aca's identity — never a specialist's.
+	// Agent-specific sessions have session keys like "agent:<id>:main".
+	const isAgentSession = sessionKey.startsWith("agent:");
+	const agentId = isAgentSession ? sessionKey.split(":")[1] : "";
+
+	// "aca" is the dedicated general-tab agent; treat it the same as no-agent
+	const isAcaOrGeneral = !isAgentSession || agentId === "aca";
+
+	if (isAcaOrGeneral) {
+		// Aca — read SOUL.md from workspaceDir if available, otherwise use hardcoded identity
+		let soul = "";
+		try {
+			const soulPath = join(workspaceDir, "SOUL.md");
+			if (existsSync(soulPath)) soul = readFileSync(soulPath, "utf-8").trim();
+		} catch { /* ignore */ }
+
+		if (soul) return soul;
+		return [
+			"## Your Identity",
+			"You are **Aca**, a general-purpose academic research assistant.",
+			"You help with any research question, writing, data analysis, or topic the user brings up.",
+			"Be concise, helpful, and friendly.",
+		].join("\n");
+	}
+
+	// Agent-specific session: look up config identity + SOUL.md
+	const agents = (api.config as Record<string, unknown> & { agents?: { list?: Array<{ id: string; name?: string; identity?: { name?: string; emoji?: string } }> } })?.agents?.list ?? [];
+	const agentCfg = agents.find((a) => a.id === agentId);
+	const name = agentCfg?.identity?.name ?? agentCfg?.name;
+
+	// Read SOUL.md from the agent's workspace directory
+	let soul = "";
+	try {
+		const soulPath = join(workspaceDir, "SOUL.md");
+		if (existsSync(soulPath)) {
+			soul = readFileSync(soulPath, "utf-8").trim();
+		}
+	} catch { /* ignore */ }
+
+	if (!name && !soul) return "";
+
+	const lines: string[] = ["## Your Identity"];
+	if (name) lines.push(`You are **${name}**.`);
+	if (soul) lines.push("", soul);
+	return lines.join("\n");
+}
 
 const workspacePlugin = {
 	id: "acaclaw-workspace",
@@ -39,13 +92,22 @@ const workspacePlugin = {
 		api.on(
 			"before_prompt_build",
 			async (_event, ctx) => {
-				const workspaceDir = ctx.workspaceDir;
-				if (!workspaceDir) return;
+				const defaultDir = ctx.workspaceDir;
+				if (!defaultDir) return;
+
+				// Extract agentId: session keys are "agent:<id>:main" or plain "main"
+				const sk = ctx.sessionKey ?? "";
+				const agentId = sk.startsWith("agent:") ? sk.split(":")[1] : (ctx.agentId ?? "");
+				const workspaceDir = getEffectiveWorkdir(agentId, defaultDir);
 
 				const info = getWorkspaceInfo(workspaceDir);
 				const context = buildWorkspaceContext(info);
 
-				return { systemPromptSections: [context] };
+				// Inject agent identity — use session key to distinguish Aca vs specialist
+				const identitySection = buildIdentityContext(api, sk, workspaceDir);
+
+				const sections = identitySection ? [identitySection, context] : [context];
+				return { systemPromptSections: sections };
 			},
 			{ priority: 150 }, // After academic-env (50), before backup/security
 		);
@@ -227,6 +289,39 @@ const workspacePlugin = {
 			} catch (err: unknown) {
 				respond(false, { error: (err as Error).message });
 			}
+		});
+
+		// -------------------------------------------------------------------------
+		// Gateway: workdir management — get and set per-agent working directory
+		// -------------------------------------------------------------------------
+
+		api.registerGatewayMethod("acaclaw.workspace.getWorkdir", async ({ params, respond, context }) => {
+			const { agentId } = (params ?? {}) as { agentId?: string };
+			const defaultDir = context?.workspaceDir ?? DEFAULT_WORKSPACE_ROOT;
+			const effectiveDir = agentId
+				? getEffectiveWorkdir(agentId, defaultDir)
+				: defaultDir;
+			respond(true, { workdir: effectiveDir, isOverride: effectiveDir !== defaultDir });
+		});
+
+		api.registerGatewayMethod("acaclaw.workspace.setWorkdir", async ({ params, respond }) => {
+			const { agentId, path: newPath } = params as { agentId: string; path: string | null };
+			if (!agentId) {
+				respond(false, { error: "agentId is required" });
+				return;
+			}
+			if (newPath !== null && typeof newPath !== "string") {
+				respond(false, { error: "path must be a string or null (to reset)" });
+				return;
+			}
+			setWorkdirOverride(agentId, newPath);
+			const overrides = getAllWorkdirOverrides();
+			respond(true, { agentId, workdir: overrides[agentId] ?? null });
+		});
+
+		api.registerGatewayMethod("acaclaw.workspace.listWorkdirs", async ({ respond }) => {
+			const overrides = getAllWorkdirOverrides();
+			respond(true, { overrides, defaultWorkdir: DEFAULT_WORKSPACE_ROOT });
 		});
 
 		// -------------------------------------------------------------------------

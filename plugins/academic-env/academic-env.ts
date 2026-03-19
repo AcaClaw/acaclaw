@@ -182,9 +182,10 @@ export function detectEnvironment(discipline: string): EnvStatus {
 		// R not found in env
 	}
 
-	// List installed packages with versions
+	// List installed Python packages via pip (excludes system/C libraries)
 	try {
-		const output = execSync(`"${conda.path}" list -n ${envName} --json`, {
+		const condaRun = `"${conda.path}" run -n ${envName}`;
+		const output = execSync(`${condaRun} pip list --format=json`, {
 			stdio: "pipe",
 			encoding: "utf-8",
 		});
