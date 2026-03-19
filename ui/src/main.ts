@@ -91,6 +91,8 @@ export class AcaClawApp extends LitElement {
   @state() private _agentStatus = "idle";
   @state() private _tokenCount = 0;
   @state() private _sidebarCollapsed = false;
+  @state() private _brandName = localStorage.getItem("acaclaw-brand-name") ?? "AcaClaw";
+  @state() private _editingBrand = false;
 
   static override styles = css`
     :host {
@@ -139,8 +141,23 @@ export class AcaClawApp extends LitElement {
       color: var(--ac-text);
       white-space: nowrap;
       letter-spacing: -0.04em;
+      cursor: default;
+      user-select: none;
     }
-    .sidebar.collapsed .brand {
+    .sidebar-header .brand-input {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--ac-text);
+      letter-spacing: -0.04em;
+      background: var(--ac-surface);
+      border: 1px solid var(--ac-border);
+      border-radius: 4px;
+      padding: 0 4px;
+      outline: none;
+      width: 120px;
+    }
+    .sidebar.collapsed .brand,
+    .sidebar.collapsed .brand-input {
       display: none;
     }
 
@@ -451,7 +468,22 @@ export class AcaClawApp extends LitElement {
         <nav class="sidebar ${this._sidebarCollapsed ? "collapsed" : ""}">
           <div class="sidebar-header">
             <img src="/logo/AcaClaw.svg" alt="AcaClaw" />
-            <span class="brand">AcaClaw</span>
+            ${this._editingBrand
+              ? html`<input class="brand-input"
+                .value=${this._brandName}
+                @keydown=${(e: KeyboardEvent) => {
+                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                  if (e.key === "Escape") { this._editingBrand = false; }
+                }}
+                @blur=${(e: Event) => {
+                  const v = (e.target as HTMLInputElement).value.trim();
+                  if (v) { this._brandName = v; localStorage.setItem("acaclaw-brand-name", v); }
+                  this._editingBrand = false;
+                }}
+                @focus=${(e: Event) => (e.target as HTMLInputElement).select()}
+              />`
+              : html`<span class="brand" @dblclick=${() => { this._editingBrand = true; this.updateComplete.then(() => this.shadowRoot?.querySelector<HTMLInputElement>(".brand-input")?.focus()); }}>${this._brandName}</span>`
+            }
           </div>
           <div class="nav-list">
             ${NAV_GROUPS.map(

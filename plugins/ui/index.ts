@@ -1,9 +1,21 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/acaclaw-ui";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { join, extname } from "node:path";
+import { homedir } from "node:os";
 
-// Resolve once at load time — UI dist lives in ../../ui/dist relative to this file
-const UI_DIST = join(import.meta.dirname ?? new URL(".", import.meta.url).pathname, "..", "..", "ui", "dist");
+// Resolve the UI dist directory.
+// In deployment, install.sh copies the built UI to <OPENCLAW_HOME>/ui/ (flat).
+// In dev, the build output lives at ../../ui/dist relative to this plugin.
+function resolveUiDist(): string {
+  const home = process.env.OPENCLAW_HOME ?? join(homedir(), ".openclaw-acaclaw");
+  const deployed = join(home, "ui");
+  // Deployed dir has index.html directly (not nested in dist/)
+  if (existsSync(join(deployed, "index.html"))) return deployed;
+  // Dev fallback: relative to this plugin source
+  return join(import.meta.dirname ?? new URL(".", import.meta.url).pathname, "..", "..", "ui", "dist");
+}
+const UI_DIST = resolveUiDist();
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -31,6 +43,32 @@ const uiPlugin = {
   },
 
   register(api: OpenClawPluginApi) {
+    const resolveToken = (): string => {
+      // Read the gateway auth token from the resolved OpenClaw config
+      const token = (api.config as Record<string, unknown> & { gateway?: { auth?: { token?: string } } })
+        ?.gateway?.auth?.token;
+      if (token) return token;
+
+      // Fallback: check config file at profile home
+      try {
+        const home = process.env.OPENCLAW_HOME ?? join(homedir(), ".openclaw-acaclaw");
+        const configPath = join(home, "openclaw.json");
+        const raw = JSON.parse(readFileSync(configPath, "utf-8"));
+        return raw?.gateway?.auth?.token ?? "";
+      } catch { return ""; }
+    };
+
+    const injectToken = (html: Buffer | string): Buffer => {
+      const token = resolveToken();
+      if (!token) return Buffer.isBuffer(html) ? html : Buffer.from(html);
+      const str = Buffer.isBuffer(html) ? html.toString("utf-8") : html;
+      const injected = str.replace(
+        "</head>",
+        `<meta name="oc-token" content="${token}">\n</head>`
+      );
+      return Buffer.from(injected);
+    };
+
     api.registerHttpRoute({
       path: "/",
       match: "prefix",
@@ -52,7 +90,9 @@ const uiPlugin = {
           const fileStat = await stat(filePath);
           if (fileStat.isFile()) {
             const ext = extname(filePath);
-            const content = await readFile(filePath);
+            let content = await readFile(filePath);
+            // Inject auth token into HTML pages so the UI can authenticate
+            if (ext === ".html") content = injectToken(content);
             res.writeHead(200, {
               "Content-Type": MIME_TYPES[ext] ?? "application/octet-stream",
               "Content-Length": content.byteLength,
@@ -68,7 +108,7 @@ const uiPlugin = {
         // SPA fallback: serve index.html for client-side routing
         try {
           const indexPath = join(UI_DIST, "index.html");
-          const content = await readFile(indexPath);
+          const content = injectToken(await readFile(indexPath));
           res.writeHead(200, {
             "Content-Type": "text/html; charset=utf-8",
             "Cache-Control": "no-cache",

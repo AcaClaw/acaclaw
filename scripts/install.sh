@@ -211,9 +211,9 @@ header "Step 3: AcaClaw Plugins"
 
 mkdir -p "${ACACLAW_DIR}"
 
-# Install plugins to AcaClaw's own profile directory — NOT ~/.openclaw/plugins/
-# This keeps the existing OpenClaw install completely untouched.
-ACACLAW_PLUGINS_DIR="${ACACLAW_STATE_DIR}/plugins"
+# Install plugins to AcaClaw's own profile directory — NOT ~/.openclaw/extensions/
+# OpenClaw auto-discovers plugins from <configDir>/extensions/
+ACACLAW_PLUGINS_DIR="${ACACLAW_STATE_DIR}/extensions"
 mkdir -p "$ACACLAW_PLUGINS_DIR"
 
 REPO_PLUGINS_DIR="${SCRIPT_DIR}/../plugins"
@@ -455,7 +455,7 @@ t = c.get('gateway', {}).get('auth', {}).get('token', '')
 print(t)
 " 2>/dev/null)
 	if [[ -n "$GATEWAY_TOKEN" ]]; then
-		sed -i "s|</head>|<meta name=\"gateway-token\" content=\"${GATEWAY_TOKEN}\" />\n  </head>|" "$ACAC_UI_INDEX"
+		sed -i "s|</head>|<meta name=\"oc-token\" content=\"${GATEWAY_TOKEN}\" />\n  </head>|" "$ACAC_UI_INDEX"
 		log "Gateway token injected into UI ✓"
 	fi
 fi
@@ -627,6 +627,18 @@ else
 	warn "Then visit http://localhost:2090/"
 fi
 
+# --- Install desktop shortcut ---
+
+header "Desktop Integration"
+
+DESKTOP_SCRIPT="${SCRIPT_DIR}/install-desktop.sh"
+if [[ -f "$DESKTOP_SCRIPT" ]]; then
+	log "Installing desktop shortcut..."
+	bash "$DESKTOP_SCRIPT" 2>/dev/null || warn "Desktop shortcut install failed (non-fatal)"
+else
+	log "Desktop shortcut script not found — skipping"
+fi
+
 echo ""
 echo -e "${GREEN}AcaClaw v${ACACLAW_VERSION} installed successfully.${NC}"
 echo ""
@@ -637,5 +649,10 @@ echo "    1. Choose your research discipline"
 echo "    2. Connect your AI provider (API key)"
 echo "    3. Configure workspace location"
 echo "    4. Choose security level"
+echo ""
+echo "  After setup, launch AcaClaw anytime:"
+echo "    • From your app launcher (desktop shortcut installed)"
+echo "    • Or run: ${BOLD}bash ${SCRIPT_DIR}/start.sh${NC}"
+echo "    • Stop:  ${BOLD}bash ${SCRIPT_DIR}/stop.sh${NC}"
 echo ""
 log "Happy researching!"

@@ -23,6 +23,7 @@ permalink: /en/desktop-gui/
 - [7. Setup Wizard (Browser-Based)](#7-setup-wizard-browser-based)
 - [What AcaClaw's UI Includes](#what-acaclaws-ui-includes)
 - [Implementation Approach](#implementation-approach)
+- [Desktop Launch (Browser-Based)](#desktop-launch-browser-based)
 - [GUI-to-CLI Mapping](#gui-to-cli-mapping)
 
 ---
@@ -1287,6 +1288,183 @@ When AcaClaw ships signed platform packages, replace the terminal script with na
 | Windows | `.exe` (signed) |
 | Linux | `.AppImage` or `.deb`/`.rpm` |
 | All platforms | Shell script + browser wizard **(current)** |
+
+---
+
+## Desktop Launch (Browser-Based)
+
+AcaClaw runs as a local web app: the gateway serves the UI, and the user accesses it in their browser. This section describes the mechanism for starting AcaClaw from the desktop across all supported platforms — **Linux, macOS, and WSL2** — without requiring the terminal after initial install.
+
+### How It Works
+
+```
+  User action                   What happens
+  ───────────                   ────────────
+  Click desktop icon      →     scripts/start.sh runs
+                          →     Checks if gateway is already running (PID file + process check)
+                          →     If not running: starts gateway in background
+                          →     Waits for health endpoint to respond
+                          →     Opens browser with auth token auto-injected
+                          →     User sees AcaClaw UI at http://localhost:2090/
+```
+
+### Scripts
+
+| Script | Purpose |
+|---|---|
+| `scripts/start.sh` | Start gateway + open browser (main launcher) |
+| `scripts/stop.sh` | Gracefully stop the gateway |
+| `scripts/install-desktop.sh` | Install platform-specific desktop shortcut |
+| `scripts/open-ui.sh` | Legacy wrapper (delegates to `start.sh`) |
+
+### Platform Behavior
+
+| Platform | Desktop shortcut | Browser launch method | Notes |
+|---|---|---|---|
+| **Linux** | `.desktop` file in `~/.local/share/applications/` | `xdg-open` (X11/Wayland) | Appears in GNOME, KDE, XFCE app launchers |
+| **macOS** | `.command` file in `~/Applications/` | `open` | Double-click in Finder, or drag to Dock |
+| **WSL2** | `.lnk` shortcut on Windows Desktop | `powershell.exe Start-Process` / `wslview` | Runs gateway inside WSL, opens Windows browser |
+| **Headless/SSH** | N/A | Prints URL to terminal | User visits URL from any browser that can reach the host |
+
+### Linux Desktop Integration
+
+The installer creates a standard [`.desktop` file](https://specifications.freedesktop.org/desktop-entry-spec/latest/) so AcaClaw appears in the application menu:
+
+```ini
+[Desktop Entry]
+Type=Application
+Name=AcaClaw
+Comment=AI-powered academic research assistant
+Exec=bash /path/to/scripts/start.sh
+Icon=acaclaw
+Terminal=false
+Categories=Science;Education;Development;
+```
+
+- Icon is installed to `~/.local/share/icons/hicolor/256x256/apps/`
+- Desktop database is updated automatically via `update-desktop-database`
+- Works with GNOME, KDE Plasma, XFCE, i3/Sway (via `rofi`/`wofi`), and other XDG-compliant launchers
+
+### macOS Desktop Integration
+
+A `.command` file is placed in `~/Applications/`:
+
+- Double-click `AcaClaw.command` in Finder to launch
+- Drag to Dock for one-click access
+- If a PNG icon source is available, a custom `.icns` icon is generated and applied
+- The `.command` file delegates to `start.sh` — same gateway management logic
+
+### WSL2 Desktop Integration
+
+WSL2 is a special case: the gateway runs inside the Linux subsystem, but the browser opens on the Windows host.
+
+```
+  Windows Desktop
+  ┌──────────────────────┐
+  │  🔬 AcaClaw.lnk      │ ← Windows shortcut
+  │  (double-click)       │
+  └──────────┬───────────┘
+             │ wsl.exe -d Ubuntu -- bash start.sh
+             ▼
+  WSL2 Linux
+  ┌──────────────────────┐
+  │  start.sh             │
+  │  → starts gateway     │ ← openclaw --profile acaclaw gateway run
+  │  → detects WSL2       │
+  │  → calls powershell   │ ← powershell.exe Start-Process "http://..."
+  └──────────┬───────────┘
+             │
+             ▼
+  Windows Browser
+  ┌──────────────────────┐
+  │  http://localhost:2090│ ← AcaClaw UI
+  └──────────────────────┘
+```
+
+**WSL2 browser detection** (in priority order):
+1. `powershell.exe -Command "Start-Process '...'"` — most reliable
+2. `cmd.exe /c start "" "..."` — fallback
+3. `wslview` (from `wslu` package) — if installed
+4. Print URL for manual access
+
+**WSL2 shortcut creation:**
+- Uses PowerShell to create a `.lnk` file on the Windows Desktop
+- Target: `wsl.exe -d <distro> -- bash /path/to/start.sh`
+- The shortcut is a standard Windows shortcut that appears on the Desktop
+
+### Gateway Lifecycle
+
+`start.sh` manages the gateway as a background process:
+
+| Concern | How it's handled |
+|---|---|
+| **Already running?** | Checks PID file + `kill -0` probe. Skips start if alive. |
+| **Stale PID file?** | If PID file exists but process is dead, cleans up and starts fresh. |
+| **Health check** | Waits up to 15s for `/health` endpoint to respond before opening browser. |
+| **PID tracking** | Saves PID to `~/.acaclaw/gateway.pid` for `stop.sh` and status checks. |
+| **Logs** | Appends gateway output to `~/.acaclaw/gateway.log`. |
+| **Clean shutdown** | `stop.sh` sends SIGTERM, waits 5s, then SIGKILL if needed. |
+| **Port conflict** | Configurable via `ACACLAW_PORT` env var (default: 2090). |
+
+### Usage Examples
+
+```bash
+# Launch AcaClaw (start gateway + open browser)
+bash scripts/start.sh
+
+# Start gateway only (headless / SSH session)
+bash scripts/start.sh --no-browser
+
+# Check gateway status
+bash scripts/start.sh --status
+
+# Stop gateway
+bash scripts/stop.sh
+
+# Install desktop shortcut (run once after install)
+bash scripts/install-desktop.sh
+
+# Remove desktop shortcut
+bash scripts/install-desktop.sh --remove
+
+# Custom port
+ACACLAW_PORT=3000 bash scripts/start.sh
+```
+
+### Auto-Start on Login (Optional)
+
+Users who want AcaClaw to start automatically on login can set it up per platform:
+
+| Platform | Method | Command |
+|---|---|---|
+| **Linux (systemd)** | User service | See `systemd` section below |
+| **macOS** | Login Items | System Settings → General → Login Items → add `AcaClaw.command` |
+| **WSL2** | Windows Task Scheduler | Create task targeting the `.lnk` shortcut, trigger "At log on" |
+
+**Linux systemd user service** (optional):
+
+```ini
+# ~/.config/systemd/user/acaclaw-gateway.service
+[Unit]
+Description=AcaClaw Gateway
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/openclaw --profile acaclaw gateway run --bind loopback --port 2090
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+systemctl --user enable acaclaw-gateway
+systemctl --user start acaclaw-gateway
+```
+
+This is optional and not installed automatically — the desktop shortcut covers the common case where users launch AcaClaw when they need it.
 
 ---
 

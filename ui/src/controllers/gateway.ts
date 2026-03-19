@@ -15,20 +15,32 @@ function uuid(): string {
   return crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/** Read gateway auth token from URL hash (#token=...) or sessionStorage. */
+/** Read gateway auth token from the meta tag injected into index.html at deploy time. */
 function resolveAuthToken(): string | undefined {
-  // Check URL hash first: http://localhost:2090/#token=abc
+  // Primary: meta tag injected by install.sh / start.sh into the served HTML.
+  // This is always current because the gateway reads index.html from disk on each request.
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="oc-token"]')
+    ?? document.querySelector<HTMLMetaElement>('meta[name="gateway-token"]');
+  if (meta?.content) {
+    console.log("[gateway] auth: resolved from meta tag");
+    return meta.content;
+  }
+  // Fallback: URL hash (e.g. opened via start.sh with #token=...)
   const hash = location.hash;
   if (hash.includes("token=")) {
     const match = hash.match(/token=([^&]+)/);
-    if (match) return match[1];
+    if (match) {
+      console.log("[gateway] auth: resolved from URL hash");
+      return match[1];
+    }
   }
-  // Check sessionStorage (set by previous connect or by the gateway control-ui bootstrap)
+  // Fallback: sessionStorage (set by gateway control-ui bootstrap)
   const stored = sessionStorage.getItem("openclaw.control.token");
-  if (stored) return stored;
-  // Check meta tag injected at build/deploy time
-  const meta = document.querySelector<HTMLMetaElement>('meta[name="oc-token"]');
-  if (meta?.content) return meta.content;
+  if (stored) {
+    console.log("[gateway] auth: resolved from sessionStorage");
+    return stored;
+  }
+  console.warn("[gateway] auth: no token found");
   return undefined;
 }
 
@@ -41,6 +53,7 @@ class GatewayController extends EventTarget {
   private _authenticated = false;
   private _connectNonce: string | null = null;
   private _connectSent = false;
+  private _challengeTimer: ReturnType<typeof setTimeout> | null = null;
 
   get state(): GatewayState {
     return this._state;
@@ -60,9 +73,16 @@ class GatewayController extends EventTarget {
     this._ws = new WebSocket(url);
 
     this._ws.onopen = () => {
-      // Don't send connect yet — wait for the connect.challenge event from the gateway
-      // The gateway will send a nonce that we include in our connect frame
+      // Wait for the connect.challenge event before sending connect.
+      // The gateway sends it immediately on open; we reply with our connect frame.
       this._connectSent = false;
+      this._connectNonce = null;
+
+      // Timeout: if no challenge arrives within 10s, close and retry.
+      this._challengeTimer = setTimeout(() => {
+        console.error("[gateway] connect.challenge timeout");
+        this._ws?.close(1008, "connect challenge timeout");
+      }, 10_000);
     };
 
     this._ws.onmessage = (ev) => {
@@ -135,6 +155,7 @@ class GatewayController extends EventTarget {
   /** Send the mandatory connect handshake as first frame. */
   private _sendConnectFrame() {
     const token = resolveAuthToken();
+    console.log(`[gateway] connect: token=${token ? token.slice(0, 8) + "..." + token.slice(-4) + " (len=" + token.length + ")" : "NONE"}`);
 
     const connectParams = {
       minProtocol: 3,
@@ -197,12 +218,16 @@ class GatewayController extends EventTarget {
       const eventName = msg.event as string;
       if (!eventName) return;
 
-      // Handle connect.challenge — gateway sends a nonce before accepting connect
+      // Handle connect.challenge — gateway sends a nonce on open; respond with connect
       if (eventName === "connect.challenge") {
-        const payload = msg.payload as { nonce?: string } | undefined;
-        if (payload?.nonce) {
-          this._connectNonce = payload.nonce;
-          // Re-send the connect frame with the nonce
+        if (!this._connectSent && !this._authenticated) {
+          if (this._challengeTimer) {
+            clearTimeout(this._challengeTimer);
+            this._challengeTimer = null;
+          }
+          const payload = msg.payload as { nonce?: string } | undefined;
+          this._connectNonce = payload?.nonce ?? null;
+          this._connectSent = true;
           this._sendConnectFrame();
         }
         return;
@@ -232,6 +257,10 @@ class GatewayController extends EventTarget {
     this._authenticated = false;
     this._connectNonce = null;
     this._connectSent = false;
+    if (this._challengeTimer) {
+      clearTimeout(this._challengeTimer);
+      this._challengeTimer = null;
+    }
     for (const [, p] of this._pending) {
       p.reject(new Error("Connection closed"));
     }
@@ -243,7 +272,7 @@ class GatewayController extends EventTarget {
     this._reconnectTimer = setTimeout(() => {
       this._reconnectTimer = null;
       this.connect();
-    }, 3000);
+    }, 5000);
   }
 
   private _heartbeatTimer: ReturnType<typeof setInterval> | null = null;

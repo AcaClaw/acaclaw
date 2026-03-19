@@ -259,10 +259,6 @@ export async function listBackups(
       // Backup dir may not exist yet
     }
   }
-    }
-  } catch {
-    // Backup dir may not exist yet
-  }
 
   return results.sort((a, b) => b.backupTime.localeCompare(a.backupTime));
 }
