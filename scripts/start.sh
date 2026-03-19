@@ -351,14 +351,16 @@ open_app_window() {
             if [[ -z "${DISPLAY:-}" ]] && [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
                 return 1
             fi
-            # Use the real browser binary with --profile-directory and --app=URL
-            # (same format Edge uses for its own installed web apps)
+            # Use --user-data-dir to force a NEW browser instance so --app=URL
+            # is honoured. Without it, the IPC handoff to the existing browser
+            # silently drops the --app flag and opens a regular tab.
+            local app_profile="${ACACLAW_DATA_DIR}/browser-app"
             if [[ -x "/opt/microsoft/msedge/microsoft-edge" ]]; then
-                /opt/microsoft/msedge/microsoft-edge --profile-directory=Default --app="$URL" &
+                /opt/microsoft/msedge/microsoft-edge --user-data-dir="$app_profile" --app="$URL" --no-first-run --no-default-browser-check &
             elif [[ -x "/opt/google/chrome/google-chrome" ]]; then
-                /opt/google/chrome/google-chrome --profile-directory=Default --app="$URL" &
+                /opt/google/chrome/google-chrome --user-data-dir="$app_profile" --app="$URL" --no-first-run --no-default-browser-check &
             elif command -v chromium-browser &>/dev/null; then
-                chromium-browser --app="$URL" &
+                chromium-browser --user-data-dir="$app_profile" --app="$URL" --no-first-run --no-default-browser-check &
             elif command -v xdg-open &>/dev/null; then
                 xdg-open "$URL" 2>/dev/null
             else

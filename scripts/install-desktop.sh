@@ -118,6 +118,7 @@ Icon=${icon_path:-utilities-terminal}
 Terminal=false
 Categories=Science;Education;Development;
 Keywords=research;ai;academic;science;
+StartupWMClass=localhost
 StartupNotify=false
 DESKTOP
 
