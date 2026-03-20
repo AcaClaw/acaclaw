@@ -15,6 +15,10 @@ permalink: /en/
   </div>
 </div>
 
+<p align="center">
+  <img src="{{ '/poster/acaclaw-poster-en.svg' | relative_url }}" alt="AcaClaw Features Overview" style="max-width: 100%; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin: 20px 0;">
+</p>
+
 ## What Is AcaClaw?
 
 **AcaClaw (Academia Claw)** is your dedicated AI Co-Scientist. Whether you need an AI Biologist, an AI Chemist, or a Data Scientist, AcaClaw provides a discipline-specific digital partner for everyone in academia. Terminal geek or first-time computer user, AcaClaw just works.

@@ -15,6 +15,10 @@ permalink: /zh-CN/
   </div>
 </div>
 
+<p align="center">
+  <img src="{{ '/poster/acaclaw-poster-zh.svg' | relative_url }}" alt="AcaClaw 特性介绍" style="max-width: 100%; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin: 20px 0;">
+</p>
+
 > **注意**: 中文文档正在编写中。英文文档稳定后，中文版将持续更新。你可以点击右上角的 **EN** 切换到英文版。
 
 ---
