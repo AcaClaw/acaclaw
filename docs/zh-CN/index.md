@@ -10,16 +10,17 @@ permalink: /zh-CN/
   <h1>AcaClaw</h1>
   <p class="tagline">Academia Claw — 你的 AI 联合科学家，一键安装，即刻可用</p>
   <div class="hero-actions">
-    <a href="{{ '/zh-CN/getting-started/' | relative_url }}" class="hero-btn primary">快速开始</a>
-    <a href="https://github.com/acaclaw/acaclaw" class="hero-btn secondary" target="_blank" rel="noopener">GitHub</a>
+    <a href="{{ '/zh-CN/install/' | relative_url }}" class="hero-btn primary">安装</a>
+    <a href="{{ '/zh-CN/getting-started/' | relative_url }}" class="hero-btn secondary">快速开始</a>
+    <a href="https://github.com/AcaClaw/acaclaw" class="hero-btn secondary" target="_blank" rel="noopener">GitHub</a>
   </div>
 </div>
 
 <p align="center">
-  <img src="{{ '/poster/acaclaw-poster-zh.svg' | relative_url }}" alt="AcaClaw 特性介绍" style="max-width: 100%; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin: 20px 0;">
+  <img src="{{ '/poster/poster-zh.svg' | relative_url }}" alt="AcaClaw 特性介绍" style="max-width: 100%; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin: 20px 0;">
 </p>
 
-> **注意**: 中文文档正在编写中。英文文档稳定后，中文版将持续更新。你可以点击右上角的 **EN** 切换到英文版。
+> **提示**：完整中文文档见左侧导航。需要英文原文可点击右上角 **EN**。
 
 ---
 

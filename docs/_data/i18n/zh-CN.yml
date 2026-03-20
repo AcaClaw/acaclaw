@@ -11,6 +11,8 @@ nav:
     url: /zh-CN/architecture/
   - title: 技能管理
     url: /zh-CN/skills/
+  - title: 数字科研助手
+    url: /zh-CN/agents/
   - title: 计算环境
     url: /zh-CN/computing-environment/
   - title: 数据安全
@@ -19,8 +21,12 @@ nav:
     url: /zh-CN/security/
   - title: 工作空间
     url: /zh-CN/workspace/
-  - title: 桌面界面
+  - title: Web 界面
     url: /zh-CN/desktop-gui/
+  - title: 认证与启动
+    url: /zh-CN/auth-and-app-launch/
+  - title: 测试
+    url: /zh-CN/testing/
   - title: 参与贡献
     url: /zh-CN/contributing/
 strings:
@@ -31,5 +37,5 @@ strings:
   switch_lang: EN
   switch_lang_url: /en/
   powered_by: 基于 OpenClaw
-  tagline: "AI 学术助手 — 一键安装，即刻可用"
+  tagline: "Academia Claw — 你的 AI 联合科学家，一键安装，即刻可用"
   github: GitHub
