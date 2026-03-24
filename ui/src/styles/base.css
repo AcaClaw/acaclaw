@@ -58,6 +58,48 @@
   --ac-transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Dark theme — applied via data-theme="dark" on <html> */
+:root[data-theme="dark"] {
+  --ac-primary: #2dd4bf;
+  --ac-primary-light: #5eead4;
+  --ac-primary-dark: #0d9488;
+  --ac-primary-bg: rgba(45, 212, 191, 0.08);
+  --ac-primary-bg-solid: #042f2e;
+
+  --ac-app-bg: #09090b;
+  --ac-bg: #09090b;
+  --ac-bg-surface: #18181b;
+  --ac-bg-hover: rgba(255, 255, 255, 0.06);
+  --ac-bg-active: rgba(255, 255, 255, 0.1);
+  --ac-bg-elevated: #27272a;
+  --ac-bg-inset: #09090b;
+  --ac-border: #27272a;
+  --ac-border-strong: #3f3f46;
+  --ac-border-subtle: rgba(255, 255, 255, 0.06);
+
+  --ac-text: #fafafa;
+  --ac-text-secondary: #d4d4d8;
+  --ac-text-muted: #a1a1aa;
+  --ac-text-tertiary: #71717a;
+
+  --ac-success: #34d399;
+  --ac-success-bg: rgba(52, 211, 153, 0.1);
+  --ac-warning: #fbbf24;
+  --ac-warning-bg: rgba(251, 191, 36, 0.1);
+  --ac-error: #f87171;
+  --ac-error-bg: rgba(248, 113, 113, 0.1);
+  --ac-info: #60a5fa;
+  --ac-info-bg: rgba(96, 165, 250, 0.1);
+
+  --ac-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --ac-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.15);
+  --ac-shadow-md: 0 10px 24px rgba(0, 0, 0, 0.35), 0 4px 10px rgba(0, 0, 0, 0.2);
+  --ac-shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.4), 0 10px 20px rgba(0, 0, 0, 0.25);
+  --ac-shadow-focus: 0 0 0 3px rgba(45, 212, 191, 0.2);
+
+  color-scheme: dark;
+}
+
 *,
 *::before,
 *::after {
