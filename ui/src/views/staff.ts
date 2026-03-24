@@ -384,9 +384,10 @@ export class StaffView extends LitElement {
     // If already connected, sync immediately; otherwise wait for connection
     if (gateway.state === "connected") {
       this._syncEnvStatus();
+      this._loadGatewaySkills();
     }
     this._gatewayListener = ((e: CustomEvent) => {
-      if (e.detail.state === "connected") this._syncEnvStatus();
+      if (e.detail.state === "connected") { this._syncEnvStatus(); this._loadGatewaySkills(); }
     }) as EventListener;
     gateway.addEventListener("state-change", this._gatewayListener);
   }
@@ -1325,6 +1326,13 @@ export class StaffView extends LitElement {
     } catch { /* gateway not ready */ }
   }
 
+  /** Count managed (non-bundled, installed) skills assigned to a staff member. */
+  private _countManagedSkills(staff: StaffMember): number {
+    if (this._gatewaySkills.length === 0) return staff.skills.length;
+    const managed = new Set(this._gatewaySkills.filter(g => !g.bundled).map(g => g.name));
+    return staff.skills.filter(sk => managed.has(sk)).length;
+  }
+
   private async _installGatewaySkill(skillName: string, installId: string) {
     this._skillInstalling = { ...this._skillInstalling, [skillName]: true };
     this._skillInstallLog = [`\u25b6 Installing ${skillName} (${installId})\u2026`];
@@ -1748,7 +1756,7 @@ export class StaffView extends LitElement {
         <div class="kv-row">
           <div class="kv-label">Skills</div>
           <div class="kv-value" style="display:flex;align-items:center;gap:6px">
-            <span class="skills-count">${s.skills.length} skills</span>
+            <span class="skills-count">${this._countManagedSkills(s)} skill${this._countManagedSkills(s) !== 1 ? 's' : ''}</span>
             <button class="manage-link" @click=${() => this._openPanel(s.id, "skills")}>Manage</button>
           </div>
         </div>
@@ -1943,9 +1951,9 @@ export class StaffView extends LitElement {
       });
     }
 
-    // Filter skills by this staff member's discipline
+    // Filter skills by this staff member's discipline, excluding bundled (always available)
     const relevantSkills = allSkills.filter(s =>
-      skillMatchesDiscipline({ disciplines: s.disciplines } as AvailableSkill, staff.discipline)
+      !s.bundled && skillMatchesDiscipline({ disciplines: s.disciplines } as AvailableSkill, staff.discipline)
     );
 
     // Group by category, preserving order
