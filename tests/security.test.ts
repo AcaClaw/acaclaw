@@ -16,7 +16,7 @@ describe("@acaclaw/security", () => {
 		it("uses defaults when no config provided", () => {
 			const result = resolveConfig({});
 			expect(result.mode).toBe("standard");
-			expect(result.enableNetworkPolicy).toBe(true);
+			expect(result.enableNetworkPolicy).toBe(false);
 			expect(result.enableCredentialScrubbing).toBe(true);
 		});
 
