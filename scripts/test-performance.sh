@@ -721,14 +721,44 @@ with open('$pf') as f:
     p = json.load(f)
 skills = p.get('skills', [])
 eligible = [s for s in skills if s.get('eligible', False)]
-disabled = [s for s in skills if s.get('disabled', False)]
+bundled = [s for s in skills if s.get('source') == 'openclaw-bundled']
+managed = [s for s in skills if s.get('source') == 'openclaw-managed']
+eligible_names = {s.get('name') for s in eligible}
+
 print(f'total={len(skills)}')
 print(f'eligible={len(eligible)}')
-print(f'disabled={len(disabled)}')
-for s in eligible[:20]:
+print(f'bundled={len(bundled)}')
+print(f'managed={len(managed)}')
+
+for s in managed:
     name = s.get('name', 'unknown')
-    src = s.get('source', '')
-    print(f'skill|{name}|{src}')
+    ok = 'eligible' if s.get('eligible') else 'not-eligible'
+    print(f'managed|{name}|{ok}')
+
+for s in eligible:
+    if s.get('source') != 'openclaw-managed':
+        name = s.get('name', 'unknown')
+        print(f'bundled-eligible|{name}')
+
+# Report agent-required skills status
+required = ['nano-pdf', 'xurl', 'coding-agent', 'summarize']
+for r in required:
+    match = [s for s in skills if s.get('name') == r]
+    if match:
+        s = match[0]
+        missing = s.get('missing', {})
+        bins = missing.get('bins', [])
+        env_m = missing.get('env', [])
+        cfg = missing.get('config', [])
+        reason_parts = []
+        if bins: reason_parts.append('bins=' + ','.join(bins))
+        if env_m: reason_parts.append('env=' + ','.join(env_m))
+        if cfg: reason_parts.append('config=' + ','.join(cfg))
+        reason = ' | '.join(reason_parts) if reason_parts else ''
+        ok = 'eligible' if s.get('eligible') else 'not-eligible'
+        print(f'required|{r}|{ok}|{reason}')
+    else:
+        print(f'required|{r}|not-found|')
 " 2>/dev/null)" || skills_info=""
     rm -f "$pf"
 
@@ -737,24 +767,37 @@ for s in eligible[:20]:
         return
     fi
 
-    local total_skills eligible_skills
+    local total_skills eligible_count bundled_count managed_count
     total_skills="$(echo "$skills_info" | grep '^total=' | cut -d= -f2)"
-    eligible_skills="$(echo "$skills_info" | grep '^eligible=' | cut -d= -f2)"
-    _pass "Skills availability" "${eligible_skills} eligible out of ${total_skills} total"
+    eligible_count="$(echo "$skills_info" | grep '^eligible=' | cut -d= -f2)"
+    bundled_count="$(echo "$skills_info" | grep '^bundled=' | cut -d= -f2)"
+    managed_count="$(echo "$skills_info" | grep '^managed=' | cut -d= -f2)"
 
-    while IFS='|' read -r _ name src; do
-        _pass "Skill: ${name}" "${src}"
-    done < <(echo "$skills_info" | grep '^skill|')
+    echo -e "  ${DIM}Gateway knows ${total_skills} skills (${bundled_count} bundled, ${managed_count} user-installed)${NC}"
+    _pass "Eligible skills" "${eligible_count} out of ${total_skills} have all dependencies met"
 
-    # Check expected core skills
-    local expected_skills=("xurl" "coding-agent" "summarize" "nano-pdf")
-    for skill in "${expected_skills[@]}"; do
-        if echo "$skills_info" | grep -qi "skill|${skill}|"; then
-            : # Already listed above
+    # Show user-installed (managed) skills
+    if [[ "$managed_count" -gt 0 ]]; then
+        while IFS='|' read -r _ name status; do
+            if [[ "$status" == "eligible" ]]; then
+                _pass "Installed: ${name}" "ready"
+            else
+                _warn "Installed: ${name}" "not eligible"
+            fi
+        done < <(echo "$skills_info" | grep '^managed|')
+    fi
+
+    # Check agent-required skills (from skills.json)
+    echo -e "  ${DIM}Agent-required skills (from skills.json):${NC}"
+    while IFS='|' read -r _ name status reason; do
+        if [[ "$status" == "eligible" ]]; then
+            _pass "Required: ${name}" "ready"
+        elif [[ "$status" == "not-eligible" ]]; then
+            _fail "Required: ${name}" "missing: ${reason}"
         else
-            _warn "Expected skill: ${skill}" "not eligible (may need binary/config)"
+            _fail "Required: ${name}" "not found in gateway"
         fi
-    done
+    done < <(echo "$skills_info" | grep '^required|')
 }
 
 avail_models() {
