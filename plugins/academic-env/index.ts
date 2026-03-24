@@ -2,7 +2,8 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk/acaclaw-academic-env
 import { spawn, execFile, execSync } from "node:child_process";
 import fs from "node:fs";
 import { readFile, statfs } from "node:fs/promises";
-import { join } from "node:path";
+import { join, dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { homedir, cpus as osCpus, totalmem, freemem, loadavg, hostname as osHostname, uptime as osUptime, type as osType } from "node:os";
 import {
 	resolveConfig,
@@ -14,6 +15,26 @@ import {
 	DISCIPLINE_ENVS,
 	findConda,
 } from "./academic-env.js";
+
+/**
+ * Resolve the gateway's state directory.
+ * 1. OPENCLAW_HOME env var
+ * 2. Derive from this plugin's own location: <stateDir>/plugins/<id>/index.ts
+ * 3. Fall back to ~/.openclaw
+ */
+function resolveStateDir(): string {
+	const envHome = process.env.OPENCLAW_HOME?.trim();
+	if (envHome) return envHome;
+
+	// Derive from plugin file path: <stateDir>/plugins/acaclaw-academic-env/index.ts
+	try {
+		const pluginDir = dirname(fileURLToPath(import.meta.url));
+		const candidate = resolve(pluginDir, "..", "..");
+		if (fs.existsSync(join(candidate, "openclaw.json"))) return candidate;
+	} catch { /* import.meta.url not available */ }
+
+	return join(homedir(), ".openclaw");
+}
 
 const academicEnvPlugin = {
 	id: "acaclaw-academic-env",
@@ -185,10 +206,11 @@ const academicEnvPlugin = {
 			broadcast: (event: string, payload: unknown) => void,
 			progressEvent: string,
 			envName: string,
+			spawnEnv?: Record<string, string | undefined>,
 		): Promise<{ code: number; output: string }> {
 			return new Promise((resolve) => {
 				const lines: string[] = [];
-				const proc = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
+				const proc = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], ...(spawnEnv ? { env: spawnEnv } : {}) });
 
 				const onData = (chunk: Buffer) => {
 					const text = stripAnsi(chunk.toString());
@@ -481,15 +503,8 @@ const academicEnvPlugin = {
 				return;
 			}
 
-			// Detect the gateway's state directory from OPENCLAW_HOME or --profile flag
-			let homeDir = process.env.OPENCLAW_HOME?.trim() || "";
-			if (!homeDir) {
-				const idx = process.argv.indexOf("--profile");
-				const profile = idx >= 0 ? process.argv[idx + 1] : "";
-				homeDir = profile
-					? join(homedir(), `.openclaw-${profile}`)
-					: join(homedir(), ".openclaw");
-			}
+			// Detect the gateway's state directory
+			const homeDir = resolveStateDir();
 			const skillsDir = join(homeDir, "skills");
 
 			// Ensure skills directory exists
@@ -515,7 +530,13 @@ const academicEnvPlugin = {
 			const args = ["--workdir", homeDir, "--no-input", "install", "--force", slug];
 			context.broadcast("acaclaw.skill.install.progress", { slug, line: `$ clawhub ${args.join(" ")}` });
 
-			const result = await runWithProgress(clawhubPath, args, context.broadcast, "acaclaw.skill.install.progress", slug);
+			// Strip proxy env vars — gateway may have a proxy configured that isn't always running
+			const cleanEnv = { ...process.env };
+			delete cleanEnv.HTTP_PROXY;
+			delete cleanEnv.HTTPS_PROXY;
+			delete cleanEnv.http_proxy;
+			delete cleanEnv.https_proxy;
+			const result = await runWithProgress(clawhubPath, args, context.broadcast, "acaclaw.skill.install.progress", slug, cleanEnv);
 
 			if (result.code === 0) {
 				context.broadcast("acaclaw.skill.install.progress", { slug, line: `✓ Skill "${slug}" installed` });
