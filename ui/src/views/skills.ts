@@ -304,7 +304,7 @@ export class SkillsView extends LitElement {
           class="tab ${this._tab === "installed" ? "active" : ""}"
           @click=${() => { this._tab = "installed"; this._searchQuery = ""; }}
         >
-          Installed (${this._installed.length})
+          Installed (${this._installed.filter(s => !s.bundled).length})
         </div>
         <div
           class="tab ${this._tab === "clawhub" ? "active" : ""}"
@@ -382,8 +382,9 @@ export class SkillsView extends LitElement {
               )}
             </div>
             <div class="footer-stats">
-              ${this._installed.length} skills installed ·
-              ${this._installed.filter((s) => s.bundled).length} bundled
+              ${this._installed.filter((s) => !s.bundled).length} installed ·
+              ${this._installed.filter((s) => s.bundled).length} bundled ·
+              ${this._installed.filter((s) => s.eligible).length} eligible
             </div>
           `}
     `;

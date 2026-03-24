@@ -868,8 +868,8 @@ export class MonitorView extends LitElement {
     } catch { /* plugin not loaded */ }
 
     try {
-      const skillRes = await gateway.call<{ skills: Array<{ name: string }> }>("skills.status");
-      this._skillCount = skillRes?.skills?.length ?? 0;
+      const skillRes = await gateway.call<{ skills: Array<{ name: string; bundled: boolean }> }>("skills.status");
+      this._skillCount = skillRes?.skills?.filter(s => !s.bundled).length ?? 0;
     } catch { /* keep zeros */ }
 
     try {
