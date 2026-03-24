@@ -1308,13 +1308,6 @@ export class StaffView extends LitElement {
     } catch { /* gateway not ready */ }
   }
 
-  /** Count managed (non-bundled, installed) skills assigned to a staff member. */
-  private _countManagedSkills(staff: StaffMember): number {
-    if (this._gatewaySkills.length === 0) return staff.skills.length;
-    const managed = new Set(this._gatewaySkills.filter(g => !g.bundled).map(g => g.name));
-    return staff.skills.filter(sk => managed.has(sk)).length;
-  }
-
   private async _installGatewaySkill(skillName: string, installId: string) {
     this._skillInstalling = { ...this._skillInstalling, [skillName]: true };
     this._skillInstallLog = [`\u25b6 Installing ${skillName} (${installId})\u2026`];
