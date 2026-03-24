@@ -257,17 +257,33 @@ export class SkillsView extends LitElement {
     } catch { /* gateway not ready — keep empty */ }
   }
 
-  private async _installSkill(name: string, installId?: string) {
+  private async _installSkill(name: string) {
     this._installing = name;
-    this._installLog = [];
+    this._installLog = [`▶ Installing "${name}" from ClawHub…`];
+
+    const unsub = gateway.onNotification("acaclaw.skill.install.progress", (data: unknown) => {
+      const d = data as { slug?: string; line?: string };
+      if (d?.slug === name && d?.line) {
+        this._installLog = [...this._installLog, d.line];
+      }
+    });
+
     try {
-      const params: Record<string, unknown> = { name };
-      if (installId) params.installId = installId;
-      await gateway.call("skills.install", params, { timeoutMs: 300_000 });
-      this._installLog = [...this._installLog, `✓ ${name} installed`];
+      const res = await gateway.call<{ ok: boolean; slug: string; installed?: boolean; alreadyExists?: boolean }>(
+        "acaclaw.skill.install",
+        { slug: name },
+        { timeoutMs: 120_000 },
+      );
+      if (res?.alreadyExists) {
+        this._installLog = [...this._installLog, `✓ "${name}" is already installed`];
+      } else if (res?.installed) {
+        this._installLog = [...this._installLog, `✓ "${name}" installed successfully`];
+      }
       await this._loadSkills();
     } catch (err) {
       this._installLog = [...this._installLog, `✗ Failed: ${err instanceof Error ? err.message : String(err)}`];
+    } finally {
+      unsub();
     }
     this._installing = "";
   }

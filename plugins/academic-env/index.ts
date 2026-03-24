@@ -481,8 +481,15 @@ const academicEnvPlugin = {
 				return;
 			}
 
-			// Skills live in the gateway's home directory (OPENCLAW_HOME).
-			const homeDir = process.env.OPENCLAW_HOME?.trim() || join(homedir(), ".openclaw");
+			// Detect the gateway's state directory from OPENCLAW_HOME or --profile flag
+			let homeDir = process.env.OPENCLAW_HOME?.trim() || "";
+			if (!homeDir) {
+				const idx = process.argv.indexOf("--profile");
+				const profile = idx >= 0 ? process.argv[idx + 1] : "";
+				homeDir = profile
+					? join(homedir(), `.openclaw-${profile}`)
+					: join(homedir(), ".openclaw");
+			}
 			const skillsDir = join(homeDir, "skills");
 
 			// Ensure skills directory exists

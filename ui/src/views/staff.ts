@@ -1991,13 +1991,15 @@ export class StaffView extends LitElement {
             <div class="search-result-item">
               <span class="search-result-name">${r.name}</span>
               <span class="search-result-desc">${r.description}</span>
-              <button class="search-result-add" @click=${() => {
-                this._addSkillToStaff(staff.id, r.id);
+              <button class="search-result-add"
+                ?disabled=${this._skillInstalling[r.id] ?? false}
+                @click=${() => {
                 if (!AVAILABLE_SKILLS.find(a => a.id === r.id)) {
                   AVAILABLE_SKILLS.push({ ...r, default: false, disciplines: ["cross"] });
                 }
                 this._searchResults = this._searchResults.filter(x => x.id !== r.id);
-              }}>+ Add</button>
+                this._installClawHubSkill(staff.id, r.id);
+              }}>${this._skillInstalling[r.id] ? "Installing…" : "Install & Add"}</button>
             </div>
           `)}
         </div>
