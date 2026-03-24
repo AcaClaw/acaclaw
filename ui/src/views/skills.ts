@@ -309,9 +309,14 @@ export class SkillsView extends LitElement {
   }
 
   private _filteredInstalled(): Skill[] {
-    if (!this._searchQuery) return this._installed;
+    const sorted = [...this._installed].sort((a, b) => {
+      const aUser = isUserInstalled(a) ? 0 : 1;
+      const bUser = isUserInstalled(b) ? 0 : 1;
+      return aUser - bUser || a.name.localeCompare(b.name);
+    });
+    if (!this._searchQuery) return sorted;
     const q = this._searchQuery.toLowerCase();
-    return this._installed.filter(
+    return sorted.filter(
       (s) =>
         s.name.toLowerCase().includes(q) ||
         s.description.toLowerCase().includes(q),
