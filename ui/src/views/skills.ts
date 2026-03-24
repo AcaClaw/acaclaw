@@ -29,15 +29,15 @@ interface ClawHubSkill {
 
 /** AcaClaw curated skills available on ClawHub */
 const CURATED_SKILLS: ClawHubSkill[] = [
-  { name: "ai-humanizer", description: "Humanize AI-generated text to sound natural and authentic", author: "acaclaw", category: "Writing", recommended: true },
-  { name: "paper-search", description: "Search arXiv, PubMed, Semantic Scholar, and CrossRef simultaneously", author: "acaclaw", category: "Research", recommended: true },
-  { name: "citation-manager", description: "Format references in APA, Vancouver, Nature, and 9000+ citation styles", author: "acaclaw", category: "Research", recommended: true },
-  { name: "data-analyst", description: "Statistical analysis from natural language — describe what you want, get results", author: "acaclaw", category: "Data Analysis", recommended: true },
-  { name: "figure-generator", description: "Publication-quality plots and charts ready for journal submission", author: "acaclaw", category: "Data Analysis" },
-  { name: "manuscript-assistant", description: "Draft, edit, and structure papers following journal guidelines", author: "acaclaw", category: "Writing" },
-  { name: "grant-writer", description: "Structure and draft grant proposals following funder templates", author: "acaclaw", category: "Writing" },
-  { name: "format-converter", description: "Convert between Word, PDF, LaTeX, and journal-specific templates", author: "acaclaw", category: "Documents" },
-  { name: "presentation-maker", description: "Generate slides from research notes or paper content", author: "acaclaw", category: "Documents" },
+  { name: "ai-humanizer", description: "Detect and remove AI-typical writing patterns", author: "clawhub", category: "Writing", recommended: true },
+  { name: "academic-deep-research", description: "Transparent, rigorous research across academic databases with audit trail", author: "clawhub", category: "Research", recommended: true },
+  { name: "academic-citation-manager", description: "Format references in APA, Vancouver, Nature, and 9000+ styles", author: "clawhub", category: "Research", recommended: true },
+  { name: "data-analyst", description: "Data visualisation, reports, SQL, spreadsheets", author: "clawhub", category: "Data Analysis", recommended: true },
+  { name: "mermaid", description: "Generate diagrams (flowcharts, sequence, class) from text", author: "clawhub", category: "Data Analysis" },
+  { name: "academic-writing", description: "Expert agent for scholarly papers, literature reviews, methodology", author: "clawhub", category: "Writing" },
+  { name: "literature-review", description: "Structured literature reviews with synthesis and gap analysis", author: "clawhub", category: "Research" },
+  { name: "pandoc-convert-openclaw", description: "Convert between Word, PDF, LaTeX, and Markdown via Pandoc", author: "clawhub", category: "Documents" },
+  { name: "autonomous-research", description: "Multi-step independent research for qualitative or quantitative studies", author: "clawhub", category: "Research" },
 ];
 
 @customElement("acaclaw-skills")

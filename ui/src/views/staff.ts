@@ -116,61 +116,40 @@ interface AvailableSkill {
   disciplines: SkillDiscipline[];
 }
 
-/** Available skills that can be assigned to staff, tagged by discipline */
+/** Cross-discipline skills that can be assigned to any staff member.
+ *  Every entry is verified to exist on ClawHub. */
 export const AVAILABLE_SKILLS: AvailableSkill[] = [
-  // ── Foundation (all disciplines) ──
+  // ── Foundation (defaults for every staff) ──
   { id: "nano-pdf", name: "nano-pdf", description: "Read and extract text from PDF files", category: "Foundation", default: true, disciplines: ["cross"] },
   { id: "xurl", name: "xurl", description: "Fetch and read web pages", category: "Foundation", default: true, disciplines: ["cross"] },
-  { id: "agentic-coding", name: "agentic-coding", description: "Write and execute code", category: "Foundation", default: true, disciplines: ["cross"] },
   { id: "summarize", name: "summarize", description: "Summarize documents and text", category: "Foundation", default: true, disciplines: ["cross"] },
 
-  // ── Cross-discipline academic ──
-  { id: "literature-search", name: "literature-search", description: "Search arXiv, PubMed, Semantic Scholar", category: "Literature", default: false, disciplines: ["cross"] },
-  { id: "academic-citation-manager", name: "academic-citation-manager", description: "Format references in APA, Vancouver, Nature", category: "Writing", default: false, disciplines: ["cross"] },
-  { id: "data-analyst", name: "data-analyst", description: "Data visualisation, reports, SQL, spreadsheets", category: "Data Analysis", default: false, disciplines: ["cross"] },
+  // ── Writing ──
+  { id: "academic-citation-manager", name: "academic-citation-manager", description: "Format references in APA, Vancouver, Nature, and 9000+ styles", category: "Writing", default: false, disciplines: ["cross"] },
   { id: "ai-humanizer", name: "ai-humanizer", description: "Detect and remove AI-typical writing patterns", category: "Writing", default: false, disciplines: ["cross"] },
-  { id: "academic-deep-research", name: "academic-deep-research", description: "Transparent, rigorous research across academic databases with audit trail", category: "Literature", default: false, disciplines: ["cross"] },
   { id: "academic-writing", name: "academic-writing", description: "Expert agent for scholarly papers, literature reviews, methodology", category: "Writing", default: false, disciplines: ["cross"] },
-  { id: "mermaid", name: "mermaid", description: "Generate diagrams (flowcharts, sequence, class) from text", category: "Presentation", default: false, disciplines: ["cross"] },
-  { id: "chart-image", name: "chart-image", description: "Generate publication-quality chart images for papers", category: "Data Analysis", default: false, disciplines: ["cross"] },
 
-  // ── Biology & Life Sciences ──
-  { id: "bioskills", name: "bioskills", description: "425 bioinformatics tools: RNA-seq, single-cell, variant calling, metagenomics", category: "Biology", default: false, disciplines: ["biology"] },
-  { id: "lobster-bio-dev", name: "lobster-bio-dev", description: "Multi-agent bioinformatics engine for collaborative genomics pipelines", category: "Biology", default: false, disciplines: ["biology"] },
-  { id: "admet-prediction", name: "admet-prediction", description: "ADMET prediction for drug/compound candidates — ADME and toxicity", category: "Biology", default: false, disciplines: ["biology", "chemistry", "medicine"] },
+  // ── Literature & Research ──
+  { id: "literature-search", name: "literature-search", description: "Search arXiv, PubMed, Semantic Scholar", category: "Literature", default: false, disciplines: ["cross"] },
+  { id: "academic-deep-research", name: "academic-deep-research", description: "Transparent, rigorous research across academic databases with audit trail", category: "Literature", default: false, disciplines: ["cross"] },
+  { id: "literature-review", name: "literature-review", description: "Structured literature reviews with synthesis and gap analysis", category: "Literature", default: false, disciplines: ["cross"] },
+  { id: "arxiv-cli-tools", name: "arxiv-cli-tools", description: "CLI tools for fetching and searching arXiv papers", category: "Literature", default: false, disciplines: ["cross"] },
+  { id: "autonomous-research", name: "autonomous-research", description: "Multi-step independent research for qualitative or quantitative studies", category: "Research", default: false, disciplines: ["cross"] },
 
-  // ── Chemistry ──
-  { id: "chemistry-query", name: "chemistry-query", description: "PubChem API: compound info, SMILES structures, synthesis routes", category: "Chemistry", default: false, disciplines: ["chemistry", "biology"] },
-  { id: "paramus-chemistry", name: "paramus-chemistry", description: "Hundreds of chemistry and scientific computing tools in one skill pack", category: "Chemistry", default: false, disciplines: ["chemistry"] },
-  { id: "clarity-research", name: "clarity-research", description: "Search protein folding research data from Clarity Protocol", category: "Chemistry", default: false, disciplines: ["chemistry", "biology"] },
+  // ── Data & Visualisation ──
+  { id: "data-analyst", name: "data-analyst", description: "Data visualisation, reports, SQL, spreadsheets", category: "Data Analysis", default: false, disciplines: ["cross"] },
+  { id: "mermaid", name: "mermaid", description: "Generate diagrams (flowcharts, sequence, class) from text", category: "Data Analysis", default: false, disciplines: ["cross"] },
 
-  // ── Medicine & Health ──
-  { id: "medical-research-toolkit", name: "medical-research-toolkit", description: "Query 14+ biomedical databases for drug repurposing and clinical trials", category: "Medicine", default: false, disciplines: ["medicine"] },
-  { id: "clinical-data-extractor", name: "clinical-data-extractor", description: "Extract and search clinical trials data with advanced filtering", category: "Medicine", default: false, disciplines: ["medicine"] },
-  { id: "pmc-harvest", name: "pmc-harvest", description: "Fetch full-text articles from PubMed Central", category: "Medicine", default: false, disciplines: ["medicine", "biology"] },
-  { id: "pubmed-edirect", name: "pubmed-edirect", description: "Advanced PubMed search and retrieval via NCBI EDirect CLI", category: "Medicine", default: false, disciplines: ["medicine", "biology"] },
+  // ── Documents ──
+  { id: "pandoc-convert-openclaw", name: "pandoc-convert-openclaw", description: "Convert between Word, PDF, LaTeX, and Markdown via Pandoc", category: "Documents", default: false, disciplines: ["cross"] },
 
-  // ── Physics & Mathematics ──
-  { id: "wolfram-alpha", name: "wolfram-alpha", description: "Complex calculations, physics simulations, unit conversions", category: "Physics / Math", default: false, disciplines: ["physics", "mathematics"] },
-  { id: "acorn-prover", name: "acorn-prover", description: "Verify and write formal proofs using the Acorn theorem prover", category: "Physics / Math", default: false, disciplines: ["mathematics", "physics"] },
-  { id: "arxiv-cli-tools", name: "arxiv-cli-tools", description: "CLI tools for fetching arXiv papers in physics, math, and CS", category: "Physics / Math", default: false, disciplines: ["physics", "mathematics", "cs"] },
+  // ── Research Design ──
+  { id: "survey-designer", name: "survey-designer", description: "Design and manage surveys for research data collection", category: "Research", default: false, disciplines: ["cross"] },
 
-  // ── AI & Machine Learning ──
-  { id: "agentic-paper-digest-skill", name: "agentic-paper-digest-skill", description: "Auto-fetch and summarize recent arXiv and Hugging Face AI/ML papers", category: "AI / ML", default: false, disciplines: ["ai"] },
-  { id: "arxiv-paper-reviews", name: "arxiv-paper-reviews", description: "Fetch AI/ML papers and manage review notes via arXiv Crawler", category: "AI / ML", default: false, disciplines: ["ai"] },
-
-  // ── Computer Science ──
-  { id: "github", name: "github", description: "Interact with GitHub: issues, PRs, CI runs, advanced queries", category: "Computer Science", default: false, disciplines: ["cs"] },
-  { id: "docker-essentials", name: "docker-essentials", description: "Essential Docker commands for container management and debugging", category: "Computer Science", default: false, disciplines: ["cs"] },
-  { id: "git-essentials", name: "git-essentials", description: "Essential Git commands for version control and collaboration", category: "Computer Science", default: false, disciplines: ["cs"] },
-
-  // ── Earth & Environment ──
-  { id: "geepers-data", name: "geepers-data", description: "Fetch data from NASA, Census, climate APIs, arXiv, PubMed", category: "Earth & Env", default: false, disciplines: ["ecology", "earth-environment", "biology"] },
-  { id: "biodiversity-corridor-calculator", name: "biodiversity-corridor-calculator", description: "Analyse biodiversity corridors and ecological connectivity patterns", category: "Earth & Env", default: false, disciplines: ["ecology", "earth-environment"] },
-
-  // ── Social Sciences ──
-  { id: "autonomous-research", name: "autonomous-research", description: "Multi-step independent research for qualitative or quantitative studies", category: "Social Sciences", default: false, disciplines: ["social-sciences"] },
-  { id: "survey-designer", name: "survey-designer", description: "Design and manage surveys for research data collection", category: "Social Sciences", default: false, disciplines: ["social-sciences"] },
+  // ── Development ──
+  { id: "agentic-coding", name: "agentic-coding", description: "Write and execute code autonomously", category: "Development", default: false, disciplines: ["cross"] },
+  { id: "docker-essentials", name: "docker-essentials", description: "Essential Docker commands for container management", category: "Development", default: false, disciplines: ["cross"] },
+  { id: "git-essentials", name: "git-essentials", description: "Essential Git commands for version control", category: "Development", default: false, disciplines: ["cross"] },
 ];
 
 const DEFAULT_SKILLS = AVAILABLE_SKILLS.filter((s) => s.default).map((s) => s.id);
