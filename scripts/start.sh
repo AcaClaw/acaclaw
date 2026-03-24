@@ -379,8 +379,6 @@ _clean_browser_profile() {
         "$profile/Edge Wallet" \
         "$profile/Edge Shopping" \
         "$profile/Speech Recognition" \
-        "$profile/Safe Browsing" \
-        "$profile/SmartScreen" \
         "$profile/component_crx_cache" \
         "$profile/GrShaderCache" \
         "$profile/ShaderCache" \
@@ -448,6 +446,8 @@ open_app_window() {
             local app_profile="${ACACLAW_DATA_DIR}/browser-app"
 
             # Disable heavy Edge/Chrome features for faster app-window startup
+            # Note: this is an --app=localhost window with no external navigation,
+            # so browser security features (SmartScreen, phishing) aren't needed.
             local -a app_flags=(
                 --user-data-dir="$app_profile"
                 --app="$URL"
@@ -457,10 +457,9 @@ open_app_window() {
                 --disable-component-update
                 --disable-sync
                 --disable-translate
-                --disable-client-side-phishing-detection
                 --disable-default-apps
                 --disable-extensions
-                --disable-features=TranslateUI,OptimizationHints,MediaRouter,msSmartScreenProtection,EdgeCollections,EdgeDiscoverWidget,msEdgeShopping,EdgeWallet,msEdgeOnRamp
+                --disable-features=TranslateUI,OptimizationHints,MediaRouter,EdgeCollections,EdgeDiscoverWidget,msEdgeShopping,EdgeWallet,msEdgeOnRamp
                 --password-store=basic
             )
 
