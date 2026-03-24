@@ -96,7 +96,7 @@ measure_gateway_startup() {
     # Check if already running
     start=$(_now_ms)
     local running=false
-    if curl -sf --max-time 2 "http://127.0.0.1:${ACACLAW_PORT}/" &>/dev/null; then
+    if curl -sf --noproxy 127.0.0.1 --max-time 2 "http://127.0.0.1:${ACACLAW_PORT}/" &>/dev/null; then
         running=true
     fi
     end=$(_now_ms)
@@ -110,7 +110,7 @@ measure_gateway_startup() {
     # Health check
     start=$(_now_ms)
     local health
-    health="$(curl -sf --max-time 5 "http://127.0.0.1:${ACACLAW_PORT}/health" 2>/dev/null || echo "failed")"
+    health="$(curl -sf --noproxy 127.0.0.1 --max-time 5 "http://127.0.0.1:${ACACLAW_PORT}/health" 2>/dev/null || echo "failed")"
     end=$(_now_ms)
     _color_ms "$(_elapsed "$start" "$end")" "Health endpoint"
 }
@@ -119,7 +119,7 @@ measure_gateway_startup() {
 measure_page_load() {
     echo -e "\n${BOLD}Phase 3: Page Load (curl timing)${NC}"
 
-    if ! curl -sf --max-time 2 "http://127.0.0.1:${ACACLAW_PORT}/" &>/dev/null; then
+    if ! curl -sf --noproxy 127.0.0.1 --max-time 2 "http://127.0.0.1:${ACACLAW_PORT}/" &>/dev/null; then
         echo -e "  ${RED}✗ Gateway not running — skipping page load test${NC}"
         return
     fi
@@ -128,28 +128,28 @@ measure_page_load() {
 
     # HTML document
     start=$(_now_ms)
-    curl -sf --max-time 10 "http://127.0.0.1:${ACACLAW_PORT}/" -o /dev/null
+    curl -sf --noproxy 127.0.0.1 --max-time 10 "http://127.0.0.1:${ACACLAW_PORT}/" -o /dev/null
     end=$(_now_ms)
     _color_ms "$(_elapsed "$start" "$end")" "HTML document"
 
     # CSS
     local css_file
-    css_file="$(curl -sf "http://127.0.0.1:${ACACLAW_PORT}/" | grep -oP 'href="/assets/[^"]*\.css"' | head -1 | tr -d '"' | sed 's/href=//')"
+    css_file="$(curl -sf --noproxy 127.0.0.1 "http://127.0.0.1:${ACACLAW_PORT}/" | grep -oP 'href="/assets/[^"]*\.css"' | head -1 | tr -d '"' | sed 's/href=//')"
     if [[ -n "$css_file" ]]; then
         start=$(_now_ms)
-        curl -sf --max-time 10 "http://127.0.0.1:${ACACLAW_PORT}${css_file}" -o /dev/null
+        curl -sf --noproxy 127.0.0.1 --max-time 10 "http://127.0.0.1:${ACACLAW_PORT}${css_file}" -o /dev/null
         end=$(_now_ms)
         _color_ms "$(_elapsed "$start" "$end")" "CSS bundle ($(basename "$css_file"))"
     fi
 
     # JS bundle
     local js_file
-    js_file="$(curl -sf "http://127.0.0.1:${ACACLAW_PORT}/" | grep -oP 'src="/assets/[^"]*\.js"' | head -1 | tr -d '"' | sed 's/src=//')"
+    js_file="$(curl -sf --noproxy 127.0.0.1 "http://127.0.0.1:${ACACLAW_PORT}/" | grep -oP 'src="/assets/[^"]*\.js"' | head -1 | tr -d '"' | sed 's/src=//')"
     if [[ -n "$js_file" ]]; then
         start=$(_now_ms)
         local js_tmp
         js_tmp="$(mktemp)"
-        curl -sf --max-time 10 "http://127.0.0.1:${ACACLAW_PORT}${js_file}" -o "$js_tmp"
+        curl -sf --noproxy 127.0.0.1 --max-time 10 "http://127.0.0.1:${ACACLAW_PORT}${js_file}" -o "$js_tmp"
         end=$(_now_ms)
         local js_size
         js_size="$(wc -c < "$js_tmp")"
@@ -162,7 +162,7 @@ measure_page_load() {
     # Font CSS (self-hosted)
     start=$(_now_ms)
     local fonts_ok=true
-    curl -sf --max-time 5 "http://127.0.0.1:${ACACLAW_PORT}/fonts/inter.css" -o /dev/null 2>/dev/null || fonts_ok=false
+    curl -sf --noproxy 127.0.0.1 --max-time 5 "http://127.0.0.1:${ACACLAW_PORT}/fonts/inter.css" -o /dev/null 2>/dev/null || fonts_ok=false
     end=$(_now_ms)
     if [[ "$fonts_ok" == "true" ]]; then
         _color_ms "$(_elapsed "$start" "$end")" "Font CSS (self-hosted)"
@@ -183,7 +183,7 @@ measure_page_load() {
 
     # Logo
     start=$(_now_ms)
-    curl -sf --max-time 5 "http://127.0.0.1:${ACACLAW_PORT}/logo/AcaClaw.svg" -o /dev/null 2>/dev/null || true
+    curl -sf --noproxy 127.0.0.1 --max-time 5 "http://127.0.0.1:${ACACLAW_PORT}/logo/AcaClaw.svg" -o /dev/null 2>/dev/null || true
     end=$(_now_ms)
     _color_ms "$(_elapsed "$start" "$end")" "Logo SVG"
 }
@@ -192,7 +192,7 @@ measure_page_load() {
 measure_ws_handshake() {
     echo -e "\n${BOLD}Phase 4: WebSocket Handshake${NC}"
 
-    if ! curl -sf --max-time 2 "http://127.0.0.1:${ACACLAW_PORT}/" &>/dev/null; then
+    if ! curl -sf --noproxy 127.0.0.1 --max-time 2 "http://127.0.0.1:${ACACLAW_PORT}/" &>/dev/null; then
         echo -e "  ${RED}✗ Gateway not running — skipping WS test${NC}"
         return
     fi
@@ -289,7 +289,7 @@ measure_cold_start() {
     sleep 2
 
     # Make sure port is free
-    if curl -sf --max-time 1 "http://127.0.0.1:${ACACLAW_PORT}/" &>/dev/null; then
+    if curl -sf --noproxy 127.0.0.1 --max-time 1 "http://127.0.0.1:${ACACLAW_PORT}/" &>/dev/null; then
         echo -e "  ${RED}✗ Port ${ACACLAW_PORT} still in use after stop${NC}"
         return
     fi
@@ -309,7 +309,7 @@ measure_cold_start() {
     # Wait for port to respond
     local waited=0
     while [[ $waited -lt 120 ]]; do
-        if curl -sf --max-time 1 "http://127.0.0.1:${ACACLAW_PORT}/" &>/dev/null; then
+        if curl -sf --noproxy 127.0.0.1 --max-time 1 "http://127.0.0.1:${ACACLAW_PORT}/" &>/dev/null; then
             end=$(_now_ms)
             _color_ms "$(_elapsed "$start" "$end")" "Gateway cold start → port responding"
             return

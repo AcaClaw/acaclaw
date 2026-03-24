@@ -211,7 +211,9 @@ is_gateway_running() {
 
 is_port_responding() {
     if command -v curl &>/dev/null; then
-        curl -sf --max-time 2 "http://127.0.0.1:${ACACLAW_PORT}/" &>/dev/null
+        # --noproxy: system curl 7.81 doesn't support CIDR in NO_PROXY,
+        # so localhost gets routed through the HTTP proxy and fails.
+        curl -sf --max-time 2 --noproxy 127.0.0.1 "http://127.0.0.1:${ACACLAW_PORT}/" &>/dev/null
     else
         (echo > "/dev/tcp/127.0.0.1/${ACACLAW_PORT}") 2>/dev/null
     fi
