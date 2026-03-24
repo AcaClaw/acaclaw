@@ -38,11 +38,10 @@ const LLM_PROVIDERS: ProviderDef[] = [
 
 const BROWSER_PROVIDERS: ProviderDef[] = [
   { id: "brave-search", name: "Brave Search", placeholder: "BSA...", prefix: "BSA" },
+  { id: "gemini", name: "Gemini (Google)", placeholder: "AIza...", prefix: "AIza" },
+  { id: "grok", name: "Grok (xAI)", placeholder: "xai-...", prefix: "xai-" },
+  { id: "kimi", name: "Kimi (Moonshot)", placeholder: "sk-...", prefix: "" },
   { id: "perplexity", name: "Perplexity", placeholder: "pplx-...", prefix: "pplx-" },
-  { id: "serper", name: "Serper", placeholder: "...", prefix: "" },
-  { id: "serpapi", name: "SerpAPI", placeholder: "...", prefix: "" },
-  { id: "tavily", name: "Tavily", placeholder: "tvly-...", prefix: "tvly-" },
-  { id: "google-search", name: "Google Custom Search", placeholder: "AIza...", prefix: "AIza" },
 ];
 
 let _nextId = 1;
@@ -533,23 +532,32 @@ export class ApiKeysView extends LitElement {
       const search = web?.search as Record<string, unknown> | undefined;
 
       if (search) {
-        const searchProvider = search.provider as string | undefined;
-        const searchApiKey = search.apiKey as string | undefined;
+        const searchProvider = (search.provider as string | undefined)?.toLowerCase();
+        if (searchProvider) {
+          // Brave uses top-level apiKey; other providers use a nested sub-object
+          let searchApiKey: string | undefined;
+          if (searchProvider === "brave") {
+            searchApiKey = search.apiKey as string | undefined;
+          } else {
+            const sub = search[searchProvider] as Record<string, unknown> | undefined;
+            searchApiKey = sub?.apiKey as string | undefined;
+          }
 
-        if (searchProvider && searchApiKey) {
-          const browserId = this._mapBrowserProvider(searchProvider);
-          if (browserId) {
-            const isRedacted = searchApiKey === "__OPENCLAW_REDACTED__";
-            this._browserKeys.set(browserId, [
-              {
-                id: genId(),
-                label: "Default",
-                value: isRedacted ? "••••••••••••••••" : searchApiKey,
-                visible: false,
-                saved: true,
-              },
-            ]);
-            this._browserProvider = browserId;
+          if (searchApiKey) {
+            const browserId = this._mapBrowserProvider(searchProvider);
+            if (browserId) {
+              const isRedacted = searchApiKey === "__OPENCLAW_REDACTED__";
+              this._browserKeys.set(browserId, [
+                {
+                  id: genId(),
+                  label: "Default",
+                  value: isRedacted ? "••••••••••••••••" : searchApiKey,
+                  visible: false,
+                  saved: true,
+                },
+              ]);
+              this._browserProvider = browserId;
+            }
           }
         }
       }
@@ -632,12 +640,10 @@ export class ApiKeysView extends LitElement {
     const map: Record<string, string> = {
       brave: "brave-search",
       "brave-search": "brave-search",
+      gemini: "gemini",
+      grok: "grok",
+      kimi: "kimi",
       perplexity: "perplexity",
-      serper: "serper",
-      serpapi: "serpapi",
-      tavily: "tavily",
-      google: "google-search",
-      "google-search": "google-search",
     };
     return map[name.toLowerCase()];
   }
@@ -1073,8 +1079,16 @@ export class ApiKeysView extends LitElement {
 
           const providerName = providerId === "brave-search" ? "brave" : providerId;
           search.provider = providerName;
-          search.apiKey = primaryKey;
           search.enabled = true;
+
+          // Brave uses the top-level apiKey; other providers use a nested sub-object
+          if (providerName === "brave") {
+            search.apiKey = primaryKey;
+          } else {
+            const sub = (search[providerName] ?? {}) as Record<string, unknown>;
+            sub.apiKey = primaryKey;
+            search[providerName] = sub;
+          }
           break;
         }
 

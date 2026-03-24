@@ -23,6 +23,7 @@ const folderOpenIcon = (size = 16) => svg`
 interface Message {
   role: "user" | "assistant";
   content: string;
+  thinking: string;
   timestamp: string;
 }
 
@@ -33,6 +34,8 @@ interface AgentTab {
   sending: boolean;
   activeRunId: string;
   input: string;
+  /** Unique id per chat session — rotated on "+ Chat" to start fresh */
+  sessionId: string;
 }
 
 /** Default "general" tab for the main session (no specific agent) */
@@ -573,6 +576,39 @@ export class ChatView extends LitElement {
       text-align: left;
     }
 
+    .msg-thinking {
+      margin-bottom: 8px;
+      border-radius: 12px;
+      background: rgba(14, 165, 233, 0.04);
+      border: 1px solid rgba(14, 165, 233, 0.12);
+      overflow: hidden;
+    }
+    .msg-thinking summary {
+      cursor: pointer;
+      padding: 8px 14px;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--ac-text-muted, #94a3b8);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      user-select: none;
+    }
+    .msg-thinking summary:hover {
+      color: var(--ac-text-secondary, #64748b);
+    }
+    .msg-thinking-body {
+      padding: 6px 14px 12px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--ac-text-secondary, #64748b);
+      white-space: pre-wrap;
+      word-break: break-word;
+      border-top: 1px solid rgba(14, 165, 233, 0.08);
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
     /* ── Message avatar (assistant only) ── */
     .msg-row {
       display: flex;
@@ -925,7 +961,8 @@ export class ChatView extends LitElement {
     const tab = this._getActiveTab();
     if (!tab) return;
 
-    // Clear local messages and reset sending state
+    // Rotate sessionId so the server treats this as a brand-new conversation
+    tab.sessionId = crypto.randomUUID();
     tab.messages = [];
     tab.sending = false;
     tab.activeRunId = "";
@@ -989,6 +1026,7 @@ export class ChatView extends LitElement {
       sending: false,
       activeRunId: "",
       input: "",
+      sessionId: crypto.randomUUID(),
     };
 
     this._tabs = [...this._tabs, newTab];
@@ -1015,12 +1053,15 @@ export class ChatView extends LitElement {
       sending: false,
       activeRunId: "",
       input: "",
+      sessionId: crypto.randomUUID(),
     };
   }
 
   private _getSessionKey(agentId: string): string {
-    if (agentId === GENERAL_TAB_ID) return "main";
-    return `agent:${agentId}:web:main`;
+    const tab = this._tabs.find((t) => t.agentId === agentId);
+    const sid = tab?.sessionId ?? "main";
+    if (agentId === GENERAL_TAB_ID) return sid;
+    return `agent:${agentId}:web:${sid}`;
   }
 
   private _getActiveTab(): AgentTab | undefined {
@@ -1045,10 +1086,15 @@ export class ChatView extends LitElement {
         ?.filter((c) => c.type === "text")
         .map((c) => c.text ?? "")
         .join("") ?? "";
-      if (text && tab.messages.length > 0) {
+      const thinking = d.message.content
+        ?.filter((c) => c.type === "thinking")
+        .map((c) => c.text ?? "")
+        .join("") ?? "";
+      if ((text || thinking) && tab.messages.length > 0) {
         const last = tab.messages[tab.messages.length - 1];
         if (last.role === "assistant") {
-          last.content = text;
+          if (text) last.content = text;
+          if (thinking) last.thinking = thinking;
           last.timestamp = new Date().toLocaleTimeString();
         }
       }
@@ -1057,10 +1103,15 @@ export class ChatView extends LitElement {
         ?.filter((c) => c.type === "text")
         .map((c) => c.text ?? "")
         .join("") ?? "";
+      const thinking = d.message.content
+        ?.filter((c) => c.type === "thinking")
+        .map((c) => c.text ?? "")
+        .join("") ?? "";
       if (tab.messages.length > 0) {
         const last = tab.messages[tab.messages.length - 1];
         if (last.role === "assistant") {
           if (text) last.content = text;
+          if (thinking) last.thinking = thinking;
           last.timestamp = new Date().toLocaleTimeString();
         }
       }
@@ -1082,6 +1133,8 @@ export class ChatView extends LitElement {
   }
 
   private async _loadHistory(agentId: string) {
+    const tab = this._tabs.find((t) => t.agentId === agentId);
+    const snapshotSessionId = tab?.sessionId;
     const sessionKey = this._getSessionKey(agentId);
     try {
       const res = await gateway.call<{
@@ -1091,9 +1144,11 @@ export class ChatView extends LitElement {
         }>;
       }>("chat.history", { sessionKey, limit: 100 });
       if (res?.messages) {
-        const tab = this._tabs.find((t) => t.agentId === agentId);
-        if (tab) {
-          tab.messages = res.messages
+        // Guard: if sessionId rotated while the request was in flight, discard stale result
+        const current = this._tabs.find((t) => t.agentId === agentId);
+        if (!current || current.sessionId !== snapshotSessionId) return;
+        if (current) {
+          current.messages = res.messages
             .filter((m) => m.role === "user" || m.role === "assistant")
             .map((m) => {
               let text = "";
@@ -1105,7 +1160,14 @@ export class ChatView extends LitElement {
                   .map((c) => c.text ?? "")
                   .join("");
               }
-              return { role: m.role as "user" | "assistant", content: text, timestamp: "" };
+              let thinking = "";
+              if (Array.isArray(m.content)) {
+                thinking = m.content
+                  .filter((c) => c.type === "thinking")
+                  .map((c) => c.text ?? "")
+                  .join("");
+              }
+              return { role: m.role as "user" | "assistant", content: text, thinking, timestamp: "" };
             });
           this._tabs = [...this._tabs];
         }
@@ -1124,8 +1186,8 @@ export class ChatView extends LitElement {
 
     tab.messages = [
       ...tab.messages,
-      { role: "user", content: text, timestamp: new Date().toLocaleTimeString() },
-      { role: "assistant", content: "", timestamp: "" },
+      { role: "user", content: text, thinking: "", timestamp: new Date().toLocaleTimeString() },
+      { role: "assistant", content: "", thinking: "", timestamp: "" },
     ];
     tab.input = "";
     tab.sending = true;
@@ -1429,7 +1491,7 @@ export class ChatView extends LitElement {
                       </div>
                     `
                   : activeTab.messages.map(
-                      (m) => m.role === "assistant"
+                      (m, idx) => m.role === "assistant"
                         ? html`
                           <div class="message assistant">
                             <div class="msg-row">
@@ -1441,8 +1503,17 @@ export class ChatView extends LitElement {
                                   ${activeTab.agent.name}
                                   ${m.timestamp ? ` \u00B7 ${m.timestamp}` : ""}
                                 </div>
+                                ${m.thinking
+                                  ? html`<details class="msg-thinking"
+                                      ?open=${activeTab.sending && idx === activeTab.messages.length - 1}>
+                                      <summary>\uD83D\uDCA1 Reasoning</summary>
+                                      <div class="msg-thinking-body">${m.thinking}</div>
+                                    </details>`
+                                  : ""}
                                 <div class="msg-content">
-                                  ${m.content || (activeTab.sending ? "Thinking\u2026" : "")}
+                                  ${m.content || (activeTab.sending
+                                    ? m.thinking ? "Reasoning\u2026" : "Thinking\u2026"
+                                    : "")}
                                 </div>
                               </div>
                             </div>
