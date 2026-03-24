@@ -96,7 +96,10 @@ AcaClaw's config at `~/.openclaw-acaclaw/openclaw.json` uses OpenClaw's `$includ
   "$include": "~/.openclaw/openclaw.json",
   "gateway": {
     "port": 2090,
-    "controlUi": { "basePath": "/admin" }
+    "controlUi": {
+      "basePath": "/",
+      "root": "~/.openclaw-acaclaw/ui"
+    }
   },
   "agents": {
     "defaults": { "workspace": "~/AcaClaw" }
@@ -118,22 +121,22 @@ Deep merge behavior: AcaClaw's values (workspace, security, plugins) override. T
 | User runs both | OpenClaw gateway on default port, AcaClaw gateway on 2090 (separate profiles = separate processes) |
 | User installs AcaClaw first | AcaClaw creates standalone config, OpenClaw installed later is separate |
 
-### Two UIs, One Gateway
+### Two UIs, Two Gateways
 
-AcaClaw ships its own browser UI — a standalone SPA built with Lit, designed for academic workflows. OpenClaw's built-in admin UI remains available at a separate path for advanced features.
+AcaClaw ships its own browser UI — a standalone SPA built with Lit, designed for academic workflows. OpenClaw's built-in admin dashboard remains available on the default gateway for advanced features.
 
-Same gateway, same port, same WebSocket API. Two frontends, each serving a different audience.
+Two gateways, two ports, same WebSocket API. Two frontends, each serving a different audience.
 
 ```
-http://localhost:2090/          → AcaClaw UI  (scientists' workspace)
-http://localhost:2090/admin     → OpenClaw UI (channels, debug, cron — unchanged)
+http://localhost:2090           → AcaClaw UI  (scientists' workspace)
+http://localhost:18789          → OpenClaw UI (channels, debug, cron — unchanged)
 ```
 
 ```
 ┌───────────────────────────────────────────────────────────┐
 │  Browser                                                   │
 │                                                            │
-│  ┌──────────── / ────────────┐  ┌──── /admin ──────────┐  │
+│  ┌──────── :2090 ────────────┐  ┌──── :18789 ──────────┐  │
 │  │  AcaClaw UI               │  │  OpenClaw UI          │  │
 │  │  (academic workspace)     │  │  (full admin)         │  │
 │  │                           │  │                       │  │
@@ -146,37 +149,33 @@ http://localhost:2090/admin     → OpenClaw UI (channels, debug, cron — uncha
 │  │  │ Skills   │ │        │  │  │  debug, logs           │  │
 │  │  │ Environ. │ │        │  │  │                       │  │
 │  │  │ Backup   │ │        │  │  │  (unchanged, served   │  │
-│  │  │ Settings │ │        │  │  │   by gateway as-is)   │  │
+│  │  │ Settings │ │        │  │  │   by default gateway) │  │
 │  │  └─────────┘ └────────┘  │  └───────────────────────┘  │
 │  └───────────┬───────────────┘             │               │
 │              │          WebSocket (JSON-RPC)│               │
-│              └─────────────┬───────────────┘               │
-├────────────────────────────┼───────────────────────────────┤
-│  OpenClaw Gateway (port 2090)                             │
-│                            ▼                               │
-│  ┌─────────────────────────────────────────────────────┐  │
-│  │  HTTP dispatch order:                                │  │
-│  │  ... → plugin-http (AcaClaw UI at /) → ...           │  │
-│  │      → control-ui-http (OpenClaw UI at /admin) → ... │  │
-│  │                                                      │  │
-│  │  WebSocket methods (shared by both UIs):             │  │
-│  │  health · config.get/set · usage.cost ·              │  │
-│  │  sessions.list · skills.install · agent · ...        │  │
-│  │                                                      │  │
-│  │  AcaClaw plugin methods:                             │  │
-│  │  acaclaw.env.install · acaclaw.env.list ·            │  │
-│  │  acaclaw.backup.list · acaclaw.backup.restore · ...  │  │
-│  └─────────────────────────────────────────────────────┘  │
+│              │                             │               │
+├──────────────┼─────────────────────────────┼───────────────┤
+│  AcaClaw Gateway (port 2090)    OpenClaw Gateway (18789)  │
+│              ▼                             ▼               │
+│  ┌──────────────────────────┐  ┌──────────────────────┐   │
+│  │  controlUi serves        │  │  Default OpenClaw     │   │
+│  │  AcaClaw SPA at /        │  │  control dashboard    │   │
+│  │                          │  │                       │   │
+│  │  WebSocket methods:      │  │  WebSocket methods:   │   │
+│  │  health · config ·       │  │  Same API surface     │   │
+│  │  sessions · skills ·     │  │                       │   │
+│  │  agent · ...             │  │                       │   │
+│  │                          │  │                       │   │
+│  │  AcaClaw plugin methods: │  │                       │   │
+│  │  acaclaw.env.*           │  │                       │   │
+│  │  acaclaw.backup.*        │  │                       │   │
+│  └──────────────────────────┘  └──────────────────────┘   │
 └───────────────────────────────────────────────────────────┘
 ```
 
 ### How It Works
 
-OpenClaw's gateway has two mechanisms that make dual-UI serving possible:
-
-1. **`gateway.controlUi.basePath`** — moves the built-in UI to a sub-path (e.g., `/admin`). The default UI only claims requests under that prefix, leaving `/` free.
-
-2. **Plugin HTTP routes** — plugins can register routes via `registerHttpRoute()` with `match: "prefix"`. Plugin routes (priority 10) run **before** the control UI SPA fallback (priority 12) in the gateway's HTTP dispatch pipeline.
+AcaClaw runs a dedicated gateway process (`acaclaw-gateway.service`) on port 2090. The gateway's `controlUi` middleware serves the AcaClaw SPA from `~/.openclaw-acaclaw/ui/`. OpenClaw's default gateway (`openclaw-gateway.service`) runs separately on port 18789 with its own built-in control dashboard.
 
 AcaClaw's config:
 
@@ -184,13 +183,14 @@ AcaClaw's config:
 {
   "gateway": {
     "controlUi": {
-      "basePath": "/admin"
+      "basePath": "/",
+      "root": "~/.openclaw-acaclaw/ui"
     }
   }
 }
 ```
 
-AcaClaw's UI plugin registers a prefix route at `/`:
+An AcaClaw UI plugin also registers a prefix route at `/` to inject the auth token into `index.html` and pass through reserved gateway paths:
 
 ```typescript
 api.registerHttpRoute({
@@ -200,7 +200,7 @@ api.registerHttpRoute({
   handler: async (req, res, next) => {
     // Pass through reserved gateway paths — these are handled
     // by lower-priority middleware (health probes at priority 13, etc.)
-    const reserved = ["/health", "/ready", "/api/", "/plugins/"];
+    const reserved = ["/health", "/ready", "/api/", "/plugins/", "/admin"];
     if (reserved.some((p) => req.url.startsWith(p))) return next();
 
     // Serve AcaClaw's built SPA (static files + index.html fallback)
@@ -210,45 +210,32 @@ api.registerHttpRoute({
 
 The handler must pass through reserved paths. AcaClaw's prefix route runs at priority 10 in the gateway's HTTP dispatch pipeline — earlier than health/readiness probes (priority 13). Without the exclusion, `GET /health` would return AcaClaw's `index.html` instead of the probe response. The exclusion list is small and stable — OpenClaw's own control UI uses the same set.
 
-No forking of OpenClaw's UI code. No `controlUi.root` override. OpenClaw's default UI stays untouched at `/admin`.
+### Why Separate Gateways
 
-### Why AcaClaw Gets the Root Path
-
-AcaClaw's UI lives at `/` (root) and OpenClaw's admin UI moves to `/admin`. The alternative — putting AcaClaw at a sub-path like `/lab` — avoids all routing conflicts but creates worse UX problems:
-
-| Factor | AcaClaw at `/` | AcaClaw at sub-path |
-|---|---|---|
-| Scientists type `localhost:2090` | See AcaClaw workspace | See OpenClaw's admin UI (confusing) |
-| `/skills` shows | AcaClaw skills browser | OpenClaw skills browser (wrong audience) |
-| Routing conflicts | Must exclude `/health*`, `/ready*`, `/api/*`, `/plugins/*` | None |
-| Config required | `basePath: "/admin"` (supported option) | None |
-| UX for target audience | Clean, immediate | Extra path to learn or needs redirect |
-
-The exclusion list is 4 prefixes, all stable across OpenClaw versions (OpenClaw's own UI excludes the same set). The UX benefit for scientists outweighs the small implementation cost.
+AcaClaw has its own gateway on port 2090 while OpenClaw's default gateway stays on port 18789. This avoids routing conflicts between two SPAs on the same port. Scientists type `localhost:2090` and see the AcaClaw workspace immediately. Power users access the full OpenClaw dashboard at `localhost:18789` or via the "OpenClaw" tab in AcaClaw's Settings.
 
 ### URL Routing
 
-Both UIs are SPAs with their own client-side routers. The gateway serves the correct `index.html` based on the URL prefix — each SPA handles sub-paths internally.
+AcaClaw's SPA handles all client-side routes on port 2090. OpenClaw's dashboard runs independently on port 18789.
 
-| URL | Served by | View |
+| URL | Gateway | View |
 |---|---|---|
-| `/` | AcaClaw SPA | Overview (health, usage, quick actions) |
-| `/chat` | AcaClaw SPA | Chat interface |
-| `/usage` | AcaClaw SPA | Usage tracking |
-| `/skills` | AcaClaw SPA | Skills browser |
-| `/environment` | AcaClaw SPA | Conda env viewer |
-| `/backup` | AcaClaw SPA | Backup management |
-| `/settings` | AcaClaw SPA | Settings + "Advanced Admin →" link |
-| `/admin` | OpenClaw SPA | OpenClaw overview |
-| `/admin/chat` | OpenClaw SPA | OpenClaw chat |
-| `/admin/skills` | OpenClaw SPA | OpenClaw skills browser |
-| `/admin/agents` | OpenClaw SPA | OpenClaw agents view |
-| `/admin/channels` | OpenClaw SPA | Channels admin |
-| `/admin/debug` | OpenClaw SPA | Debug inspector |
-| `/api/*` | Gateway | REST API (reserved, not served by either SPA) |
-| `/health`, `/ready` | Gateway | Health/readiness probes (passed through by AcaClaw) |
+| `localhost:2090/` | AcaClaw | Overview (health, usage, quick actions) |
+| `localhost:2090/chat` | AcaClaw | Chat interface |
+| `localhost:2090/usage` | AcaClaw | Usage tracking |
+| `localhost:2090/skills` | AcaClaw | Skills browser |
+| `localhost:2090/environment` | AcaClaw | Conda env viewer |
+| `localhost:2090/backup` | AcaClaw | Backup management |
+| `localhost:2090/settings` | AcaClaw | Settings + "OpenClaw" tab → opens dashboard |
+| `localhost:18789/` | OpenClaw | OpenClaw control dashboard |
+| `localhost:18789/chat` | OpenClaw | OpenClaw chat |
+| `localhost:18789/config` | OpenClaw | Full config editor |
+| `localhost:18789/channels` | OpenClaw | Channels admin |
+| `localhost:18789/debug` | OpenClaw | Debug inspector |
+| `localhost:2090/api/*` | AcaClaw | REST API (gateway) |
+| `localhost:2090/health` | AcaClaw | Health probe |
 
-Paths like `/skills` and `/admin/skills` are independent — same name, different SPAs, no conflict.
+No path conflicts — each gateway serves its own UI independently.
 
 ### Why Two UIs Instead of One?
 
@@ -257,11 +244,11 @@ Paths like `/skills` and `/admin/skills` are independent — same name, differen
 | **Fork OpenClaw UI** | Must maintain a fork — every OpenClaw UI update requires merging. |
 | **Extend OpenClaw UI** | Navigation is hardcoded — no plugin API to add/remove tabs. |
 | **Replace entirely** | Users who need channels, cron, or debug lose access. |
-| **Two UIs, one gateway** | AcaClaw builds its own clean UI. OpenClaw's UI stays unchanged at `/admin`. No fork maintenance. Both audiences served. |
+| **Two UIs, two gateways** | AcaClaw builds its own clean UI on port 2090. OpenClaw's dashboard stays unchanged on port 18789. No fork maintenance. Both audiences served. |
 
 ### What Each UI Provides
 
-| Feature | AcaClaw UI (`/`) | OpenClaw UI (`/admin`) |
+| Feature | AcaClaw UI (`:2090`) | OpenClaw UI (`:18789`) |
 |---|---|---|
 | Overview dashboard | Academic workspace (health, usage, quick actions) | Gateway-centric (uptime, auth, device pairing) |
 | Chat | ✓ | ✓ |
@@ -281,11 +268,11 @@ Paths like `/skills` and `/admin/skills` are independent — same name, differen
 | Debug inspector | — | ✓ |
 | Logs | — (via audit log) | ✓ |
 
-Scientists use `/` for daily work. If they ever need channels or debug, the Settings page has a link: **"Advanced Admin →"** that opens `/admin`.
+Scientists use `:2090` for daily work. If they ever need channels or debug, the Settings page has an **OpenClaw** tab that opens `localhost:18789` in a new browser tab.
 
 ### What Changes Visually
 
-| OpenClaw UI (`/admin`) | AcaClaw UI (`/`) |
+| OpenClaw UI (`:18789`) | AcaClaw UI (`:2090`) |
 |---|---|
 | Admin dashboard for power users | Workspace for scientists |
 | 13 tabs in 4 groups | 7 tabs, flat sidebar |
@@ -1132,7 +1119,7 @@ When AcaClaw ships signed platform packages, native installers become viable:
 
 ## What AcaClaw's UI Includes
 
-AcaClaw ships its own standalone UI at `/`. It is not a fork of OpenClaw's UI — it's a separate SPA that shares the same gateway WebSocket API. OpenClaw's full admin UI stays available at `/admin` for any feature AcaClaw's UI doesn't cover.
+AcaClaw ships its own standalone UI on port 2090. It is not a fork of OpenClaw's UI — it's a separate SPA that shares the same gateway WebSocket API. OpenClaw's full admin UI runs on the default gateway at port 18789 for any feature AcaClaw's UI doesn't cover.
 
 ### AcaClaw UI Views
 
@@ -1144,12 +1131,12 @@ AcaClaw ships its own standalone UI at `/`. It is not a fork of OpenClaw's UI �
 | **Skills** | List, search, filter, enable/disable, install from ClawHub | `skills.install`, `skills.list` |
 | **Environment** | Conda env viewer, package list, discipline selection, R install | `acaclaw.env.list`, `acaclaw.env.install`, `acaclaw.env.activate` |
 | **Backup** | File backup list, restore with diff view, retention settings | `acaclaw.backup.list`, `acaclaw.backup.restore` |
-| **Settings** | Simplified config with presets, audit log, "Advanced Admin →" link to `/admin` | `config.get`, `config.set`, `acaclaw.audit.query` |
+| **Settings** | Simplified config with presets, audit log, OpenClaw tab opens `localhost:18789` dashboard | `config.get`, `config.set`, `acaclaw.audit.query` |
 | **Setup wizard** | First-launch onboarding (discipline, API key, workspace, security) | `config.set`, `acaclaw.env.install` |
 
-### Features Available at `/admin` (OpenClaw's UI)
+### Features Available on OpenClaw Dashboard (`:18789`)
 
-These features are available to users who need them, via the "Advanced Admin →" link in AcaClaw's Settings:
+These features are available to users who need them, via the OpenClaw tab in AcaClaw's Settings (opens `localhost:18789` in a new tab):
 
 | Feature | Why scientists rarely need it |
 |---|---|
@@ -1167,7 +1154,7 @@ These features are available to users who need them, via the "Advanced Admin →
 |---|---|
 | **macOS** | OpenClaw's native Swift app is separate. AcaClaw's UI runs in browser at `http://localhost:2090/`. Both can be used side by side. |
 | **iOS / Android** | Native mobile apps connect to the same gateway via WebSocket |
-| **Linux / Windows / all** | AcaClaw UI at `http://localhost:2090/`, OpenClaw admin at `http://localhost:2090/admin` |
+| **Linux / Windows / all** | AcaClaw UI at `http://localhost:2090/`, OpenClaw admin at `http://localhost:18789/` |
 
 ---
 
@@ -1175,14 +1162,14 @@ These features are available to users who need them, via the "Advanced Admin →
 
 ### Current: Browser-Based Standalone SPA
 
-AcaClaw builds its own UI as a standalone SPA. An AcaClaw plugin registers an HTTP prefix route at `/` to serve the built files. OpenClaw's default UI is moved to `/admin` via `gateway.controlUi.basePath`. Users access AcaClaw at `http://localhost:2090` in any browser.
+AcaClaw builds its own UI as a standalone SPA. The AcaClaw gateway's `controlUi` middleware serves the built files at `/`. OpenClaw's default gateway runs separately on port 18789 with its stock dashboard. Users access AcaClaw at `http://localhost:2090` in any browser.
 
 | Advantage | Detail |
 |---|---|
-| Zero extra install | Already included — gateway serves both UIs |
+| Zero extra install | Already included — gateway serves the UI |
 | Cross-platform | Works identically on macOS, Windows, Linux |
 | No fork maintenance | AcaClaw's UI is independent — OpenClaw updates don't require merging |
-| OpenClaw features preserved | Full admin UI at `/admin` — nothing lost |
+| OpenClaw features preserved | Full dashboard at `localhost:18789` — nothing lost |
 | Same build system | Vite + Lit, outputs to `dist/` |
 | Fast iteration | Hot-reload with `vite dev`, no app rebuild |
 | No Electron overhead | No 150+ MB Chromium bundle |
@@ -1212,7 +1199,7 @@ acaclaw/
         │   ├── skills.ts           ← Skills browser (calls skills.list, skills.install)
         │   ├── environment.ts      ← Conda env viewer (calls acaclaw.env.*)
         │   ├── backup.ts           ← Backup management (calls acaclaw.backup.*)
-        │   ├── settings.ts         ← Config presets + audit log + "Advanced Admin →" link
+        │   ├── settings.ts         ← Config presets + audit log + OpenClaw tab (opens :18789)
         │   └── onboarding.ts       ← First-launch wizard
         └── controllers/
             ├── gateway.ts          ← WebSocket connection to gateway (shared methods)
@@ -1224,7 +1211,7 @@ acaclaw/
 
 | Factor | Detail |
 |---|---|
-| **No fork, no merging** | AcaClaw's UI is its own codebase. OpenClaw's UI updates are automatic — `npm install -g openclaw@latest` updates the admin UI at `/admin` without touching AcaClaw. |
+| **No fork, no merging** | AcaClaw's UI is its own codebase. OpenClaw's UI updates are automatic — `npm install -g openclaw@latest` updates the admin UI at `localhost:18789` without touching AcaClaw. |
 | **Gateway API is stable** | WebSocket JSON-RPC methods don't change between releases. If they did, OpenClaw's own UI would break. |
 | **AcaClaw adds, never conflicts** | AcaClaw's panels call custom plugin methods (`acaclaw.backup.*`, `acaclaw.env.*`). These live in a separate namespace. |
 | **Two independent builds** | AcaClaw builds its own `dist/`. OpenClaw builds its own. Neither affects the other. |
@@ -1234,7 +1221,7 @@ acaclaw/
 
 ```
 OpenClaw update (npm install -g openclaw@latest)
-  └── Updates: gateway binary, built-in skills, core plugins, admin UI at /admin
+  └── Updates: gateway binary, built-in skills, core plugins, admin UI at :18789
   └── Does NOT touch: ~/.openclaw-acaclaw/, AcaClaw UI, AcaClaw plugins, AcaClaw skills
 
 AcaClaw update (install.sh --upgrade)
@@ -1258,15 +1245,15 @@ Not planned for initial release. The browser-based SPA covers all required funct
 
 #### Phase 1: Core Views + Dual-UI Config
 
-Build AcaClaw's standalone UI with core views. Configure `basePath: "/admin"` and register the plugin HTTP route at `/`.
+Build AcaClaw's standalone UI with core views. AcaClaw gateway serves UI at `:2090`, OpenClaw default gateway serves dashboard at `:18789`.
 
 | Deliverable | Detail |
 |---|---|
 | Standalone SPA with 7-tab navigation | Overview, Chat, Usage, Skills, Environment, Backup, Settings |
 | AcaClaw color scheme | Custom `base.css` with academic-focused palette |
 | Overview panel | Health score, usage summary, recent activity, quick actions |
-| Plugin HTTP route | Serves AcaClaw's `dist/` at `/`, OpenClaw's UI at `/admin` |
-| "Advanced Admin →" link | Settings page links to `/admin` for channels, debug, cron |
+| Plugin HTTP route | AcaClaw gateway serves `dist/` at `:2090`, OpenClaw gateway serves dashboard at `:18789` |
+| OpenClaw tab | Settings page opens `localhost:18789` dashboard for channels, debug, cron |
 
 #### Phase 2: AcaClaw-Specific Panels
 

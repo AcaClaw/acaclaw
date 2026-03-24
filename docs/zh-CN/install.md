@@ -31,7 +31,7 @@ AcaClaw 安装分为两步：
 
 步骤 2 在安装结束后自动在浏览器中打开。GUI 向导处理所有交互选择 — 无终端菜单、无需手写配置。
 
-AcaClaw **不单独运行桌面 GUI 程序**。它在网关同一端口提供浏览器界面（`http://localhost:2090`）。OpenClaw 自带管理后台仍在 `http://localhost:2090/admin`。一个网关、一个端口、两套前端。
+AcaClaw **不单独运行桌面 GUI 程序**。它在自己的网关端口提供浏览器界面（`http://localhost:2090`）。OpenClaw 自带管理后台仍在默认网关运行（`http://localhost:18789`）。两个网关、两个端口、两套前端。
 
 安装完成后，技能、学科包、配置与备份均可通过浏览器管理。详见 [Web 界面]({{ '/zh-CN/desktop-gui/' | relative_url }})。
 

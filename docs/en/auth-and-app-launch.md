@@ -306,7 +306,7 @@ AcaClaw's auth is designed for single-user, local-machine access:
 | **Rate limiting** | Failed auth attempts are rate-limited |
 | **No URL tokens** | Token is in HTML body, not URL — no leakage via Referer headers or browser history |
 | **Cache-Control: no-cache** | `index.html` is not cached — token changes take effect on next page load |
-| **SPA isolation** | AcaClaw UI at `/`, OpenClaw admin UI at `/admin` — separate SPAs, same auth |
+| **SPA isolation** | AcaClaw UI on port 2090, OpenClaw dashboard on port 18789 — separate gateways, same auth token |
 
 ### What AcaClaw Does NOT Do
 

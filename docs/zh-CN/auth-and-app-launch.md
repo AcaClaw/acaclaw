@@ -306,7 +306,7 @@ AcaClaw 的认证面向单机单用户本地访问：
 | **限流** | 失败的认证尝试会被限流 |
 | **URL 中无令牌** | 令牌在 HTML 正文中，不在 URL——不会经 Referer 头或浏览器历史泄漏 |
 | **Cache-Control: no-cache** | `index.html` 不被缓存——令牌变更在下次页面加载时生效 |
-| **SPA 隔离** | AcaClaw UI 在 `/`，OpenClaw 管理 UI 在 `/admin`——不同 SPA，认证相同 |
+| **SPA 隔离** | AcaClaw UI 在端口 2090，OpenClaw 控制面板在端口 18789——不同网关，认证令牌相同 |
 
 ### AcaClaw 不提供的功能
 

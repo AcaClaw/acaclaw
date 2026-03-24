@@ -31,7 +31,7 @@ Step 1 requires a terminal because it installs system packages — things like N
 
 Step 2 opens automatically in your browser once installation finishes. The GUI wizard handles every interactive choice — no terminal menus, no typing config values manually.
 
-AcaClaw does not run a separate GUI application. It serves its own browser UI on the same gateway port (`http://localhost:2090`). OpenClaw's built-in admin UI remains available at `http://localhost:2090/admin` for advanced features. One gateway, one port, two frontends.
+AcaClaw does not run a separate GUI application. It serves its own browser UI on its gateway port (`http://localhost:2090`). OpenClaw's built-in admin dashboard remains available on the default gateway (`http://localhost:18789`). Two gateways, two ports, two frontends.
 
 After install, you never need the terminal again. Skills, discipline packages, configuration, and backup are all managed through the browser GUI. See [Web GUI](/en/desktop-gui/) for details.
 
