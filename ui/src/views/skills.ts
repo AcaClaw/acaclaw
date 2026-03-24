@@ -3,7 +3,7 @@ import { customElement, state } from "lit/decorators.js";
 import { gateway } from "../controllers/gateway.js";
 
 /** Skills from skills.json agent_required — bundled by gateway but installed via clawhub. */
-const AGENT_REQUIRED_SKILLS = new Set(["nano-pdf", "xurl", "summarize", "ai-humanizer"]);
+const AGENT_REQUIRED_SKILLS = new Set(["nano-pdf", "xurl", "summarize", "humanizer"]);
 
 /** A skill counts as user-installed if managed OR in the agent-required list. */
 const isUserInstalled = (s: { name: string; source: string }) =>

@@ -16,7 +16,7 @@
       { "name": "nano-pdf", "source": "clawhub", "description": "Edit PDFs with natural-language instructions" },
       { "name": "xurl", "source": "clawhub", "description": "Twitter content intelligence and URL extraction" },
       { "name": "summarize", "source": "clawhub", "description": "Summarize web pages and documents" },
-      { "name": "ai-humanizer", "source": "clawhub", "description": "Humanize AI-generated text" }
+      { "name": "humanizer", "source": "clawhub", "description": "Humanize AI-generated text" }
     ],
     "bundled_with_openclaw": [
       "coding-agent",

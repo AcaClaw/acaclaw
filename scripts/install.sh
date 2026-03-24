@@ -311,7 +311,7 @@ fi
 
 # Install agent-required skills from ClawHub into the AcaClaw profile.
 # These skills are defined in skills.json and needed by all agents.
-CORE_SKILLS=("nano-pdf" "xurl" "summarize" "ai-humanizer")
+CORE_SKILLS=("nano-pdf" "xurl" "summarize" "humanizer")
 SKILL_COUNT=0
 
 for skill_name in "${CORE_SKILLS[@]}"; do
