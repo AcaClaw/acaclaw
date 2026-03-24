@@ -9,6 +9,19 @@
 #   bash start.sh --status     # Check if gateway is running
 set -euo pipefail
 
+# --- Startup timing log (helps diagnose slow launches) ---
+_STARTUP_LOG="${HOME}/.acaclaw/startup-timing.log"
+_T0=$(date +%s%N 2>/dev/null || python3 -c "import time; print(int(time.time()*1e9))")
+_tlog() {
+    local now
+    now=$(date +%s%N 2>/dev/null || python3 -c "import time; print(int(time.time()*1e9))")
+    local elapsed_ms=$(( (now - _T0) / 1000000 ))
+    echo "${elapsed_ms}ms $*" >> "$_STARTUP_LOG"
+}
+mkdir -p "$(dirname "$_STARTUP_LOG")"
+echo "=== $(date) ===" > "$_STARTUP_LOG"
+_tlog "start"
+
 # --- PATH bootstrap (desktop launchers don't source .bashrc) ---
 # When launched from a .desktop file / dock / Launchpad, the shell has a
 # minimal system PATH.  We need node/openclaw, so set up fnm/nvm if present.
@@ -46,6 +59,7 @@ _try_bootstrap() {
     done
 }
 _try_bootstrap
+_tlog "PATH bootstrap done"
 
 # --- Proxy bootstrap (desktop launchers don't inherit proxy env) ---
 # Source proxy vars from the system proxy config if not already set.
@@ -80,6 +94,7 @@ _load_proxy() {
     fi
 }
 _load_proxy
+_tlog "proxy loaded"
 
 ACACLAW_PORT="${ACACLAW_PORT:-2090}"
 ACACLAW_STATE_DIR="${HOME}/.openclaw-acaclaw"
@@ -271,6 +286,7 @@ except Exception:
     fi
 }
 ensure_token_in_html
+_tlog "token ensured"
 
 # --- Stale lock cleanup (non-fatal) ---
 if [[ -f "$ACACLAW_PID_FILE" ]]; then
@@ -287,8 +303,10 @@ USE_SERVICE=false
 if [[ -f "$SYSTEMD_UNIT" ]] && command -v systemctl &>/dev/null; then
     USE_SERVICE=true
 fi
+_tlog "service detection done"
 
 # --- Start gateway ---
+_tlog "gateway check start"
 if is_gateway_running && is_port_responding; then
     pid="$(gateway_pid)"
     log "Gateway already running (PID $pid)"
@@ -342,6 +360,17 @@ fi
 _clean_browser_profile() {
     local profile="${ACACLAW_DATA_DIR}/browser-app"
     [[ -d "$profile" ]] || return 0
+
+    # Remove stale singleton locks (leftover from crashed/killed Edge)
+    if [[ -L "$profile/SingletonLock" ]]; then
+        local lock_target
+        lock_target="$(readlink "$profile/SingletonLock" 2>/dev/null)" || true
+        local lock_pid="${lock_target##*-}"
+        if [[ -n "$lock_pid" ]] && ! kill -0 "$lock_pid" 2>/dev/null; then
+            rm -f "$profile/SingletonLock" "$profile/SingletonCookie" "$profile/SingletonSocket"
+        fi
+    fi
+
     rm -rf \
         "$profile/BrowserMetrics" \
         "$profile/WidevineCdm" \
@@ -360,6 +389,7 @@ _clean_browser_profile() {
         2>/dev/null || true
 }
 _clean_browser_profile
+_tlog "browser profile cleaned"
 
 # --- Open browser ---
 
@@ -371,9 +401,13 @@ fi
 
 # Wait briefly if gateway is still initializing (should be rare after above waits)
 if ! is_port_responding; then
+    _tlog "gateway not responding - waiting"
     log "Waiting for gateway to be ready..."
     wait_for_gateway 30 || warn "Gateway not responding yet — opening browser anyway"
+    _tlog "gateway wait done"
 fi
+
+_tlog "pre-browser"
 
 URL="http://localhost:${ACACLAW_PORT}/"
 
@@ -447,13 +481,17 @@ open_app_window() {
 }
 
 if open_app_window; then
+    _tlog "browser launched"
     log "AcaClaw opened: ${BOLD}${URL}${NC}"
 else
+    _tlog "browser launch failed"
     log "Could not open AcaClaw automatically."
     log "Open this URL in your browser:"
     echo ""
     echo -e "  ${BOLD}${URL}${NC}"
     echo ""
 fi
+
+_tlog "script done"
 
 log "To stop: bash $(dirname "$0")/stop.sh"
