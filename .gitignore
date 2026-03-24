@@ -238,9 +238,16 @@ desktop.ini
 
 # Editor
 .idea/
+.vscode/
 *.swp
 *.swo
 *~
+
+# Playwright MCP
+.playwright-mcp/
+
+# Backup (moved/deleted files)
+backup/
 
 # Build artifacts
 dist/
