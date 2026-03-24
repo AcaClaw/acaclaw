@@ -12,17 +12,17 @@
     "notes": "Each discipline env is self-contained — includes all base packages (Python: numpy, scipy, pandas, matplotlib; R: tidyverse, ggplot2, dplyr; JupyterLab with IRkernel) plus discipline-specific packages. No overlay/update needed."
   },
   "skills": {
-    "core": [
+    "agent_required": [
+      { "name": "nano-pdf", "source": "clawhub", "description": "Edit PDFs with natural-language instructions" },
+      { "name": "xurl", "source": "clawhub", "description": "Twitter content intelligence and URL extraction" },
+      { "name": "summarize", "source": "clawhub", "description": "Summarize web pages and documents" },
       { "name": "ai-humanizer", "source": "clawhub", "description": "Humanize AI-generated text" }
     ],
     "bundled_with_openclaw": [
-      "nano-pdf",
-      "clawhub",
       "coding-agent",
-      "xurl",
-      "summarize"
+      "clawhub"
     ],
-    "notes": "Additional skills can be installed from the browser UI or via: clawhub install <skill-name>"
+    "notes": "Agent-required skills are installed by install.sh via clawhub install --workdir ~/.openclaw-acaclaw. Additional skills: clawhub install <skill-name> --workdir ~/.openclaw-acaclaw"
   },
   "agents": {
     "biologist": {

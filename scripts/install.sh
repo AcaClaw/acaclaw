@@ -300,15 +300,23 @@ else
 	log "ClawHub CLI ✓"
 fi
 
-# Install a small set of essential skills from ClawHub.
-# nano-pdf and clawhub are already bundled with OpenClaw.
-# Additional skills can be installed from the browser UI or via: clawhub install <name>
-CORE_SKILLS=("ai-humanizer")
+# Install uv (Python package manager) for skill binary dependencies.
+# Skills like nano-pdf use uv to install their CLI binaries.
+if ! command -v uv &>/dev/null && [[ -n "${MINIFORGE_DIR:-}" ]] && [[ -x "${MINIFORGE_DIR}/bin/pip" ]]; then
+	log "Installing uv (Python package manager)..."
+	"${MINIFORGE_DIR}/bin/pip" install uv -q 2>/dev/null && log "uv installed ✓" || warn "Failed to install uv"
+elif command -v uv &>/dev/null; then
+	log "uv ✓"
+fi
+
+# Install agent-required skills from ClawHub into the AcaClaw profile.
+# These skills are defined in skills.json and needed by all agents.
+CORE_SKILLS=("nano-pdf" "xurl" "summarize" "ai-humanizer")
 SKILL_COUNT=0
 
 for skill_name in "${CORE_SKILLS[@]}"; do
 	log "Installing skill: ${skill_name}..."
-	if clawhub install "$skill_name" --force 2>/dev/null; then
+	if clawhub install "$skill_name" --workdir "${ACACLAW_STATE_DIR}" --force 2>/dev/null; then
 		SKILL_COUNT=$((SKILL_COUNT + 1))
 	else
 		warn "Failed to install ${skill_name}"
@@ -316,8 +324,8 @@ for skill_name in "${CORE_SKILLS[@]}"; do
 done
 
 log "${SKILL_COUNT}/${#CORE_SKILLS[@]} skills installed ✓"
-log "Bundled with OpenClaw: nano-pdf, clawhub, coding-agent, and more"
-log "Install more skills anytime: clawhub install <skill-name>"
+log "Bundled with OpenClaw: coding-agent, clawhub, and more"
+log "Install more skills anytime: clawhub install <skill-name> --workdir ${ACACLAW_STATE_DIR}"
 
 # --- Security defaults ---
 
