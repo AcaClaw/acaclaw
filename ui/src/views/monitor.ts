@@ -110,6 +110,7 @@ export class MonitorView extends LitElement {
   @state() private _activeRuns: AgentRun[] = [];
   @state() private _recentRuns: AgentRun[] = [];
   @state() private _sessions: SessionInfo[] = [];
+  @state() private _showAllSessions = false;
   private _chatUnsub: (() => void) | null = null;
 
   @state() private _refreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -651,6 +652,25 @@ export class MonitorView extends LitElement {
       color: var(--ac-text-tertiary);
     }
 
+    .load-more-btn {
+      display: block;
+      width: 100%;
+      margin-top: 8px;
+      padding: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ac-primary);
+      background: transparent;
+      border: 1px dashed var(--ac-border);
+      border-radius: var(--ac-radius-sm);
+      cursor: pointer;
+      transition: all var(--ac-transition-fast);
+    }
+    .load-more-btn:hover {
+      background: var(--ac-primary-bg);
+      border-color: var(--ac-primary);
+    }
+
     /* ── Projects ── */
     .project-list {
       display: flex;
@@ -1144,7 +1164,7 @@ export class MonitorView extends LitElement {
         ${hasSessions ? html`
           <div class="section-divider">Sessions</div>
           <div class="agent-run-list">
-            ${this._sessions.map((s) => html`
+            ${(this._showAllSessions ? this._sessions : this._sessions.slice(0, 3)).map((s) => html`
               <div class="agent-run session-info">
                 <span class="agent-run-icon">${s.agentIcon}</span>
                 <div class="agent-run-info">
@@ -1158,6 +1178,16 @@ export class MonitorView extends LitElement {
               </div>
             `)}
           </div>
+          ${!this._showAllSessions && this._sessions.length > 3 ? html`
+            <button class="load-more-btn" @click=${() => (this._showAllSessions = true)}>
+              Load more (${this._sessions.length - 3} more)
+            </button>
+          ` : nothing}
+          ${this._showAllSessions && this._sessions.length > 3 ? html`
+            <button class="load-more-btn" @click=${() => (this._showAllSessions = false)}>
+              Show less
+            </button>
+          ` : nothing}
         ` : nothing}
       </div>
     `;
