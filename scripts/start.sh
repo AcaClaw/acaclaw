@@ -338,6 +338,29 @@ else
     fi
 fi
 
+# --- Clean browser profile (reduce cold start time) ---
+_clean_browser_profile() {
+    local profile="${ACACLAW_DATA_DIR}/browser-app"
+    [[ -d "$profile" ]] || return 0
+    rm -rf \
+        "$profile/BrowserMetrics" \
+        "$profile/WidevineCdm" \
+        "$profile/Edge Wallet" \
+        "$profile/Edge Shopping" \
+        "$profile/Speech Recognition" \
+        "$profile/Safe Browsing" \
+        "$profile/SmartScreen" \
+        "$profile/component_crx_cache" \
+        "$profile/GrShaderCache" \
+        "$profile/ShaderCache" \
+        "$profile/Default/Service Worker" \
+        "$profile/Default/Cache" \
+        "$profile/Default/Code Cache" \
+        "$profile/Default/GPUCache" \
+        2>/dev/null || true
+}
+_clean_browser_profile
+
 # --- Open browser ---
 
 if [[ "$NO_BROWSER" == "true" ]]; then
@@ -387,12 +410,30 @@ open_app_window() {
             # is honoured. Without it, the IPC handoff to the existing browser
             # silently drops the --app flag and opens a regular tab.
             local app_profile="${ACACLAW_DATA_DIR}/browser-app"
+
+            # Disable heavy Edge/Chrome features for faster app-window startup
+            local -a app_flags=(
+                --user-data-dir="$app_profile"
+                --app="$URL"
+                --no-first-run
+                --no-default-browser-check
+                --disable-background-networking
+                --disable-component-update
+                --disable-sync
+                --disable-translate
+                --disable-client-side-phishing-detection
+                --disable-default-apps
+                --disable-extensions
+                --disable-features=TranslateUI,OptimizationHints,MediaRouter,msSmartScreenProtection,EdgeCollections,EdgeDiscoverWidget,msEdgeShopping,EdgeWallet,msEdgeOnRamp
+                --password-store=basic
+            )
+
             if [[ -x "/opt/microsoft/msedge/microsoft-edge" ]]; then
-                /opt/microsoft/msedge/microsoft-edge --user-data-dir="$app_profile" --app="$URL" --no-first-run --no-default-browser-check &
+                /opt/microsoft/msedge/microsoft-edge "${app_flags[@]}" &
             elif [[ -x "/opt/google/chrome/google-chrome" ]]; then
-                /opt/google/chrome/google-chrome --user-data-dir="$app_profile" --app="$URL" --no-first-run --no-default-browser-check &
+                /opt/google/chrome/google-chrome "${app_flags[@]}" &
             elif command -v chromium-browser &>/dev/null; then
-                chromium-browser --user-data-dir="$app_profile" --app="$URL" --no-first-run --no-default-browser-check &
+                chromium-browser "${app_flags[@]}" &
             elif command -v xdg-open &>/dev/null; then
                 xdg-open "$URL" 2>/dev/null
             else
