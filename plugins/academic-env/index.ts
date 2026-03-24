@@ -1,8 +1,9 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/acaclaw-academic-env";
-import { spawn, execSync } from "node:child_process";
+import { spawn, execFile, execSync } from "node:child_process";
 import fs from "node:fs";
+import { readFile, statfs } from "node:fs/promises";
 import { join } from "node:path";
-import { homedir } from "node:os";
+import { homedir, cpus as osCpus, totalmem, freemem, loadavg, hostname as osHostname, uptime as osUptime, type as osType } from "node:os";
 import {
 	resolveConfig,
 	readInstalledDiscipline,
@@ -45,12 +46,19 @@ const academicEnvPlugin = {
 		// --- LLM context injection ---
 		// Inject the computing environment description into the system prompt
 		// so the LLM knows which packages are available and doesn't try to install them.
+		// Cache detectEnvironment() to avoid 4 synchronous conda subprocess calls (~1.5s) per message.
+		let envDetectCache: { data: ReturnType<typeof detectEnvironment>; ts: number } | null = null;
+		const ENV_DETECT_CACHE_TTL = 300_000; // 5 minutes — env rarely changes mid-session
+		function invalidateEnvDetectCache() { envDetectCache = null; }
+
 		api.on(
 			"before_prompt_build",
 			async () => {
-				const current = detectEnvironment(discipline);
+				if (!envDetectCache || Date.now() - envDetectCache.ts > ENV_DETECT_CACHE_TTL) {
+					envDetectCache = { data: detectEnvironment(discipline), ts: Date.now() };
+				}
 				return {
-					appendSystemContext: buildEnvContext(current),
+					appendSystemContext: buildEnvContext(envDetectCache.data),
 				};
 			},
 			{ priority: 50 },
@@ -250,6 +258,7 @@ const academicEnvPlugin = {
 			}
 
 			if (result.code === 0) {
+				invalidateEnvListCache();
 				respond(true, { name: condaName, installed: true });
 			} else {
 				respond(false, undefined, { code: "INSTALL_FAILED", message: `Conda env creation failed (exit ${result.code})` });
@@ -273,6 +282,7 @@ const academicEnvPlugin = {
 			const result = await runWithProgress(conda.path, args, context.broadcast, "acaclaw.env.remove.progress", rawName);
 
 			if (result.code === 0) {
+				invalidateEnvListCache();
 				respond(true, { name: condaName, removed: true });
 			} else {
 				respond(false, undefined, { code: "REMOVE_FAILED", message: `Conda env removal failed (exit ${result.code})` });
@@ -280,10 +290,24 @@ const academicEnvPlugin = {
 		});
 
 		// --- Gateway: acaclaw.env.list ---
+		// Cache env list results to avoid expensive conda subprocess calls on every poll
+		let envListCache: { data: unknown; ts: number } | null = null;
+		const ENV_LIST_CACHE_TTL = 60_000; // 60 seconds
+
+		function invalidateEnvListCache() { envListCache = null; invalidateEnvDetectCache(); }
+
 		api.registerGatewayMethod("acaclaw.env.list", async ({ respond }) => {
+			// Return cached result if fresh
+			if (envListCache && Date.now() - envListCache.ts < ENV_LIST_CACHE_TTL) {
+				respond(true, envListCache.data);
+				return;
+			}
+
 			const conda = findConda();
 			if (!conda.available || !conda.path) {
-				respond(true, { environments: [] });
+				const result = { environments: [] };
+				envListCache = { data: result, ts: Date.now() };
+				respond(true, result);
 				return;
 			}
 
@@ -336,7 +360,9 @@ const academicEnvPlugin = {
 					installed: envExists,
 				});
 			}
-			respond(true, { environments });
+			const result = { environments };
+			envListCache = { data: result, ts: Date.now() };
+			respond(true, result);
 		});
 
 		// --- Gateway: acaclaw.env.pip.list ---
@@ -492,6 +518,153 @@ const academicEnvPlugin = {
 				respond(false, undefined, { code: "INSTALL_FAILED", message: `clawhub install failed (exit ${result.code})` });
 			}
 		});
+
+		// --- Gateway: acaclaw.system.stats ---
+		// Expose CPU, memory, disk, and GPU usage metrics
+		{
+			let prevCpu: { idle: number; total: number } | null = null;
+			let prevRc6: { residency: number; time: number } | null = null;
+
+			function cpuSnap() {
+				const cores = osCpus();
+				let idle = 0, total = 0;
+				for (const c of cores) {
+					idle += c.times.idle;
+					total += c.times.user + c.times.nice + c.times.sys + c.times.idle + c.times.irq;
+				}
+				return { idle, total };
+			}
+
+			function cpuPct(): number {
+				const curr = cpuSnap();
+				if (!prevCpu) { prevCpu = curr; return 0; }
+				const dIdle = curr.idle - prevCpu.idle;
+				const dTotal = curr.total - prevCpu.total;
+				prevCpu = curr;
+				return dTotal === 0 ? 0 : Math.round((1 - dIdle / dTotal) * 100);
+			}
+
+			/** Try NVIDIA GPU via nvidia-smi */
+			async function nvidiGpu(): Promise<{
+				name: string; usagePercent: number; memTotal: number;
+				memUsed: number; memFree: number; memPercent: number;
+				temperature: number; driver: string;
+			} | null> {
+				return new Promise((resolve) => {
+					execFile("nvidia-smi", [
+						"--query-gpu=name,utilization.gpu,memory.total,memory.used,memory.free,temperature.gpu,driver_version",
+						"--format=csv,noheader,nounits",
+					], { timeout: 3000 }, (err, stdout) => {
+						if (err || !stdout.trim()) return resolve(null);
+						const parts = stdout.trim().split(", ");
+						if (parts.length < 7) return resolve(null);
+						const memTotal = parseFloat(parts[2]) * 1048576; // MiB → bytes
+						const memUsed = parseFloat(parts[3]) * 1048576;
+						const memFree = parseFloat(parts[4]) * 1048576;
+						resolve({
+							name: parts[0],
+							usagePercent: parseFloat(parts[1]),
+							memTotal, memUsed, memFree,
+							memPercent: memTotal > 0 ? Math.round((memUsed / memTotal) * 100) : 0,
+							temperature: parseFloat(parts[5]),
+							driver: parts[6],
+						});
+					});
+				});
+			}
+
+			/** Try Intel iGPU via sysfs (rc6 residency + frequency) */
+			async function intelGpu(): Promise<{
+				name: string; usagePercent: number; freqMhz: number; maxFreqMhz: number;
+			} | null> {
+				// Find the DRM card with Intel vendor (0x8086)
+				const drmCards = ["/sys/class/drm/card0", "/sys/class/drm/card1", "/sys/class/drm/card2"];
+				let cardPath = "";
+				for (const card of drmCards) {
+					try {
+						const vendor = (await readFile(`${card}/device/vendor`, "utf-8")).trim();
+						if (vendor === "0x8086") { cardPath = card; break; }
+					} catch { /* try next */ }
+				}
+				if (!cardPath) return null;
+
+				const gt0 = `${cardPath}/gt/gt0`;
+				try {
+					const [actFreqStr, maxFreqStr, rc6Str] = await Promise.all([
+						readFile(`${gt0}/rps_act_freq_mhz`, "utf-8").catch(() => "0"),
+						readFile(`${gt0}/rps_max_freq_mhz`, "utf-8").catch(() => "0"),
+						readFile(`${gt0}/rc6_residency_ms`, "utf-8").catch(() => ""),
+					]);
+
+					const actFreq = parseInt(actFreqStr.trim(), 10) || 0;
+					const maxFreq = parseInt(maxFreqStr.trim(), 10) || 0;
+
+					// Calculate GPU active % from RC6 residency delta
+					let usagePercent = 0;
+					const rc6Ms = parseInt(rc6Str.trim(), 10);
+					if (!isNaN(rc6Ms)) {
+						const now = Date.now();
+						if (prevRc6) {
+							const dt = now - prevRc6.time;
+							const dRc6 = rc6Ms - prevRc6.residency;
+							if (dt > 0) usagePercent = Math.max(0, Math.min(100, Math.round((1 - dRc6 / dt) * 100)));
+						}
+						prevRc6 = { residency: rc6Ms, time: now };
+					}
+
+					// Detect model name from lspci (cached)
+					let name = "Intel Integrated GPU";
+					try {
+						const lspci = execSync("lspci -s 00:02.0 2>/dev/null", { timeout: 2000, encoding: "utf-8" });
+						const m = lspci.match(/\[(.+?)\]/);
+						if (m) name = m[1];
+					} catch { /* keep generic name */ }
+
+					return { name, usagePercent, freqMhz: actFreq, maxFreqMhz: maxFreq };
+				} catch { return null; }
+			}
+
+			api.registerGatewayMethod("acaclaw.system.stats", async ({ respond }) => {
+				try {
+					const totalMem = totalmem();
+					const freeMem = freemem();
+					const usedMem = totalMem - freeMem;
+					let disk = { total: 0, free: 0, used: 0 };
+					try {
+						const st = await statfs(homedir());
+						const t = st.blocks * st.bsize;
+						const f = st.bavail * st.bsize;
+						disk = { total: t, free: f, used: t - f };
+					} catch {}
+					const cores = osCpus();
+
+					// GPU detection: try NVIDIA first, then Intel iGPU
+					let gpu: Record<string, unknown> | null = null;
+					const nv = await nvidiGpu();
+					if (nv) {
+						gpu = { type: "nvidia", name: nv.name, usagePercent: nv.usagePercent,
+							memTotal: nv.memTotal, memUsed: nv.memUsed, memFree: nv.memFree,
+							memPercent: nv.memPercent, temperature: nv.temperature, driver: nv.driver };
+					} else {
+						const intel = await intelGpu();
+						if (intel) {
+							gpu = { type: "intel", name: intel.name, usagePercent: intel.usagePercent,
+								freqMhz: intel.freqMhz, maxFreqMhz: intel.maxFreqMhz };
+						}
+					}
+
+					respond(true, {
+						cpu: { cores: cores.length, model: cores[0]?.model ?? "unknown", usagePercent: cpuPct(), loadAvg: loadavg() },
+						memory: { total: totalMem, used: usedMem, free: freeMem, usagePercent: Math.round((usedMem / totalMem) * 100) },
+						disk: { total: disk.total, used: disk.used, free: disk.free, usagePercent: disk.total > 0 ? Math.round((disk.used / disk.total) * 100) : 0 },
+						gpu,
+						system: { hostname: osHostname(), uptime: osUptime(), platform: osType() },
+					});
+				} catch (err) {
+					respond(false, undefined, { code: "SYSTEM_STATS_ERROR", message: String(err) });
+				}
+			});
+		}
 
 		api.registerCli(
 			({ program }) => {
