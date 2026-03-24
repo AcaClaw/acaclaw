@@ -841,6 +841,11 @@ export class StaffView extends LitElement {
       color: #15803d;
     }
     .skill-pill.bundled .remove-x { display: none; }
+    .skill-pill.not-installed {
+      background: #fef3c7;
+      border-color: #fde68a;
+      color: #92400e;
+    }
 
     .search-skill-bar {
       display: flex;
@@ -1609,31 +1614,24 @@ export class StaffView extends LitElement {
     this._persistStaff();
   }
 
-  private _searchClawhub(staffId: string) {
-    const q = (this._searchQuery[staffId] ?? "").trim().toLowerCase();
+  private async _searchClawhub(staffId: string) {
+    const q = (this._searchQuery[staffId] ?? "").trim();
     if (!q) return;
     this._searching = true;
-    // Simulate clawhub search with demo results
-    const CLAWHUB_CATALOG = [
-      { id: "paper-search", name: "paper-search", description: "Search arXiv, PubMed, Semantic Scholar", category: "Academic" },
-      { id: "citation-manager", name: "citation-manager", description: "Format references in APA, Vancouver, Nature", category: "Academic" },
-      { id: "data-analyst", name: "data-analyst", description: "Statistical analysis from natural language", category: "Academic" },
-      { id: "ai-humanizer", name: "ai-humanizer", description: "Humanize AI-generated text", category: "Utility" },
-      { id: "lab-notebook", name: "lab-notebook", description: "Structured experiment logging", category: "Academic" },
-      { id: "protein-fold", name: "protein-fold", description: "AlphaFold structure prediction", category: "Biology" },
-      { id: "mol-viewer", name: "mol-viewer", description: "3D molecular visualization", category: "Chemistry" },
-      { id: "grant-writer", name: "grant-writer", description: "NIH/NSF grant draft assistant", category: "Academic" },
-      { id: "figure-polish", name: "figure-polish", description: "Publication-ready figure formatting", category: "Utility" },
-      { id: "lit-review", name: "lit-review", description: "Systematic literature review", category: "Academic" },
-    ];
-    setTimeout(() => {
-      const staff = this._getStaff(staffId);
-      this._searchResults = CLAWHUB_CATALOG.filter(s =>
-        (s.name.includes(q) || s.description.toLowerCase().includes(q)) &&
-        !staff?.skills.includes(s.id)
+    try {
+      const res = await gateway.call<{ results: Array<{ slug: string; name: string; score: number }> }>(
+        "acaclaw.skill.search", { query: q, limit: 20 }, { timeoutMs: 15_000 },
       );
+      const staff = this._getStaff(staffId);
+      this._searchResults = (res?.results ?? [])
+        .filter(r => !staff?.skills.includes(r.slug))
+        .map(r => ({ id: r.slug, name: r.name, description: "", category: "" }));
+    } catch (err) {
+      console.error("[clawhub-search] error:", err);
+      this._searchResults = [];
+    } finally {
       this._searching = false;
-    }, 400);
+    }
   }
 
   private _openChat(staffId: string) {
@@ -1961,14 +1959,26 @@ export class StaffView extends LitElement {
       byCategory.get(skill.category)!.push(skill);
     }
 
+    // Count how many assigned skills are actually installed/eligible in the gateway
+    // Use the same definition as the Skills view: eligible AND (not bundled OR agent-required)
+    const AGENT_REQUIRED = new Set(["nano-pdf", "xurl", "summarize", "ai-humanizer"]);
+    const installedNames = new Set(
+      this._gatewaySkills
+        .filter(g => g.eligible && (g.source !== "openclaw-bundled" || AGENT_REQUIRED.has(g.name)))
+        .map(g => g.name)
+    );
+    const assignedInstalled = staff.skills.filter(sk => installedNames.has(sk)).length;
+    const assignedNotInstalled = staff.skills.length - assignedInstalled;
+
     return html`
-      <div class="panel-section-title">Assigned Skills (${staff.skills.length})</div>
+      <div class="panel-section-title">Assigned Skills (${assignedInstalled} installed${assignedNotInstalled > 0 ? `, ${assignedNotInstalled} not installed` : ""})</div>
       <div class="skill-pills" style="margin-bottom:20px">
         ${staff.skills.map(sk => {
           const info = allSkills.find(a => a.id === sk);
+          const isInstalled = installedNames.has(sk);
           return html`
-            <span class="skill-pill ${info?.bundled ? "bundled" : ""}" title="${info?.description ?? sk}">
-              ${info?.name ?? sk}
+            <span class="skill-pill ${info?.bundled ? "bundled" : ""} ${!isInstalled ? "not-installed" : ""}" title="${isInstalled ? (info?.description ?? sk) : `${info?.name ?? sk} — not installed`}">
+              ${info?.name ?? sk}${!isInstalled ? " ⚠" : ""}
               <span class="remove-x" @click=${() => this._removeSkillFromStaff(staff.id, sk)}>\u00d7</span>
             </span>
           `;

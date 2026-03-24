@@ -1,5 +1,5 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/acaclaw-academic-env";
-import { spawn, execFile, execSync } from "node:child_process";
+import { spawn, execFile, execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
 import { readFile, statfs } from "node:fs/promises";
 import { join, dirname, resolve } from "node:path";
@@ -544,6 +544,61 @@ const academicEnvPlugin = {
 			} else {
 				context.broadcast("acaclaw.skill.install.progress", { slug, line: `✗ Install failed (exit ${result.code})` });
 				respond(false, undefined, { code: "INSTALL_FAILED", message: `clawhub install failed (exit ${result.code})` });
+			}
+		});
+
+		// --- Gateway: acaclaw.skill.search ---
+		// Search the ClawHub registry using the clawhub CLI's vector search
+		api.registerGatewayMethod("acaclaw.skill.search", async ({ params, respond }) => {
+			const query = typeof params.query === "string" ? params.query.trim() : "";
+			if (!query) {
+				respond(false, undefined, { code: "MISSING_QUERY", message: "Missing search query" });
+				return;
+			}
+
+			// Find clawhub CLI
+			let clawhubPath = "clawhub";
+			try {
+				const resolved = execSync("which clawhub", { encoding: "utf-8" }).trim();
+				if (resolved) clawhubPath = resolved;
+			} catch {
+				respond(false, undefined, { code: "NO_CLAWHUB", message: "clawhub CLI not found. Run: npm i -g clawhub" });
+				return;
+			}
+
+			const limit = Math.max(1, Math.min(100, Number(params.limit) || 20));
+			const args = ["search", "--limit", String(limit), query];
+			// Strip proxy env vars — gateway may have a proxy configured that isn't always running
+			const searchEnv = { ...process.env, NO_COLOR: "1" };
+			delete searchEnv.HTTP_PROXY;
+			delete searchEnv.HTTPS_PROXY;
+			delete searchEnv.http_proxy;
+			delete searchEnv.https_proxy;
+			try {
+				const output = execFileSync(clawhubPath, args, {
+					encoding: "utf-8",
+					timeout: 15_000,
+					env: searchEnv,
+				}).trim();
+
+				// CLI outputs plain text: "slug  Name  (score)" per line
+				const results = output
+					.split("\n")
+					.filter(l => l.trim())
+					.map(line => {
+						const scoreMatch = line.match(/\(([0-9.]+)\)\s*$/);
+						const score = scoreMatch ? parseFloat(scoreMatch[1]) : 0;
+						const withoutScore = scoreMatch ? line.slice(0, scoreMatch.index).trim() : line.trim();
+						// First token is slug, rest is display name
+						const parts = withoutScore.split(/\s{2,}/);
+						const slug = parts[0] ?? withoutScore;
+						const name = parts[1] ?? slug;
+						return { slug, name, score };
+					});
+				respond(true, { results });
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : String(err);
+				respond(false, undefined, { code: "SEARCH_FAILED", message: `clawhub search failed: ${msg}` });
 			}
 		});
 

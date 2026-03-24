@@ -47,6 +47,9 @@ export class SkillsView extends LitElement {
   @state() private _searchQuery = "";
   @state() private _installing = "";
   @state() private _installLog: string[] = [];
+  @state() private _searchResults: ClawHubSkill[] | null = null;
+  @state() private _searching = false;
+  private _searchDebounce: ReturnType<typeof setTimeout> | null = null;
   private _gatewayListener: EventListener | null = null;
 
   static override styles = css`
@@ -90,6 +93,12 @@ export class SkillsView extends LitElement {
       display: flex;
       gap: 8px;
       margin-bottom: 20px;
+      align-items: center;
+    }
+    .searching-indicator {
+      color: var(--ac-text-muted);
+      font-size: 12px;
+      white-space: nowrap;
     }
     .search-input {
       flex: 1;
@@ -105,23 +114,25 @@ export class SkillsView extends LitElement {
       box-shadow: 0 0 0 3px var(--ac-primary-bg);
     }
 
-    .skill-list {
-      display: flex;
-      flex-direction: column;
-      gap: 1px;
-      background: var(--ac-border);
-      border: 1px solid var(--ac-border);
-      border-radius: var(--ac-radius);
-      overflow: hidden;
-      box-shadow: var(--ac-shadow-sm);
+    .skill-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
     }
 
-    .skill-item {
+    .skill-card {
       display: flex;
-      align-items: center;
-      gap: 16px;
-      padding: 16px 20px;
+      flex-direction: column;
+      padding: 20px;
       background: var(--ac-bg-surface);
+      border: 1px solid var(--ac-border);
+      border-radius: var(--ac-radius);
+      box-shadow: var(--ac-shadow-sm);
+      transition: box-shadow 0.15s, border-color 0.15s;
+    }
+    .skill-card:hover {
+      box-shadow: var(--ac-shadow-md, 0 4px 12px rgba(0,0,0,0.08));
+      border-color: var(--ac-primary-bg, #dbeafe);
     }
 
     .skill-info {
@@ -143,17 +154,19 @@ export class SkillsView extends LitElement {
     .skill-desc {
       font-size: 13px;
       color: var(--ac-text-secondary);
-      margin-top: 2px;
+      margin-top: 6px;
+      line-height: 1.4;
     }
     .skill-meta {
       font-size: 11px;
       color: var(--ac-text-muted);
-      margin-top: 4px;
+      margin-top: 8px;
     }
 
     .skill-actions {
       display: flex;
       gap: 8px;
+      margin-top: 14px;
       flex-shrink: 0;
     }
 
@@ -307,6 +320,11 @@ export class SkillsView extends LitElement {
 
   private _filteredClawHub(): ClawHubSkill[] {
     const installedNames = new Set(this._installed.map(s => s.name));
+    // If we have API search results, show those (excluding already-installed)
+    if (this._searchResults !== null) {
+      return this._searchResults.filter(s => !installedNames.has(s.name));
+    }
+    // Default: show curated list
     const available = CURATED_SKILLS.filter(s => !installedNames.has(s.name));
     if (!this._searchQuery) return available;
     const q = this._searchQuery.toLowerCase();
@@ -316,6 +334,31 @@ export class SkillsView extends LitElement {
         s.description.toLowerCase().includes(q) ||
         s.category.toLowerCase().includes(q),
     );
+  }
+
+  private async _searchClawHub(query: string) {
+    if (!query.trim()) {
+      this._searchResults = null;
+      return;
+    }
+    this._searching = true;
+    try {
+      const res = await gateway.call<{ results: Array<{ slug: string; name: string; score: number }> }>(
+        "acaclaw.skill.search", { query: query.trim(), limit: 20 }, { timeoutMs: 15_000 },
+      );
+      this._searchResults = (res?.results ?? []).map(r => ({
+        name: r.slug,
+        description: r.name,
+        author: "clawhub",
+        category: "",
+      }));
+    } catch (err) {
+      console.error("[clawhub-search] error:", err);
+      // Fall back to local filtering
+      this._searchResults = null;
+    } finally {
+      this._searching = false;
+    }
   }
 
   override render() {
@@ -366,10 +409,10 @@ export class SkillsView extends LitElement {
       ${skills.length === 0
         ? html`<div class="empty-state">No skills found</div>`
         : html`
-            <div class="skill-list">
+            <div class="skill-grid">
               ${skills.map(
                 (s) => html`
-                  <div class="skill-item">
+                  <div class="skill-card">
                     <div class="skill-info">
                       <div class="skill-name">
                         ${s.name}
@@ -422,9 +465,19 @@ export class SkillsView extends LitElement {
           class="search-input"
           placeholder="Search ClawHub…"
           .value=${this._searchQuery}
-          @input=${(e: Event) =>
-            (this._searchQuery = (e.target as HTMLInputElement).value)}
+          @input=${(e: Event) => {
+            this._searchQuery = (e.target as HTMLInputElement).value;
+            if (this._searchDebounce) clearTimeout(this._searchDebounce);
+            this._searchDebounce = setTimeout(() => this._searchClawHub(this._searchQuery), 500);
+          }}
+          @keydown=${(e: KeyboardEvent) => {
+            if (e.key === "Enter") {
+              if (this._searchDebounce) clearTimeout(this._searchDebounce);
+              this._searchClawHub(this._searchQuery);
+            }
+          }}
         />
+        ${this._searching ? html`<span class="searching-indicator">Searching…</span>` : ""}
       </div>
 
       ${skills.length === 0
@@ -438,10 +491,10 @@ export class SkillsView extends LitElement {
             </div>
           `
         : html`
-            <div class="skill-list">
+            <div class="skill-grid">
               ${skills.map(
                 (s) => html`
-                  <div class="skill-item">
+                  <div class="skill-card">
                     <div class="skill-info">
                       <div class="skill-name">
                         ${s.name}
