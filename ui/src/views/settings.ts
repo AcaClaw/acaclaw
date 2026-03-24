@@ -5,7 +5,7 @@ import { gateway } from "../controllers/gateway.js";
 
 type Theme = "light" | "dark" | "system";
 type SecurityMode = "standard" | "maximum";
-type Tab = "appearance" | "security" | "connection";
+type Tab = "appearance" | "security" | "connection" | "openclaw";
 
 interface SecuritySettings {
   mode: SecurityMode;
@@ -156,6 +156,7 @@ export class SettingsView extends LitElement {
   @state() private _gwLatency = 0;
   @state() private _dirty = false;
 
+
   override connectedCallback() {
     super.connectedCallback();
     this._loadSettings();
@@ -228,8 +229,8 @@ export class SettingsView extends LitElement {
       <div class="subtitle">Appearance, security policies, and connection health</div>
 
       <div class="tabs">
-        ${(["appearance", "security", "connection"] as Tab[]).map(
-          (t) => html`<div class="tab ${this._tab === t ? "active" : ""}" @click=${() => (this._tab = t)}>${t[0].toUpperCase() + t.slice(1)}</div>`
+        ${(["appearance", "security", "connection", "openclaw"] as Tab[]).map(
+          (t) => html`<div class="tab ${this._tab === t ? "active" : ""}" @click=${() => { if (t === "openclaw") { this._openOpenClawUI(); } else { this._tab = t; } }}>${t === "openclaw" ? "OpenClaw" : t[0].toUpperCase() + t.slice(1)}</div>`
         )}
       </div>
 
@@ -318,6 +319,14 @@ export class SettingsView extends LitElement {
     `;
   }
 
+  private _openOpenClawUI() {
+    const token = document.querySelector<HTMLMetaElement>('meta[name="oc-token"]')?.content ?? "";
+    const url = token
+      ? `http://localhost:18789/#token=${encodeURIComponent(token)}`
+      : "http://localhost:18789/";
+    window.open(url, "_blank", "noopener");
+  }
+
   private _renderConnection() {
     return html`
       <div class="section">
@@ -339,4 +348,5 @@ export class SettingsView extends LitElement {
       </div>
     `;
   }
+
 }
