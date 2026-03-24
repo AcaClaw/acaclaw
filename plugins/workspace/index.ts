@@ -89,6 +89,10 @@ const workspacePlugin = {
 		// -------------------------------------------------------------------------
 		// Hook: before_prompt_build — inject workspace file tree into LLM context
 		// -------------------------------------------------------------------------
+		// Cache workspace info per directory to avoid repeated sync fs walks (~0.1-0.5s each)
+		const wsInfoCache = new Map<string, { data: ReturnType<typeof getWorkspaceInfo>; ts: number }>();
+		const WS_INFO_CACHE_TTL = 120_000; // 2 minutes
+
 		api.on(
 			"before_prompt_build",
 			async (_event, ctx) => {
@@ -100,7 +104,15 @@ const workspacePlugin = {
 				const agentId = sk.startsWith("agent:") ? sk.split(":")[1] : (ctx.agentId ?? "");
 				const workspaceDir = getEffectiveWorkdir(agentId, defaultDir);
 
-				const info = getWorkspaceInfo(workspaceDir);
+				const cached = wsInfoCache.get(workspaceDir);
+				const info = cached && Date.now() - cached.ts < WS_INFO_CACHE_TTL
+					? cached.data
+					: (() => {
+						const fresh = getWorkspaceInfo(workspaceDir);
+						wsInfoCache.set(workspaceDir, { data: fresh, ts: Date.now() });
+						return fresh;
+					})();
+
 				const context = buildWorkspaceContext(info);
 
 				// Inject agent identity — use session key to distinguish Aca vs specialist

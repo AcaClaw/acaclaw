@@ -18,7 +18,7 @@
       },
       "enableNetworkPolicy": {
         "type": "boolean",
-        "default": true,
+        "default": false,
         "description": "Restrict network access to academic domains",
         "uiHint": "Enable network allowlist"
       },

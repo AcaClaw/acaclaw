@@ -12,6 +12,7 @@
   "agents": {
     "defaults": {
       "workspace": "~/AcaClaw",
+      "thinkingDefault": "adaptive",
       "sandbox": {
         "mode": "off"
       }

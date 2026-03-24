@@ -30,7 +30,7 @@ export interface SecurityConfig {
 export const DEFAULT_CONFIG: SecurityConfig = {
 	mode: "standard",
 	auditLogDir: join(homedir(), ".acaclaw", "audit"),
-	enableNetworkPolicy: true,
+	enableNetworkPolicy: false,
 	enableCredentialScrubbing: true,
 	enableInjectionDetection: true,
 	customDenyCommands: [],

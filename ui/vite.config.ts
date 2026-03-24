@@ -15,4 +15,12 @@ export default defineConfig({
       "/ready": "http://localhost:2090",
     },
   },
+  preview: {
+    port: 4173,
+    proxy: {
+      "/api": "http://localhost:2090",
+      "/health": "http://localhost:2090",
+      "/ready": "http://localhost:2090",
+    },
+  },
 });

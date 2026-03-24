@@ -68,8 +68,12 @@ class GatewayController extends EventTarget {
     if (this._ws) return;
     this._setState("connecting");
 
+    // Use gateway URL from meta tag (for dev/proxy setups) or same host
+    const gwMeta = document.querySelector<HTMLMetaElement>('meta[name="oc-gateway-url"]');
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${protocol}//${location.host}/`;
+    const url = gwMeta?.content
+      ? gwMeta.content
+      : `${protocol}//${location.host}/`;
     this._ws = new WebSocket(url);
 
     this._ws.onopen = () => {
