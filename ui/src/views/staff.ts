@@ -1301,7 +1301,10 @@ export class StaffView extends LitElement {
   private async _loadGatewaySkills() {
     try {
       const res = await gateway.call<{ skills: typeof this._gatewaySkills }>("skills.status");
-      if (res?.skills) this._gatewaySkills = res.skills;
+      if (res?.skills) {
+        this._gatewaySkills = res.skills;
+        this.requestUpdate();
+      }
     } catch { /* gateway not ready */ }
   }
 
@@ -1735,7 +1738,7 @@ export class StaffView extends LitElement {
         <div class="kv-row">
           <div class="kv-label">Skills</div>
           <div class="kv-value" style="display:flex;align-items:center;gap:6px">
-            <span class="skills-count">${this._countManagedSkills(s)} skill${this._countManagedSkills(s) !== 1 ? 's' : ''}</span>
+            <span class="skills-count">${s.skills.length} skill${s.skills.length !== 1 ? 's' : ''}</span>
             <button class="manage-link" @click=${() => this._openPanel(s.id, "skills")}>Manage</button>
           </div>
         </div>
@@ -1946,15 +1949,9 @@ export class StaffView extends LitElement {
       byCategory.get(skill.category)!.push(skill);
     }
 
-    // Count how many assigned skills are actually installed/eligible in the gateway
-    // Use the same definition as the Skills view: eligible AND (not bundled OR agent-required)
-    const AGENT_REQUIRED = new Set(["nano-pdf", "xurl", "summarize", "ai-humanizer"]);
-    const installedNames = new Set(
-      this._gatewaySkills
-        .filter(g => g.eligible && (g.source !== "openclaw-bundled" || AGENT_REQUIRED.has(g.name)))
-        .map(g => g.name)
-    );
-    const assignedInstalled = staff.skills.filter(sk => installedNames.has(sk)).length;
+    // Count how many assigned skills are available in the gateway
+    const gatewayNames = new Set(this._gatewaySkills.map(g => g.name));
+    const assignedInstalled = staff.skills.filter(sk => gatewayNames.has(sk)).length;
     const assignedNotInstalled = staff.skills.length - assignedInstalled;
 
     return html`
@@ -1962,7 +1959,7 @@ export class StaffView extends LitElement {
       <div class="skill-pills" style="margin-bottom:20px">
         ${staff.skills.map(sk => {
           const info = allSkills.find(a => a.id === sk);
-          const isInstalled = installedNames.has(sk);
+          const isInstalled = gatewayNames.has(sk);
           return html`
             <span class="skill-pill ${info?.bundled ? "bundled" : ""} ${!isInstalled ? "not-installed" : ""}" title="${isInstalled ? (info?.description ?? sk) : `${info?.name ?? sk} — not installed`}">
               ${info?.name ?? sk}${!isInstalled ? " ⚠" : ""}
