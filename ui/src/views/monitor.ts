@@ -868,8 +868,9 @@ export class MonitorView extends LitElement {
     } catch { /* plugin not loaded */ }
 
     try {
-      const skillRes = await gateway.call<{ skills: Array<{ name: string; bundled: boolean }> }>("skills.status");
-      this._skillCount = skillRes?.skills?.filter(s => !s.bundled).length ?? 0;
+      const skillRes = await gateway.call<{ skills: Array<{ name: string; source: string }> }>("skills.status");
+      const AGENT_REQUIRED = new Set(["nano-pdf", "xurl", "summarize", "ai-humanizer"]);
+      this._skillCount = skillRes?.skills?.filter(s => s.source !== "openclaw-bundled" || AGENT_REQUIRED.has(s.name)).length ?? 0;
     } catch { /* keep zeros */ }
 
     try {

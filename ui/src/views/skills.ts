@@ -2,6 +2,13 @@ import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { gateway } from "../controllers/gateway.js";
 
+/** Skills from skills.json agent_required — bundled by gateway but installed via clawhub. */
+const AGENT_REQUIRED_SKILLS = new Set(["nano-pdf", "xurl", "summarize", "ai-humanizer"]);
+
+/** A skill counts as user-installed if managed OR in the agent-required list. */
+const isUserInstalled = (s: { name: string; source: string }) =>
+  s.source !== "openclaw-bundled" || AGENT_REQUIRED_SKILLS.has(s.name);
+
 interface Skill {
   name: string;
   description: string;
@@ -304,7 +311,7 @@ export class SkillsView extends LitElement {
           class="tab ${this._tab === "installed" ? "active" : ""}"
           @click=${() => { this._tab = "installed"; this._searchQuery = ""; }}
         >
-          Installed (${this._installed.filter(s => !s.bundled).length})
+          Installed (${this._installed.filter(isUserInstalled).length})
         </div>
         <div
           class="tab ${this._tab === "clawhub" ? "active" : ""}"
@@ -350,9 +357,9 @@ export class SkillsView extends LitElement {
                     <div class="skill-info">
                       <div class="skill-name">
                         ${s.name}
-                        ${s.bundled
-                          ? html`<span class="skill-version">bundled</span>`
-                          : html`<span class="skill-version">${s.source}</span>`}
+                        ${isUserInstalled(s)
+                          ? html`<span class="skill-version">installed</span>`
+                          : html`<span class="skill-version">bundled</span>`}
                       </div>
                       <div class="skill-desc">${s.description}</div>
                       <div class="skill-meta">
@@ -365,7 +372,7 @@ export class SkillsView extends LitElement {
                       </div>
                     </div>
                     <div class="skill-actions">
-                      ${s.bundled
+                      ${!isUserInstalled(s)
                         ? html`<span
                             style="font-size: 11px; color: var(--ac-text-muted)"
                             >Bundled</span
@@ -382,8 +389,8 @@ export class SkillsView extends LitElement {
               )}
             </div>
             <div class="footer-stats">
-              ${this._installed.filter((s) => !s.bundled).length} installed ·
-              ${this._installed.filter((s) => s.bundled).length} bundled ·
+              ${this._installed.filter(isUserInstalled).length} installed ·
+              ${this._installed.filter((s) => !isUserInstalled(s)).length} bundled ·
               ${this._installed.filter((s) => s.eligible).length} eligible
             </div>
           `}
