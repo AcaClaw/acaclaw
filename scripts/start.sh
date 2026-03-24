@@ -47,6 +47,40 @@ _try_bootstrap() {
 }
 _try_bootstrap
 
+# --- Proxy bootstrap (desktop launchers don't inherit proxy env) ---
+# Source proxy vars from the system proxy config if not already set.
+_load_proxy() {
+    [[ -n "${HTTP_PROXY:-}" ]] && return 0
+    # Check common proxy config locations
+    for f in "${HOME}/.proxy_env" "${HOME}/.config/proxy.env"; do
+        if [[ -f "$f" ]]; then
+            # shellcheck disable=SC1090
+            source "$f"
+            return 0
+        fi
+    done
+    # Fallback: try to read from systemd unit env (if openclaw-gateway.service exists)
+    if command -v systemctl &>/dev/null; then
+        local env_line
+        env_line="$(systemctl --user show openclaw-gateway.service -p Environment 2>/dev/null || true)"
+        if [[ "$env_line" == *"HTTP_PROXY="* ]]; then
+            local proxy_val
+            proxy_val="$(echo "$env_line" | grep -oP 'HTTP_PROXY=\S+' | head -1 | cut -d= -f2)"
+            if [[ -n "$proxy_val" ]]; then
+                export HTTP_PROXY="$proxy_val" HTTPS_PROXY="$proxy_val"
+                export http_proxy="$proxy_val" https_proxy="$proxy_val"
+                local no_proxy_val
+                no_proxy_val="$(echo "$env_line" | grep -oP 'NO_PROXY=\S+' | head -1 | cut -d= -f2)"
+                [[ -n "$no_proxy_val" ]] && export NO_PROXY="$no_proxy_val" no_proxy="$no_proxy_val"
+                local all_proxy_val
+                all_proxy_val="$(echo "$env_line" | grep -oP 'ALL_PROXY=\S+' | head -1 | cut -d= -f2)"
+                [[ -n "$all_proxy_val" ]] && export ALL_PROXY="$all_proxy_val" all_proxy="$all_proxy_val"
+            fi
+        fi
+    fi
+}
+_load_proxy
+
 ACACLAW_PORT="${ACACLAW_PORT:-2090}"
 ACACLAW_STATE_DIR="${HOME}/.openclaw-acaclaw"
 ACACLAW_CONFIG="${ACACLAW_STATE_DIR}/openclaw.json"
@@ -169,15 +203,22 @@ is_port_responding() {
 }
 
 wait_for_gateway() {
-    local max_wait=15
+    local max_wait="${1:-45}"
     local waited=0
     while [[ $waited -lt $max_wait ]]; do
         if is_port_responding; then
             return 0
         fi
-        sleep 1
+        sleep 0.5
         waited=$((waited + 1))
+        # Show progress every 5 iterations (every ~2.5s)
+        if (( waited % 5 == 0 )); then
+            local secs
+            secs="$(echo "scale=0; $waited / 2" | bc)"
+            echo -ne "\r${BLUE}[acaclaw]${NC} Waiting for gateway... ${secs}s  "
+        fi
     done
+    [[ $waited -ge 10 ]] && echo ""  # newline after progress
     return 1
 }
 
@@ -257,10 +298,7 @@ elif is_gateway_running; then
 elif [[ "$USE_SERVICE" == "true" ]]; then
     log "Starting AcaClaw gateway via systemd service..."
     if systemctl --user start acaclaw-gateway.service 2>/dev/null; then
-        # Service accepted the start command. Wait a short time for the port —
-        # if it isn't ready yet, that's OK (gateway needs ~30-45s to boot).
-        # The browser will open either way; user can refresh.
-        if wait_for_gateway; then
+        if wait_for_gateway 90; then
             log "Gateway ready on port ${ACACLAW_PORT} ✓ (managed by systemd)"
         elif systemctl --user is-active acaclaw-gateway.service &>/dev/null; then
             log "Gateway service is starting (managed by systemd) — may need a moment"
@@ -308,16 +346,10 @@ if [[ "$NO_BROWSER" == "true" ]]; then
     exit 0
 fi
 
-# Wait until the gateway is actually serving before opening the app window,
-# so the user sees the UI immediately instead of ERR_CONNECTION_REFUSED.
+# Wait briefly if gateway is still initializing (should be rare after above waits)
 if ! is_port_responding; then
     log "Waiting for gateway to be ready..."
-    _ready_wait=0
-    while [[ $_ready_wait -lt 60 ]]; do
-        is_port_responding && break
-        sleep 1
-        _ready_wait=$((_ready_wait + 1))
-    done
+    wait_for_gateway 30 || warn "Gateway not responding yet — opening browser anyway"
 fi
 
 URL="http://localhost:${ACACLAW_PORT}/"

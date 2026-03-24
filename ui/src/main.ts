@@ -1,18 +1,23 @@
 import { LitElement, html, css, nothing, svg } from "lit";
 import { customElement, state } from "lit/decorators.js";
 
-// Import all views
+// Eager: default/primary views needed immediately
 import "./views/monitor.js";
 import "./views/chat.js";
-import "./views/usage.js";
-import "./views/skills.js";
-import "./views/workspace.js";
-import "./views/environment.js";
-import "./views/backup.js";
-import "./views/settings.js";
-import "./views/api-keys.js";
-import "./views/onboarding.js";
-import "./views/staff.js";
+
+// Lazy-loaded on first navigation
+const lazyViews: Record<string, () => Promise<unknown>> = {
+  usage: () => import("./views/usage.js"),
+  skills: () => import("./views/skills.js"),
+  workspace: () => import("./views/workspace.js"),
+  environment: () => import("./views/environment.js"),
+  backup: () => import("./views/backup.js"),
+  settings: () => import("./views/settings.js"),
+  "api-keys": () => import("./views/api-keys.js"),
+  onboarding: () => import("./views/onboarding.js"),
+  staff: () => import("./views/staff.js"),
+};
+const loadedViews = new Set<string>();
 
 // Import gateway controller
 import { gateway, GatewayState } from "./controllers/gateway.js";
@@ -425,12 +430,20 @@ export class AcaClawApp extends LitElement {
     const hash = location.hash.slice(1) || "api-keys";
     if (NAV_GROUPS.some(g => g.items.some(n => n.id === hash)) || hash === "setup") {
       this._route = hash as Route;
+      this._ensureViewLoaded(hash);
     }
   }
 
   private _navigate(route: Route) {
     location.hash = route;
     this._route = route;
+    this._ensureViewLoaded(route);
+  }
+
+  private _ensureViewLoaded(route: string) {
+    if (loadedViews.has(route) || !lazyViews[route]) return;
+    loadedViews.add(route);
+    lazyViews[route]();
   }
 
   private _renderView() {
