@@ -1946,11 +1946,10 @@ export class StaffView extends LitElement {
 
     // Count how many assigned skills are available in the gateway
     const gatewayNames = new Set(this._gatewaySkills.map(g => g.name));
-    const assignedInstalled = staff.skills.filter(sk => gatewayNames.has(sk)).length;
-    const assignedNotInstalled = staff.skills.length - assignedInstalled;
+    const assignedNotInstalled = staff.skills.filter(sk => !gatewayNames.has(sk)).length;
 
     return html`
-      <div class="panel-section-title">Assigned Skills (${assignedInstalled} installed${assignedNotInstalled > 0 ? `, ${assignedNotInstalled} not installed` : ""})</div>
+      <div class="panel-section-title">Assigned Skills (${staff.skills.length}${assignedNotInstalled > 0 ? `, ${assignedNotInstalled} not in gateway` : ""})</div>
       <div class="skill-pills" style="margin-bottom:20px">
         ${staff.skills.map(sk => {
           const info = allSkills.find(a => a.id === sk);
