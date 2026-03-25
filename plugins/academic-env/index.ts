@@ -235,9 +235,22 @@ const academicEnvPlugin = {
 			});
 		}
 
+		// Discipline name → UI env id (for onboarding which sends { discipline: "biology" })
+		const DISCIPLINE_TO_UI: Record<string, string> = {
+			general: "aca",
+			biology: "aca-bio",
+			chemistry: "aca-chem",
+			medicine: "aca-med",
+			physics: "aca-phys",
+		};
+
 		// --- Gateway: acaclaw.env.install ---
 		api.registerGatewayMethod("acaclaw.env.install", async ({ params, respond, context }) => {
-			const rawName = typeof params.name === "string" ? params.name : "";
+			// Accept both { name: "aca-bio" } (environment page) and { discipline: "biology" } (onboarding wizard)
+			let rawName = typeof params.name === "string" ? params.name : "";
+			if (!rawName && typeof params.discipline === "string") {
+				rawName = DISCIPLINE_TO_UI[params.discipline] ?? params.discipline;
+			}
 			const condaName = UI_TO_CONDA[rawName] ?? rawName;
 			const yamlFile = UI_TO_YAML[rawName];
 			const conda = findConda();

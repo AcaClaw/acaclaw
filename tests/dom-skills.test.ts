@@ -14,6 +14,7 @@ vi.mock("../ui/src/controllers/gateway.js", () => ({
     state: "connected" as const,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
+    onNotification: vi.fn(() => vi.fn()),
   },
 }));
 
@@ -89,7 +90,7 @@ describe("SkillsView DOM", () => {
 
   it("renders skill items for installed skills", async () => {
     const el = await createElement();
-    const items = qa(el, ".skill-item");
+    const items = qa(el, ".skill-card");
     expect(items.length).toBe(MOCK_INSTALLED.length);
     cleanup(el);
   });
@@ -145,7 +146,7 @@ describe("SkillsView DOM", () => {
     // The install buttons should not include already-installed skills
     const installBtns = qa(el, ".install-btn");
     const installNames = Array.from(installBtns).map(
-      (btn) => (btn as HTMLElement).closest(".skill-item")?.querySelector(".skill-name")?.textContent?.trim(),
+      (btn) => (btn as HTMLElement).closest(".skill-card")?.querySelector(".skill-name")?.textContent?.trim(),
     );
     for (const installed of MOCK_INSTALLED) {
       expect(installNames).not.toContain(installed.name);
@@ -153,7 +154,7 @@ describe("SkillsView DOM", () => {
     cleanup(el);
   });
 
-  it("clicking Install on ClawHub skill calls gateway with skills.install", async () => {
+  it("clicking Install on ClawHub skill calls gateway with acaclaw.skill.install", async () => {
     const el = await createElement();
     const tabs = qa(el, ".tab");
     (tabs[1] as HTMLElement).click();
@@ -169,17 +170,17 @@ describe("SkillsView DOM", () => {
     const firstInstallBtn = q(el, ".install-btn") as HTMLButtonElement;
     firstInstallBtn.click();
     await el.updateComplete;
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 200));
 
-    const installCall = calls.find((c) => c[0] === "skills.install");
+    const installCall = calls.find((c) => c[0] === "acaclaw.skill.install");
     expect(installCall).toBeTruthy();
-    expect(installCall![1]).toHaveProperty("name");
+    expect(installCall![1]).toHaveProperty("slug");
     cleanup(el);
   });
 
   it("search input filters installed skills", async () => {
     const el = await createElement();
-    const countBefore = qa(el, ".skill-item").length;
+    const countBefore = qa(el, ".skill-card").length;
     expect(countBefore).toBe(3);
 
     const searchInput = q(el, ".search-input") as HTMLInputElement;
@@ -187,7 +188,7 @@ describe("SkillsView DOM", () => {
     searchInput.dispatchEvent(new Event("input"));
     await el.updateComplete;
 
-    const countAfter = qa(el, ".skill-item").length;
+    const countAfter = qa(el, ".skill-card").length;
     expect(countAfter).toBeLessThan(countBefore);
     expect(countAfter).toBeGreaterThan(0);
     cleanup(el);
