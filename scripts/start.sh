@@ -57,6 +57,7 @@ _try_bootstrap() {
     for d in "${HOME}/.npm-global/bin" "${HOME}/.cargo/bin" "${HOME}/.acaclaw/miniforge3/bin"; do
         [[ -d "$d" ]] && export PATH="${d}:${PATH}"
     done
+    return 0
 }
 _try_bootstrap
 _tlog "PATH bootstrap done"
