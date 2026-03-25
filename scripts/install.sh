@@ -169,7 +169,10 @@ else
 			"https://mirrors.bfsu.edu.cn/github-release/conda-forge/miniforge/LatestRelease"
 		)
 
+		# Miniforge installer checks that $0 ends with .sh
 		INSTALLER_PATH="$(mktemp)"
+		mv "$INSTALLER_PATH" "${INSTALLER_PATH}.sh"
+		INSTALLER_PATH="${INSTALLER_PATH}.sh"
 		DOWNLOAD_OK=false
 		for url in "${MINIFORGE_URLS[@]}"; do
 			log "Trying ${url}..."
