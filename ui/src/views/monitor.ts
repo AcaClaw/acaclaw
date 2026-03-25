@@ -2,22 +2,32 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { gateway } from "../controllers/gateway.js";
+import { STAFF_MEMBERS } from "./staff.js";
 
-/** Lightweight agent lookup for session tracking. */
-const AGENT_INFO: Record<string, { icon: string; name: string }> = {
-  default: { icon: "👤", name: "Aca" },
-  main: { icon: "👤", name: "Aca" },
-  biologist: { icon: "🧬", name: "Dr. Gene" },
-  medscientist: { icon: "🏥", name: "Dr. Curie" },
-  "ai-researcher": { icon: "🤖", name: "Dr. Turing" },
-  "data-analyst": { icon: "📊", name: "Dr. Bayes" },
-  "cs-scientist": { icon: "💻", name: "Dr. Knuth" },
-  chemist: { icon: "🧪", name: "Dr. Mendeleev" },
-  physicist: { icon: "⚛️", name: "Dr. Feynman" },
-  ecologist: { icon: "🌱", name: "Dr. Carson" },
-  mathematician: { icon: "📐", name: "Dr. Euler" },
-  linguist: { icon: "📚", name: "Dr. Chomsky" },
-};
+/** Read session titles saved by chat view. */
+function getSessionTitles(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem("acaclaw-session-titles");
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+/** Look up a session title, trying the full key and the UUID-only portion. */
+function lookupTitle(titles: Record<string, string>, key: string): string {
+  if (titles[key]) return titles[key];
+  // Chat may store title under bare UUID; gateway prefixes agent:id:
+  const parts = key.split(":");
+  const uuid = parts[parts.length - 1];
+  return titles[uuid] || "";
+}
+
+/** Build agent lookup dynamically from STAFF_MEMBERS. */
+function getAgentInfo(agentId: string): { icon: string; name: string } {
+  if (agentId === "main") agentId = "default";
+  const member = STAFF_MEMBERS.find((s) => s.id === agentId);
+  if (member) return { icon: member.icon, name: member.name };
+  return { icon: "🔬", name: agentId };
+}
 
 interface AgentRun {
   runId: string;
@@ -38,6 +48,7 @@ interface SessionInfo {
   totalTokens: number;
   updatedAt: number;
   channel: string;
+  derivedTitle: string;
 }
 
 /** Parse a session key to extract the agent ID. */
@@ -46,6 +57,17 @@ function parseAgentId(sessionKey: string): string {
     return sessionKey.split(":")[1];
   }
   return "default";
+}
+
+/** Strip gateway metadata prefix from derived titles.
+ *  Messages arrive as "Sender (untrusted metadata):\n```json…```\n[timestamp] actual text".
+ *  The gateway truncates at 60 chars, so the actual text may not be in the title. */
+function cleanTitle(raw: string): string {
+  if (raw.startsWith("Sender (untrusted metadata)")) return "";
+  // Look for the actual user text after the bracketed timestamp
+  const tsMatch = raw.match(/\] (.+)/);
+  if (tsMatch) return tsMatch[1].trim();
+  return raw;
 }
 
 @customElement("acaclaw-monitor")
@@ -111,6 +133,8 @@ export class MonitorView extends LitElement {
   @state() private _recentRuns: AgentRun[] = [];
   @state() private _sessions: SessionInfo[] = [];
   @state() private _showAllSessions = false;
+  @state() private _editingSessionKey = "";
+  @state() private _editingTitle = "";
   private _chatUnsub: (() => void) | null = null;
 
   @state() private _refreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -582,6 +606,31 @@ export class MonitorView extends LitElement {
       color: var(--ac-text);
     }
 
+    .session-title-editable {
+      cursor: pointer;
+      border-radius: 3px;
+      padding: 0 2px;
+    }
+    .session-title-editable:hover {
+      background: var(--ac-bg-hover, rgba(255,255,255,0.06));
+    }
+
+    .session-title-input {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--ac-text);
+      background: var(--ac-bg-input, rgba(255,255,255,0.08));
+      border: 1px solid var(--ac-border, rgba(255,255,255,0.15));
+      border-radius: 4px;
+      padding: 1px 4px;
+      width: 100%;
+      outline: none;
+      font-family: inherit;
+    }
+    .session-title-input:focus {
+      border-color: var(--ac-primary, #6366f1);
+    }
+
     .agent-run-time {
       font-size: 12px;
       color: var(--ac-text-tertiary);
@@ -650,6 +699,23 @@ export class MonitorView extends LitElement {
 
     .session-tokens {
       color: var(--ac-text-tertiary);
+    }
+
+    .session-load-btn {
+      padding: 3px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--ac-primary);
+      background: transparent;
+      border: 1px solid var(--ac-primary);
+      border-radius: var(--ac-radius-full);
+      cursor: pointer;
+      transition: all var(--ac-transition-fast);
+      white-space: nowrap;
+    }
+    .session-load-btn:hover {
+      background: var(--ac-primary);
+      color: #fff;
     }
 
     .load-more-btn {
@@ -753,7 +819,7 @@ export class MonitorView extends LitElement {
     if (!d.runId) return;
 
     const agentId = d.sessionKey ? parseAgentId(d.sessionKey) : "default";
-    const info = AGENT_INFO[agentId] ?? { icon: "🔬", name: agentId };
+    const info = getAgentInfo(agentId);
 
     if (d.state === "delta") {
       // Check if already tracked
@@ -868,9 +934,8 @@ export class MonitorView extends LitElement {
     } catch { /* plugin not loaded */ }
 
     try {
-      const skillRes = await gateway.call<{ skills: Array<{ name: string; source: string }> }>("skills.status");
-      const AGENT_REQUIRED = new Set(["nano-pdf", "xurl", "summarize", "ai-humanizer"]);
-      this._skillCount = skillRes?.skills?.filter(s => s.source !== "openclaw-bundled" || AGENT_REQUIRED.has(s.name)).length ?? 0;
+      const skillRes = await gateway.call<{ skills: Array<{ name: string }> }>("skills.status");
+      this._skillCount = skillRes?.skills?.length ?? 0;
     } catch { /* keep zeros */ }
 
     try {
@@ -945,14 +1010,18 @@ export class MonitorView extends LitElement {
           modelProvider?: string;
           totalTokens?: number;
           lastChannel?: string;
+          derivedTitle?: string;
         }>;
-      }>("sessions.list");
+      }>("sessions.list", { includeDerivedTitles: true });
       if (sessRes?.sessions) {
+        const titles = getSessionTitles();
         this._sessions = sessRes.sessions
+          .filter((s) => !s.key.includes(":title-gen:"))
           .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
           .map((s) => {
             const agentId = parseAgentId(s.key);
-            const info = AGENT_INFO[agentId] ?? { icon: "🔬", name: agentId };
+            const info = getAgentInfo(agentId);
+            const derived = s.derivedTitle ? cleanTitle(s.derivedTitle) : "";
             return {
               key: s.key,
               agentId,
@@ -962,6 +1031,7 @@ export class MonitorView extends LitElement {
               totalTokens: s.totalTokens ?? 0,
               updatedAt: s.updatedAt ?? 0,
               channel: s.lastChannel ?? "unknown",
+              derivedTitle: derived || lookupTitle(titles, s.key),
             };
           });
       }
@@ -1169,13 +1239,23 @@ export class MonitorView extends LitElement {
               <div class="agent-run session-info">
                 <span class="agent-run-icon">${s.agentIcon}</span>
                 <div class="agent-run-info">
-                  <div class="agent-run-name">${s.agentName}</div>
+                  ${this._editingSessionKey === s.key ? html`
+                    <input class="session-title-input"
+                      .value=${this._editingTitle}
+                      @input=${(e: Event) => { this._editingTitle = (e.target as HTMLInputElement).value; }}
+                      @keydown=${(e: KeyboardEvent) => { if (e.key === "Enter") this._saveTitle(s); if (e.key === "Escape") this._cancelEditTitle(); }}
+                      @blur=${() => this._saveTitle(s)}
+                    />
+                  ` : html`
+                    <div class="agent-run-name session-title-editable" @click=${() => this._startEditTitle(s)}>${s.derivedTitle || s.agentName}</div>
+                  `}
                   <div class="agent-run-time">${s.updatedAt ? this._timeAgo(s.updatedAt) : "—"}</div>
                 </div>
                 <div class="session-meta">
                   <span class="session-model">${s.model}</span>
-                  <span class="session-tokens">${this._fmtTokens(s.totalTokens)} tokens</span>
+                  ${s.totalTokens > 0 ? html`<span class="session-tokens">${this._fmtTokens(s.totalTokens)} tokens</span>` : nothing}
                 </div>
+                <button class="session-load-btn" @click=${() => this._openSession(s)}>Load</button>
               </div>
             `)}
           </div>
@@ -1192,6 +1272,49 @@ export class MonitorView extends LitElement {
         ` : nothing}
       </div>
     `;
+  }
+
+  /** Navigate to Chat and load a specific session */
+  private _openSession(s: SessionInfo) {
+    window.dispatchEvent(
+      new CustomEvent("load-session", { detail: { sessionKey: s.key, agentId: s.agentId } })
+    );
+  }
+
+  private _startEditTitle(s: SessionInfo) {
+    this._editingSessionKey = s.key;
+    this._editingTitle = s.derivedTitle || s.agentName;
+    // Focus the input after render
+    this.updateComplete.then(() => {
+      const input = this.shadowRoot?.querySelector<HTMLInputElement>(".session-title-input");
+      input?.focus();
+      input?.select();
+    });
+  }
+
+  private _saveTitle(s: SessionInfo) {
+    const title = this._editingTitle.trim().slice(0, 60);
+    if (title) {
+      // Save to localStorage
+      try {
+        const raw = localStorage.getItem("acaclaw-session-titles");
+        const titles: Record<string, string> = raw ? JSON.parse(raw) : {};
+        const parts = s.key.split(":");
+        const uuid = parts[parts.length - 1];
+        titles[uuid] = title;
+        localStorage.setItem("acaclaw-session-titles", JSON.stringify(titles));
+      } catch { /* ignore */ }
+      // Update in-memory session
+      s.derivedTitle = title;
+      this._sessions = [...this._sessions];
+    }
+    this._editingSessionKey = "";
+    this._editingTitle = "";
+  }
+
+  private _cancelEditTitle() {
+    this._editingSessionKey = "";
+    this._editingTitle = "";
   }
 
   private _renderActivity() {

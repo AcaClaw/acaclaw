@@ -4,6 +4,7 @@ import { customElement, state } from "lit/decorators.js";
 // Eager: default/primary views needed immediately
 import "./views/monitor.js";
 import "./views/chat.js";
+import type { ChatView } from "./views/chat.js";
 
 // Lazy-loaded on first navigation
 const lazyViews: Record<string, () => Promise<unknown>> = {
@@ -423,6 +424,17 @@ export class AcaClawApp extends LitElement {
       });
     }) as EventListener);
 
+    // Navigate to Chat and load a specific session (from Monitor)
+    window.addEventListener("load-session", ((e: CustomEvent) => {
+      const sessionKey = e.detail?.sessionKey as string | undefined;
+      if (!sessionKey) return;
+      this._navigate("chat");
+      this.updateComplete.then(() => {
+        const chat = this.shadowRoot?.querySelector("acaclaw-chat") as ChatView | null;
+        chat?.loadSession(sessionKey);
+      });
+    }) as EventListener);
+
     gateway.connect();
   }
 
@@ -446,31 +458,45 @@ export class AcaClawApp extends LitElement {
     lazyViews[route]();
   }
 
+  /**
+   * Chat is always in the DOM (hidden when inactive) so session state
+   * survives tab switches.  Other views are created/destroyed normally.
+   */
   private _renderView() {
+    let otherView = nothing;
     switch (this._route) {
-      case "chat":
-        return html`<acaclaw-chat></acaclaw-chat>`;
       case "staff":
-        return html`<acaclaw-staff></acaclaw-staff>`;
+        otherView = html`<acaclaw-staff></acaclaw-staff>`;
+        break;
       case "monitor":
-        return html`<acaclaw-monitor></acaclaw-monitor>`;
+        otherView = html`<acaclaw-monitor></acaclaw-monitor>`;
+        break;
       case "api-keys":
-        return html`<acaclaw-api-keys></acaclaw-api-keys>`;
+        otherView = html`<acaclaw-api-keys></acaclaw-api-keys>`;
+        break;
       case "usage":
-        return html`<acaclaw-usage></acaclaw-usage>`;
+        otherView = html`<acaclaw-usage></acaclaw-usage>`;
+        break;
       case "skills":
-        return html`<acaclaw-skills></acaclaw-skills>`;
+        otherView = html`<acaclaw-skills></acaclaw-skills>`;
+        break;
       case "workspace":
-        return html`<acaclaw-workspace></acaclaw-workspace>`;
+        otherView = html`<acaclaw-workspace></acaclaw-workspace>`;
+        break;
       case "environment":
-        return html`<acaclaw-environment></acaclaw-environment>`;
+        otherView = html`<acaclaw-environment></acaclaw-environment>`;
+        break;
       case "backup":
-        return html`<acaclaw-backup></acaclaw-backup>`;
+        otherView = html`<acaclaw-backup></acaclaw-backup>`;
+        break;
       case "settings":
-        return html`<acaclaw-settings></acaclaw-settings>`;
-      default:
-        return nothing;
+        otherView = html`<acaclaw-settings></acaclaw-settings>`;
+        break;
     }
+    return html`
+      <acaclaw-chat style="display:${this._route === "chat" ? "flex" : "none"}"></acaclaw-chat>
+      ${otherView}
+    `;
   }
 
   private _gatewayLabel() {

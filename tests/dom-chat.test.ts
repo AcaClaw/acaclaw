@@ -264,4 +264,77 @@ describe("ChatView DOM", () => {
     expect(textarea.value).toBe("");
     cleanup(el);
   });
+
+  it("preserves messages when hidden and re-shown (tab navigation)", async () => {
+    const el = await createElement();
+    mockCall.mockImplementation(async (method: string) => {
+      if (method === "chat.send") return { runId: "run-1" };
+      return undefined;
+    });
+
+    // Send a message so there's history in the component state
+    const textarea = q(el, ".input-area textarea") as HTMLTextAreaElement;
+    textarea.value = "Hello world";
+    textarea.dispatchEvent(new Event("input"));
+    await el.updateComplete;
+    (q(el, ".send-btn") as HTMLButtonElement).click();
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 50));
+    await el.updateComplete;
+
+    const messagesBeforeHide = qa(el, ".message").length;
+    expect(messagesBeforeHide).toBeGreaterThan(0);
+
+    // Simulate navigating away: hide the component (as main.ts now does)
+    el.style.display = "none";
+    await el.updateComplete;
+
+    // Simulate navigating back: show the component
+    el.style.display = "flex";
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 50));
+    await el.updateComplete;
+
+    // Messages must still be present — no session reset
+    const messagesAfterShow = qa(el, ".message").length;
+    expect(messagesAfterShow).toBe(messagesBeforeHide);
+
+    cleanup(el);
+  });
+
+  it("+ Chat clears messages and rotates session", async () => {
+    const el = await createElement();
+    mockCall.mockImplementation(async (method: string) => {
+      if (method === "chat.send") return { runId: "run-2" };
+      return undefined;
+    });
+
+    // Send a message first
+    const textarea = q(el, ".input-area textarea") as HTMLTextAreaElement;
+    textarea.value = "Test message";
+    textarea.dispatchEvent(new Event("input"));
+    await el.updateComplete;
+    (q(el, ".send-btn") as HTMLButtonElement).click();
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 50));
+    await el.updateComplete;
+
+    const msgsBefore = qa(el, ".message").length;
+    expect(msgsBefore).toBeGreaterThan(0);
+
+    // Click "+ Chat" button to intentionally clear (second .new-project-btn)
+    const newChatBtns = qa(el, ".new-project-btn");
+    const newChatBtn = newChatBtns[1] as HTMLButtonElement;
+    expect(newChatBtn).toBeTruthy();
+    newChatBtn.click();
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 50));
+    await el.updateComplete;
+
+    // Messages should be cleared
+    const msgsAfter = qa(el, ".message").length;
+    expect(msgsAfter).toBe(0);
+
+    cleanup(el);
+  });
 });
