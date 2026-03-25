@@ -785,4 +785,38 @@ EOF
 			expect(code).toBe(0);
 		});
 	});
+
+	// ---------------------------------------------------------------
+	// Miniforge mirror fallback
+	// ---------------------------------------------------------------
+	describe("Miniforge mirror fallback", () => {
+		it("install.sh defines multiple MINIFORGE_URLS sources", async () => {
+			const { stdout, code } = await runBash(
+				`grep -c "MINIFORGE_URLS" "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+			expect(Number(stdout.trim())).toBeGreaterThanOrEqual(1);
+		});
+
+		it("includes Tsinghua TUNA mirror as fallback", async () => {
+			const { code } = await runBash(
+				`grep -q "mirrors.tuna.tsinghua.edu.cn" "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+		});
+
+		it("includes BFSU mirror as fallback", async () => {
+			const { code } = await runBash(
+				`grep -q "mirrors.bfsu.edu.cn" "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+		});
+
+		it("configures conda-forge mirror in .condarc after install", async () => {
+			const { code } = await runBash(
+				`grep -q "custom_channels" "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+		});
+	});
 });

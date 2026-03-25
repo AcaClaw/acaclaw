@@ -153,7 +153,6 @@ else
 
 	if [[ ! -d "$MINIFORGE_DIR" ]]; then
 		log "Installing Miniforge..."
-		MINIFORGE_URL="https://github.com/conda-forge/miniforge/releases/latest/download"
 
 		case "${OS}-${ARCH}" in
 			linux-x86_64)   MINIFORGE_FILE="Miniforge3-Linux-x86_64.sh" ;;
@@ -163,11 +162,51 @@ else
 			*) error "No Miniforge build for ${OS}-${ARCH}"; exit 1 ;;
 		esac
 
+		# Download sources — try GitHub first, fall back to mirrors
+		MINIFORGE_URLS=(
+			"https://github.com/conda-forge/miniforge/releases/latest/download"
+			"https://mirrors.tuna.tsinghua.edu.cn/github-release/conda-forge/miniforge/LatestRelease"
+			"https://mirrors.bfsu.edu.cn/github-release/conda-forge/miniforge/LatestRelease"
+		)
+
 		INSTALLER_PATH="$(mktemp)"
-		curl -fsSL "${MINIFORGE_URL}/${MINIFORGE_FILE}" -o "$INSTALLER_PATH"
+		DOWNLOAD_OK=false
+		for url in "${MINIFORGE_URLS[@]}"; do
+			log "Trying ${url}..."
+			if curl -fSL --connect-timeout 15 --max-time 300 \
+				"${url}/${MINIFORGE_FILE}" -o "$INSTALLER_PATH" 2>/dev/null; then
+				DOWNLOAD_OK=true
+				log "Downloaded from ${url} ✓"
+				break
+			else
+				warn "Failed to download from ${url}, trying next mirror..."
+			fi
+		done
+
+		if [[ "$DOWNLOAD_OK" != "true" ]]; then
+			rm -f "$INSTALLER_PATH"
+			error "Could not download Miniforge from any source."
+			error "Check your internet connection and try again."
+			exit 1
+		fi
+
 		bash "$INSTALLER_PATH" -b -p "$MINIFORGE_DIR"
 		rm -f "$INSTALLER_PATH"
 		log "Miniforge installed ✓"
+
+		# Configure conda-forge mirrors for faster package downloads
+		CONDARC="${MINIFORGE_DIR}/.condarc"
+		if [[ ! -f "$CONDARC" ]]; then
+			cat > "$CONDARC" <<'CONDARC_EOF'
+channels:
+  - conda-forge
+show_channel_urls: true
+channel_alias: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
+custom_channels:
+  conda-forge: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
+CONDARC_EOF
+			log "Conda mirror configured (Tsinghua TUNA) ✓"
+		fi
 	fi
 
 	export PATH="${MINIFORGE_DIR}/bin:$PATH"
