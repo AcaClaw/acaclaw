@@ -363,6 +363,8 @@ export class StaffView extends LitElement {
   @state() private _skillUninstalling: Record<string, boolean> = {};
   /** Skill install log lines */
   @state() private _skillInstallLog: string[] = [];
+  /** Sequential install queue — prevents concurrent clawhub CLI calls. */
+  private _installQueue: Promise<void> = Promise.resolve();
 
   /** Dynamic clawhub slug → gateway name mapping, persisted in localStorage.
    *  Populated after each successful install by diffing gateway skill names. */
@@ -1360,7 +1362,12 @@ export class StaffView extends LitElement {
     try {
       const res = await gateway.call<{ skills: typeof this._gatewaySkills }>("skills.status");
       if (res?.skills) {
-        this._gatewaySkills = res.skills;
+        // Preserve synthetic entries added during this session that the gateway doesn't know about yet
+        const returnedNames = new Set(res.skills.map(s => s.name));
+        const synthetics = this._gatewaySkills.filter(
+          s => s.source === "clawhub-repo" && !returnedNames.has(s.name),
+        );
+        this._gatewaySkills = [...res.skills, ...synthetics];
         this._gatewaySkillsLoaded = true;
         this.requestUpdate();
       }
@@ -1401,9 +1408,26 @@ export class StaffView extends LitElement {
     }
   }
 
-  private async _installClawHubSkill(staffId: string, slug: string) {
+  private _installClawHubSkill(staffId: string, slug: string) {
     this._skillInstalling = { ...this._skillInstalling, [slug]: true };
-    this._skillInstallLog = [`▶ Installing "${slug}" from ClawHub…`];
+    // Queue the install with a cooldown delay to avoid clawhub rate limits
+    this._installQueue = this._installQueue
+      .then(() => this._queueCooldown())
+      .then(() => this._doInstallClawHub(staffId, slug))
+      .catch(() => {});
+  }
+
+  /** Short delay between queued operations to respect clawhub rate limits. */
+  private _queueCooldown(): Promise<void> {
+    if (!this._lastQueueOp) return Promise.resolve();
+    const elapsed = Date.now() - this._lastQueueOp;
+    const wait = Math.max(0, 3000 - elapsed);
+    return wait > 0 ? new Promise(r => setTimeout(r, wait)) : Promise.resolve();
+  }
+  private _lastQueueOp = 0;
+
+  private async _doInstallClawHub(staffId: string, slug: string) {
+    this._skillInstallLog = [...this._skillInstallLog, `▶ Installing "${slug}" from ClawHub…`];
 
     // Snapshot current gateway names so we can detect what was added after install
     const namesBefore = new Set(this._gatewaySkills.map(g => g.name));
@@ -1474,6 +1498,7 @@ export class StaffView extends LitElement {
       this._skillInstallLog = [...this._skillInstallLog, `✗ Failed: ${msg}`];
     } finally {
       unsub();
+      this._lastQueueOp = Date.now();
       const { [slug]: _, ...rest } = this._skillInstalling;
       this._skillInstalling = rest;
     }
@@ -1490,10 +1515,18 @@ export class StaffView extends LitElement {
     return gatewayName;
   }
 
-  private async _uninstallSkill(skillId: string) {
-    const slug = this._resolveSlug(skillId);
+  private _uninstallSkill(skillId: string) {
     this._skillUninstalling = { ...this._skillUninstalling, [skillId]: true };
-    this._skillInstallLog = [`▶ Uninstalling "${slug}"…`];
+    // Queue with cooldown to prevent concurrent clawhub CLI calls and rate limits
+    this._installQueue = this._installQueue
+      .then(() => this._queueCooldown())
+      .then(() => this._doUninstallSkill(skillId))
+      .catch(() => {});
+  }
+
+  private async _doUninstallSkill(skillId: string) {
+    const slug = this._resolveSlug(skillId);
+    this._skillInstallLog = [...this._skillInstallLog, `▶ Uninstalling "${slug}"…`];
 
     const unsub = gateway.onNotification("acaclaw.skill.uninstall.progress", (data: unknown) => {
       const d = data as { slug?: string; line?: string };
@@ -1520,6 +1553,7 @@ export class StaffView extends LitElement {
       this._skillInstallLog = [...this._skillInstallLog, `✗ Failed: ${msg}`];
     } finally {
       unsub();
+      this._lastQueueOp = Date.now();
       const { [skillId]: _, ...rest } = this._skillUninstalling;
       this._skillUninstalling = rest;
     }

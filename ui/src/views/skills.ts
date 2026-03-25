@@ -54,6 +54,8 @@ export class SkillsView extends LitElement {
   @state() private _searching = false;
   private _searchDebounce: ReturnType<typeof setTimeout> | null = null;
   private _gatewayListener: EventListener | null = null;
+  /** Sequential install queue — prevents concurrent clawhub CLI calls. */
+  private _installQueue: Promise<void> = Promise.resolve();
 
   /** Dynamic slug→gatewayName mapping shared with staff view via localStorage. */
   private _slugToGateway = new Map<string, string>();
@@ -288,7 +290,12 @@ export class SkillsView extends LitElement {
     try {
       const res = await gateway.call<{ skills: Skill[] }>("skills.status");
       if (res?.skills) {
-        this._installed = res.skills;
+        // Preserve synthetic entries added during this session that the gateway doesn't know about yet
+        const returnedNames = new Set(res.skills.map(s => s.name));
+        const synthetics = this._installed.filter(
+          s => s.source === "clawhub-repo" && !returnedNames.has(s.name),
+        );
+        this._installed = [...res.skills, ...synthetics];
       }
     } catch { /* gateway not ready — keep empty */ }
   }
@@ -314,9 +321,25 @@ export class SkillsView extends LitElement {
     return this._slugToGateway.get(slug) ?? CURATED_SKILLS.find(s => s.name === slug)?.gatewayName ?? slug;
   }
 
-  private async _installSkill(name: string) {
+  private _installSkill(name: string) {
     this._installing = name;
-    this._installLog = [`▶ Installing "${name}" from ClawHub…`];
+    this._installQueue = this._installQueue
+      .then(() => this._queueCooldown())
+      .then(() => this._doInstallSkill(name))
+      .catch(() => {});
+  }
+
+  /** Short delay between queued operations to respect clawhub rate limits. */
+  private _queueCooldown(): Promise<void> {
+    if (!this._lastQueueOp) return Promise.resolve();
+    const elapsed = Date.now() - this._lastQueueOp;
+    const wait = Math.max(0, 3000 - elapsed);
+    return wait > 0 ? new Promise(r => setTimeout(r, wait)) : Promise.resolve();
+  }
+  private _lastQueueOp = 0;
+
+  private async _doInstallSkill(name: string) {
+    this._installLog = [...this._installLog, `▶ Installing "${name}" from ClawHub…`];
 
     // Snapshot current gateway names for diff
     const namesBefore = new Set(this._installed.map(s => s.name));
@@ -366,6 +389,7 @@ export class SkillsView extends LitElement {
       this._installLog = [...this._installLog, `✗ Failed: ${err instanceof Error ? err.message : String(err)}`];
     } finally {
       unsub();
+      this._lastQueueOp = Date.now();
     }
     this._installing = "";
   }
@@ -388,10 +412,17 @@ export class SkillsView extends LitElement {
     return gatewayName;
   }
 
-  private async _uninstallSkill(gatewayName: string) {
-    const slug = this._resolveSlug(gatewayName);
+  private _uninstallSkill(gatewayName: string) {
     this._uninstalling = gatewayName;
-    this._installLog = [`▶ Uninstalling "${slug}"…`];
+    this._installQueue = this._installQueue
+      .then(() => this._queueCooldown())
+      .then(() => this._doUninstallSkill(gatewayName))
+      .catch(() => {});
+  }
+
+  private async _doUninstallSkill(gatewayName: string) {
+    const slug = this._resolveSlug(gatewayName);
+    this._installLog = [...this._installLog, `▶ Uninstalling "${slug}"…`];
 
     const unsub = gateway.onNotification("acaclaw.skill.uninstall.progress", (data: unknown) => {
       const d = data as { slug?: string; line?: string };
@@ -414,10 +445,10 @@ export class SkillsView extends LitElement {
       this._installLog = [...this._installLog, `✗ Failed: ${err instanceof Error ? err.message : String(err)}`];
     } finally {
       unsub();
+      this._lastQueueOp = Date.now();
       this._uninstalling = "";
     }
   }
-
   private _filteredInstalled(): Skill[] {
     const sorted = [...this._installed].sort((a, b) => {
       const aUser = isUserInstalled(a) ? 0 : 1;
