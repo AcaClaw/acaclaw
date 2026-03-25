@@ -54,6 +54,10 @@ export class SkillsView extends LitElement {
   private _searchDebounce: ReturnType<typeof setTimeout> | null = null;
   private _gatewayListener: EventListener | null = null;
 
+  /** Dynamic slug→gatewayName mapping shared with staff view via localStorage. */
+  private _slugToGateway = new Map<string, string>();
+  private static readonly SLUG_MAP_KEY = "acaclaw.slugToGateway";
+
   static override styles = css`
     :host {
       display: block;
@@ -246,6 +250,7 @@ export class SkillsView extends LitElement {
 
   override connectedCallback() {
     super.connectedCallback();
+    this._loadSlugMap();
     if (gateway.state === "connected") {
       this._loadSkills();
     }
@@ -272,9 +277,33 @@ export class SkillsView extends LitElement {
     } catch { /* gateway not ready — keep empty */ }
   }
 
+  /** Load persisted slug→gateway name map from localStorage. */
+  private _loadSlugMap() {
+    try {
+      const raw = localStorage.getItem(SkillsView.SLUG_MAP_KEY);
+      if (raw) {
+        this._slugToGateway = new Map(JSON.parse(raw) as [string, string][]);
+      }
+    } catch { /* ignore */ }
+    // Seed with static known mappings from CURATED_SKILLS
+    for (const s of CURATED_SKILLS) {
+      if (s.gatewayName && !this._slugToGateway.has(s.name)) {
+        this._slugToGateway.set(s.name, s.gatewayName);
+      }
+    }
+  }
+
+  /** Resolve installed name for a clawhub slug. */
+  private _resolveGatewayName(slug: string): string {
+    return this._slugToGateway.get(slug) ?? CURATED_SKILLS.find(s => s.name === slug)?.gatewayName ?? slug;
+  }
+
   private async _installSkill(name: string) {
     this._installing = name;
     this._installLog = [`▶ Installing "${name}" from ClawHub…`];
+
+    // Snapshot current gateway names for diff
+    const namesBefore = new Set(this._installed.map(s => s.name));
 
     const unsub = gateway.onNotification("acaclaw.skill.install.progress", (data: unknown) => {
       const d = data as { slug?: string; line?: string };
@@ -295,6 +324,14 @@ export class SkillsView extends LitElement {
         this._installLog = [...this._installLog, `✓ "${name}" installed successfully`];
       }
       await this._loadSkills();
+      // Detect slug→gatewayName mapping by finding new entries
+      for (const s of this._installed) {
+        if (!namesBefore.has(s.name) && s.name !== name) {
+          this._slugToGateway.set(name, s.name);
+          try { localStorage.setItem(SkillsView.SLUG_MAP_KEY, JSON.stringify([...this._slugToGateway])); } catch { /* */ }
+          break;
+        }
+      }
     } catch (err) {
       this._installLog = [...this._installLog, `✗ Failed: ${err instanceof Error ? err.message : String(err)}`];
     } finally {
@@ -327,7 +364,11 @@ export class SkillsView extends LitElement {
 
   private _filteredClawHub(): ClawHubSkill[] {
     const installedNames = new Set(this._installed.map(s => s.name));
-    const isInstalled = (s: ClawHubSkill) => installedNames.has(s.name) || (s.gatewayName && installedNames.has(s.gatewayName));
+    const isInstalled = (s: ClawHubSkill) => {
+      if (installedNames.has(s.name)) return true;
+      const resolved = this._resolveGatewayName(s.name);
+      return resolved !== s.name && installedNames.has(resolved);
+    };
     // If we have API search results, show those (excluding already-installed)
     if (this._searchResults !== null) {
       return this._searchResults.filter(s => !isInstalled(s));

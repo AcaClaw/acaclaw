@@ -362,10 +362,16 @@ export class StaffView extends LitElement {
   /** Skill install log lines */
   @state() private _skillInstallLog: string[] = [];
 
+  /** Dynamic clawhub slug → gateway name mapping, persisted in localStorage.
+   *  Populated after each successful install by diffing gateway skill names. */
+  private _slugToGateway = new Map<string, string>();
+  private static readonly SLUG_MAP_KEY = "acaclaw.slugToGateway";
+
   private _gatewayListener: EventListener | null = null;
 
   override connectedCallback() {
     super.connectedCallback();
+    this._loadSlugMap();
     // If already connected, sync immediately; otherwise wait for connection
     if (gateway.state === "connected") {
       this._syncEnvStatus();
@@ -1313,6 +1319,41 @@ export class StaffView extends LitElement {
     );
   }
 
+  /** Load persisted slug→gateway name map from localStorage. */
+  private _loadSlugMap() {
+    try {
+      const raw = localStorage.getItem(StaffView.SLUG_MAP_KEY);
+      if (raw) {
+        const entries = JSON.parse(raw) as [string, string][];
+        this._slugToGateway = new Map(entries);
+      }
+    } catch { /* ignore */ }
+    // Seed with static known mappings from AVAILABLE_SKILLS
+    for (const av of AVAILABLE_SKILLS) {
+      if (av.gatewayName && !this._slugToGateway.has(av.id)) {
+        this._slugToGateway.set(av.id, av.gatewayName);
+      }
+    }
+  }
+
+  /** Persist slug→gateway name map to localStorage. */
+  private _saveSlugMap() {
+    try {
+      localStorage.setItem(StaffView.SLUG_MAP_KEY, JSON.stringify([...this._slugToGateway]));
+    } catch { /* ignore */ }
+  }
+
+  /** Resolve a gateway name from a clawhub slug (uses dynamic map, then static hints, then identity). */
+  private _resolveGatewayName(slug: string): string {
+    return this._slugToGateway.get(slug) ?? AVAILABLE_SKILLS.find(a => a.id === slug)?.gatewayName ?? slug;
+  }
+
+  /** Find a gateway skill entry by clawhub slug, checking dynamic map and static mappings. */
+  private _findGatewaySkill(slug: string) {
+    const gwName = this._resolveGatewayName(slug);
+    return this._gatewaySkills.find(g => g.name === slug || g.name === gwName);
+  }
+
   private async _loadGatewaySkills() {
     try {
       const res = await gateway.call<{ skills: typeof this._gatewaySkills }>("skills.status");
@@ -1362,6 +1403,9 @@ export class StaffView extends LitElement {
     this._skillInstalling = { ...this._skillInstalling, [slug]: true };
     this._skillInstallLog = [`▶ Installing "${slug}" from ClawHub…`];
 
+    // Snapshot current gateway names so we can detect what was added after install
+    const namesBefore = new Set(this._gatewaySkills.map(g => g.name));
+
     const unsub = gateway.onNotification("acaclaw.skill.install.progress", (data: unknown) => {
       const d = data as { slug?: string; name?: string; line?: string };
       const matchSlug = d?.slug === slug || d?.name === slug;
@@ -1386,6 +1430,27 @@ export class StaffView extends LitElement {
         this.requestUpdate();
       }
       await this._loadGatewaySkills();
+      // Detect slug→gatewayName mapping by finding new entries
+      for (const gw of this._gatewaySkills) {
+        if (!namesBefore.has(gw.name) && gw.name !== slug) {
+          console.log(`[skill-install] discovered mapping: ${slug} → ${gw.name}`);
+          this._slugToGateway.set(slug, gw.name);
+          this._saveSlugMap();
+          break;
+        }
+      }
+      // If alreadyExists and no mapping yet, the gateway name matches the slug OR was already mapped
+      if (res?.alreadyExists && !this._slugToGateway.has(slug)) {
+        // Find the gateway entry — try fuzzy match: slug minus common prefixes/suffixes
+        const candidate = this._gatewaySkills.find(g =>
+          g.name === slug ||
+          g.name.toLowerCase().replace(/[\s-]/g, '') === slug.toLowerCase().replace(/[\s-]/g, '')
+        );
+        if (candidate && candidate.name !== slug) {
+          this._slugToGateway.set(slug, candidate.name);
+          this._saveSlugMap();
+        }
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[skill-install] error:`, err);
@@ -1923,10 +1988,12 @@ export class StaffView extends LitElement {
     // Gateway skills first
     for (const gw of this._gatewaySkills) {
       seenNames.add(gw.name);
-      // Match by id OR gatewayName so that e.g. ai-humanizer ↔ humanizer unifies
-      const avail = AVAILABLE_SKILLS.find(a => a.id === gw.name || a.gatewayName === gw.name);
+      // Match curated entry by slug or dynamic/static gateway name mapping
+      const avail = AVAILABLE_SKILLS.find(a =>
+        a.id === gw.name || this._resolveGatewayName(a.id) === gw.name
+      );
       if (avail) {
-        // Also mark the avail slug as seen so it's not double-added below
+        // Mark the curated slug as seen so it's not double-added below
         seenNames.add(avail.id);
       }
       allSkills.push({
@@ -1938,9 +2005,12 @@ export class StaffView extends LitElement {
         disciplines: avail?.disciplines ?? ["cross"],
       });
     }
-    // Then AVAILABLE_SKILLS not in gateway
+    // Then AVAILABLE_SKILLS not in gateway (check both slug and resolved gateway name)
     for (const av of AVAILABLE_SKILLS) {
       if (seenNames.has(av.id)) continue;
+      // Also skip if the resolved gateway name was already added
+      const resolved = this._resolveGatewayName(av.id);
+      if (resolved !== av.id && seenNames.has(resolved)) continue;
       allSkills.push({
         id: av.id, name: av.name, description: av.description,
         category: av.category, installed: false, bundled: false,
@@ -2016,12 +2086,10 @@ export class StaffView extends LitElement {
         <div style="margin-top:12px;margin-bottom:6px;font-size:12px;font-weight:600;color:var(--ac-text-muted);text-transform:uppercase;letter-spacing:0.5px">${cat}</div>
         ${byCategory.get(cat)!.map((skill) => {
           const installing = this._skillInstalling[skill.name] ?? false;
-          const gwName = skill.gatewayName ?? skill.id;
-          const gwEntry = this._gatewaySkills.find(g => g.name === gwName);
-          const isBundledEligible = (gwEntry?.bundled && gwEntry?.eligible) ?? false;
-          // skill.installed is set to gw.eligible when merged from gateway; also check by gateway name
-          const isUserInstalled = skill.installed || this._installedGatewaySkills.some(g => g.name === gwName);
-          const isAvailable = isBundledEligible || isUserInstalled;
+          // skill.installed and skill.bundled/eligible are set during the gateway merge above —
+          // no need to re-lookup by name (which would fail for slug≠gatewayName cases)
+          const isBundledEligible = skill.bundled && skill.eligible;
+          const isAvailable = isBundledEligible || skill.installed;
           return html`
             <div class="skill-check-item ${isAvailable ? "assigned" : ""}">
               <div class="skill-checkbox">${isAvailable ? "\u2713" : ""}</div>
