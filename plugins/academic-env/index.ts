@@ -533,7 +533,19 @@ const academicEnvPlugin = {
 			delete cleanEnv.HTTPS_PROXY;
 			delete cleanEnv.http_proxy;
 			delete cleanEnv.https_proxy;
-			const result = await runWithProgress(clawhubPath, args, context.broadcast, "acaclaw.skill.install.progress", slug, cleanEnv);
+
+			// Retry on rate limit errors (up to 3 attempts with 3s backoff)
+			let result: { code: number; output: string };
+			let attempts = 0;
+			const maxAttempts = 3;
+			do {
+				if (attempts > 0) {
+					context.broadcast("acaclaw.skill.install.progress", { slug, line: `⏳ Rate limit hit — retrying in 3s (attempt ${attempts + 1}/${maxAttempts})…` });
+					await new Promise(r => setTimeout(r, 3000));
+				}
+				result = await runWithProgress(clawhubPath, args, context.broadcast, "acaclaw.skill.install.progress", slug, cleanEnv);
+				attempts++;
+			} while (result.code !== 0 && result.output.includes("Rate limit exceeded") && attempts < maxAttempts);
 
 			if (result.code === 0) {
 				context.broadcast("acaclaw.skill.install.progress", { slug, line: `✓ Skill "${slug}" installed` });
