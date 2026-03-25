@@ -2008,48 +2008,27 @@ export class StaffView extends LitElement {
       ${categoryOrder.map(cat => html`
         <div style="margin-top:12px;margin-bottom:6px;font-size:12px;font-weight:600;color:var(--ac-text-muted);text-transform:uppercase;letter-spacing:0.5px">${cat}</div>
         ${byCategory.get(cat)!.map((skill) => {
-          const assigned = staff.skills.includes(skill.id);
           const installing = this._skillInstalling[skill.name] ?? false;
-          const hasInstaller = skill.installOptions.length > 0;
+          const gwEntry = this._gatewaySkills.find(g => g.name === skill.id);
+          const isBundled = gwEntry?.bundled ?? false;
+          const isBundledEligible = isBundled && (gwEntry?.eligible ?? false);
+          const isUserInstalled = this._installedGatewaySkills.some(g => g.name === skill.id);
+          const isAvailable = isBundledEligible || isUserInstalled;
           return html`
-            <div
-              class="skill-check-item ${assigned ? "assigned" : ""}"
-              @click=${() => this._toggleSkill(staff.id, skill.id)}
-            >
-              <div class="skill-checkbox">${assigned ? "\u2713" : ""}</div>
+            <div class="skill-check-item ${isAvailable ? "assigned" : ""}">
+              <div class="skill-checkbox">${isAvailable ? "\u2713" : ""}</div>
               <div class="skill-check-info">
-                <div class="skill-check-name">
-                  ${skill.name}
-                  ${skill.bundled ? html`<span style="font-size:10px;color:#16a34a;margin-left:4px">BUNDLED</span>` : ""}
-                </div>
+                <div class="skill-check-name">${skill.name}</div>
                 <div class="skill-check-desc">${skill.description}</div>
               </div>
-              ${assigned ? html`
-                <button class="search-result-add" style="flex-shrink:0;background:#fef2f2;color:#ef4444;border-color:#fecaca"
-                  @click=${(e: Event) => { e.stopPropagation(); this._removeSkillFromStaff(staff.id, skill.id); }}>Remove</button>
+              ${isAvailable ? html`
+                <span style="flex-shrink:0;font-size:11px;color:var(--ac-text-muted)">${isBundledEligible ? "Bundled" : "Installed"}</span>
               ` : html`
-                ${hasInstaller && !skill.eligible && !skill.bundled ? html`
-                  <button class="search-result-add" style="flex-shrink:0;background:var(--ac-primary);color:#fff;border-color:var(--ac-primary)"
-                    ?disabled=${installing}
-                    @click=${(e: Event) => {
-                      e.stopPropagation();
-                      this._installGatewaySkill(skill.name, skill.installOptions[0].id);
-                      this._addSkillToStaff(staff.id, skill.id);
-                    }}>
-                    ${installing ? "Installing\u2026" : "\u{1F4E6} Install"}
-                  </button>
-                ` : html`
-                  ${skill.bundled || skill.eligible ? html`
-                    <button class="search-result-add" style="flex-shrink:0"
-                      @click=${(e: Event) => { e.stopPropagation(); this._addSkillToStaff(staff.id, skill.id); }}>+ Add</button>
-                  ` : html`
-                    <button class="search-result-add" style="flex-shrink:0;background:var(--ac-primary);color:#fff;border-color:var(--ac-primary)"
-                      ?disabled=${installing}
-                      @click=${(e: Event) => { e.stopPropagation(); this._installClawHubSkill(staff.id, skill.id); }}>
-                      ${installing ? "Installing…" : "Install"}
-                    </button>
-                  `}
-                `}
+                <button class="search-result-add" style="flex-shrink:0;background:var(--ac-primary);color:#fff;border-color:var(--ac-primary)"
+                  ?disabled=${installing}
+                  @click=${(e: Event) => { e.stopPropagation(); this._installClawHubSkill(staff.id, skill.id); }}>
+                  ${installing ? "Installing\u2026" : "Install"}
+                </button>
               `}
             </div>
           `;
