@@ -195,9 +195,33 @@ else
 
 	export PATH="${MINIFORGE_DIR}/bin:$PATH"
 
-	# Scientific packages are installed later by the setup wizard, not here.
-	# We only ensure conda itself is available.
-	log "Conda ready — scientific packages will be installed during setup ✓"
+	# Create the base AcaClaw conda environment with scientific packages.
+	# All skills and tools depend on this env existing (conda run -n acaclaw).
+	# Discipline-specific envs (bio, med, chem, phys) are created later via
+	# the UI Environment tab or onboarding wizard.
+	ACACLAW_ENV_YML="${SCRIPT_DIR}/../env/conda/environment-base.yml"
+	ACACLAW_ENV_NAME="acaclaw"
+
+	# Check if the env already exists
+	if conda env list --json 2>/dev/null | python3 -c "
+import json, sys
+envs = json.load(sys.stdin).get('envs', [])
+sys.exit(0 if any(e.endswith('/envs/${ACACLAW_ENV_NAME}') or e.endswith('/${ACACLAW_ENV_NAME}') for e in envs) else 1)
+" 2>/dev/null; then
+		log "Conda env '${ACACLAW_ENV_NAME}' already exists ✓"
+	elif [[ -f "$ACACLAW_ENV_YML" ]]; then
+		log "Creating base AcaClaw conda environment..."
+		log "This installs Python, NumPy, SciPy, Pandas, R, JupyterLab, and more."
+		log "This may take a few minutes on first install."
+		if conda env create -f "$ACACLAW_ENV_YML"; then
+			log "Conda env '${ACACLAW_ENV_NAME}' created ✓"
+		else
+			warn "Failed to create conda env '${ACACLAW_ENV_NAME}'. You can create it later from the Environment tab."
+		fi
+	else
+		warn "Environment YAML not found at ${ACACLAW_ENV_YML} — skipping env creation"
+		warn "You can create the env later from the Environment tab in the UI."
+	fi
 
 	# Save conda prefix for plugins to find at runtime
 	mkdir -p "${ACACLAW_DIR}/config"

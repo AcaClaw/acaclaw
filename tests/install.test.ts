@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, readFile, stat } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -283,6 +284,32 @@ describe("install.sh", () => {
 				echo "$MINIFORGE_FILE"
 			`);
 			expect(stdout.trim()).toBe("unsupported");
+		});
+	});
+
+	// ---------------------------------------------------------------
+	// Conda env creation logic (sandboxed)
+	// ---------------------------------------------------------------
+	describe("conda base env creation", () => {
+		it("install.sh contains conda env create with environment-base.yml", async () => {
+			const { stdout, code } = await runBash(
+				`grep -c "conda env create" "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+			expect(Number(stdout.trim())).toBeGreaterThanOrEqual(1);
+		});
+
+		it("install.sh references environment-base.yml", async () => {
+			const { stdout, code } = await runBash(
+				`grep -c "environment-base.yml" "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+			expect(Number(stdout.trim())).toBeGreaterThanOrEqual(1);
+		});
+
+		it("env YAML file exists at expected path", () => {
+			const yamlPath = join(SCRIPT_DIR, "..", "env", "conda", "environment-base.yml");
+			expect(existsSync(yamlPath)).toBe(true);
 		});
 	});
 
