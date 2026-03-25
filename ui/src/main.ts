@@ -1,4 +1,4 @@
-import { LitElement, html, css, nothing, svg } from "lit";
+import { LitElement, html, css, nothing, svg, TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { t, LocaleController } from "./i18n.js";
 
@@ -44,7 +44,7 @@ interface NavItem {
 }
 
 /* Crisp 20×20 stroke-based SVG icons */
-const NAV_ICONS: Record<Route, ReturnType<typeof svg>> = {
+const NAV_ICONS: Record<Route, unknown> = {
   chat: svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v9a1 1 0 01-1 1H7l-4 3V4z"/></svg>`,
   staff: svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="6" r="2.5"/><path d="M2 16v-1a4 4 0 014-4h2a4 4 0 014 4v1"/><circle cx="14" cy="5" r="2"/><path d="M14 11a3.5 3.5 0 013.5 3.5V16"/></svg>`,
   monitor: svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="16" height="11" rx="2"/><path d="M10 13v4"/><path d="M6 17h8"/></svg>`,
@@ -465,7 +465,7 @@ export class AcaClawApp extends LitElement {
    * survives tab switches.  Other views are created/destroyed normally.
    */
   private _renderView() {
-    let otherView = nothing;
+    let otherView: TemplateResult | symbol = nothing;
     switch (this._route) {
       case "staff":
         otherView = html`<acaclaw-staff></acaclaw-staff>`;

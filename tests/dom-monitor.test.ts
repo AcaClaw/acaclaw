@@ -9,15 +9,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockCall = vi.fn();
 const mockAddEventListener = vi.fn();
 const mockRemoveEventListener = vi.fn();
-const mockOnNotification = vi.fn(() => vi.fn());
+const mockOnNotification = vi.fn((_event: string, _handler: (data: unknown) => void) => vi.fn());
 
 vi.mock("../ui/src/controllers/gateway.js", () => ({
   gateway: {
-    call: (...args: unknown[]) => mockCall(...args),
+    call: mockCall,
     state: "connected" as const,
     addEventListener: mockAddEventListener,
     removeEventListener: mockRemoveEventListener,
-    onNotification: (...args: unknown[]) => mockOnNotification(...args),
+    onNotification: mockOnNotification,
   },
 }));
 

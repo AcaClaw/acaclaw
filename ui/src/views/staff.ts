@@ -1362,10 +1362,10 @@ export class StaffView extends LitElement {
 
   private async _loadGatewaySkills() {
     try {
-      const res = await gateway.call<{ skills: typeof this._gatewaySkills }>("skills.status");
+      const res = await gateway.call<{ skills: StaffView["_gatewaySkills"] }>("skills.status");
       if (res?.skills) {
         // Preserve synthetic entries added during this session that the gateway doesn't know about yet
-        const returnedNames = new Set(res.skills.map(s => s.name));
+        const returnedNames = new Set(res.skills.map((s: { name: string }) => s.name));
         const synthetics = this._gatewaySkills.filter(
           s => s.source === "clawhub-repo" && !returnedNames.has(s.name),
         );

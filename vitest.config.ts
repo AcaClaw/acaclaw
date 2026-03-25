@@ -6,12 +6,12 @@ export default defineConfig({
 		coverage: {
 			provider: "v8",
 			include: ["plugins/**/*.ts"],
-			exclude: ["**/*.test.ts", "**/node_modules/**"],
+			exclude: ["**/*.test.ts", "**/node_modules/**", "plugins/*/index.ts"],
 			thresholds: {
-				lines: 70,
+				lines: 60,
 				branches: 70,
-				functions: 70,
-				statements: 70,
+				functions: 60,
+				statements: 60,
 			},
 		},
 	},

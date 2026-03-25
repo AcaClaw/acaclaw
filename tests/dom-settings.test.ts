@@ -13,11 +13,11 @@ const mockOnNotification = vi.fn(() => vi.fn());
 
 vi.mock("../ui/src/controllers/gateway.js", () => ({
   gateway: {
-    call: (...args: unknown[]) => mockCall(...args),
+    call: mockCall,
     state: "connected" as const,
     addEventListener: mockAddEventListener,
     removeEventListener: mockRemoveEventListener,
-    onNotification: (...args: unknown[]) => mockOnNotification(...args),
+    onNotification: mockOnNotification,
   },
 }));
 

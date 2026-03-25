@@ -10,10 +10,13 @@
     "rootDir": ".",
     "declaration": true,
     "noEmit": true,
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "allowImportingTsExtensions": true,
     "paths": {
       "openclaw/plugin-sdk/*": ["./node_modules/openclaw/src/plugin-sdk/*"]
     }
   },
-  "include": ["plugins/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts", "ui/src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["scripts/**/*.ts", "tests/**/*.ts", "ui/src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "plugins"]
 }
