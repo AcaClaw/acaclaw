@@ -820,7 +820,9 @@ export class StaffView extends LitElement {
       border-color: #bbf7d0;
       color: #15803d;
     }
-    .skill-pill.bundled .remove-x { display: none; }
+    .skill-pill.required .remove-x { display: none; }
+    .skill-pill.required .lock-icon { display: inline; }
+    .lock-icon { display: none; font-size: 10px; color: #a78bfa; margin-left: 2px; }
     .skill-pill.not-installed {
       background: #fef3c7;
       border-color: #fde68a;
@@ -1953,9 +1955,11 @@ export class StaffView extends LitElement {
         ${staff.skills.map(sk => {
           const info = allSkills.find(a => a.id === sk);
           const isInstalled = gatewayNames.has(sk);
+          const isRequired = DEFAULT_SKILLS.includes(sk);
           return html`
-            <span class="skill-pill ${info?.bundled ? "bundled" : ""} ${!isInstalled ? "not-installed" : ""}" title="${isInstalled ? (info?.description ?? sk) : `${info?.name ?? sk} — not installed`}">
+            <span class="skill-pill ${info?.bundled ? "bundled" : ""} ${isRequired ? "required" : ""} ${!isInstalled ? "not-installed" : ""}" title="${isRequired ? `${sk} — required (cannot remove)` : isInstalled ? (info?.description ?? sk) : `${info?.name ?? sk} — not installed`}">
               ${info?.name ?? sk}${!isInstalled ? " ⚠" : ""}
+              <span class="lock-icon">🔒</span>
               <span class="remove-x" @click=${() => this._removeSkillFromStaff(staff.id, sk)}>\u00d7</span>
             </span>
           `;
