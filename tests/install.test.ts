@@ -753,39 +753,36 @@ SETUPJSON
 	});
 
 	// ---------------------------------------------------------------
-	// Existing conda detection
+	// AcaClaw Miniforge isolation
 	// ---------------------------------------------------------------
-	describe("existing conda detection", () => {
-		it("detects existing conda at common locations", async () => {
-			const miniforgeDir = join(fakeHome, "miniforge3");
+	describe("AcaClaw Miniforge isolation", () => {
+		it("always uses its own Miniforge dir, not system conda", async () => {
+			// Even if system has conda at ~/miniconda3, AcaClaw should use ~/.acaclaw/miniforge3
+			const minicondaDir = join(fakeHome, "miniconda3");
 			await runBash(`
-				mkdir -p "${miniforgeDir}/bin"
-				cat > "${miniforgeDir}/bin/conda" <<'EOF'
+				mkdir -p "${minicondaDir}/bin"
+				cat > "${minicondaDir}/bin/conda" <<'EOF'
 #!/usr/bin/env bash
-echo "conda 24.1.0"
+echo "conda 23.3.1"
 EOF
-				chmod +x "${miniforgeDir}/bin/conda"
+				chmod +x "${minicondaDir}/bin/conda"
 			`);
 
 			const { stdout, code } = await runBash(`
 				HOME="${fakeHome}"
 				ACACLAW_DIR="${fakeHome}/.acaclaw"
 				MINIFORGE_DIR="\${ACACLAW_DIR}/miniforge3"
-				EXISTING_CONDA=""
-				for candidate in \\
-					"\${MINIFORGE_DIR}/bin/conda" \\
-					"\${HOME}/miniforge3/bin/conda" \\
-					"\${HOME}/mambaforge/bin/conda" \\
-					"\${HOME}/miniconda3/bin/conda"; do
-					if [[ -x "\$candidate" ]]; then
-						EXISTING_CONDA="\$candidate"
-						break
-					fi
-				done
-				echo "\${EXISTING_CONDA}"
+				echo "\${MINIFORGE_DIR}"
 			`);
 			expect(code).toBe(0);
-			expect(stdout.trim()).toBe(`${miniforgeDir}/bin/conda`);
+			expect(stdout.trim()).toBe(join(fakeHome, ".acaclaw", "miniforge3"));
+		});
+
+		it("install.sh no longer references USE_EXISTING_CONDA", async () => {
+			const { code } = await runBash(
+				`! grep -q "USE_EXISTING_CONDA" "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
 		});
 	});
 });

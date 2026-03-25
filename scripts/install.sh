@@ -144,34 +144,11 @@ if [[ "$SKIP_CONDA" == "true" ]]; then
 	warn "Skipping Conda installation (--no-conda)"
 else
 	MINIFORGE_DIR="${ACACLAW_DIR}/miniforge3"
-	USE_EXISTING_CONDA=false
 
-	# --- Detect existing conda installations ---
-	EXISTING_CONDA=""
-	for candidate in \
-		"${MINIFORGE_DIR}/bin/conda" \
-		"${HOME}/miniforge3/bin/conda" \
-		"${HOME}/mambaforge/bin/conda" \
-		"${HOME}/miniconda3/bin/conda"; do
-		if [[ -x "$candidate" ]]; then
-			EXISTING_CONDA="$candidate"
-			break
-		fi
-	done
-
-	# Also check system PATH (last resort)
-	if [[ -z "$EXISTING_CONDA" ]] && check_command conda; then
-		EXISTING_CONDA="$(command -v conda)"
-	fi
-
+	# AcaClaw always uses its own Miniforge installation for reproducibility.
+	# System conda/miniconda may be too old or have incompatible package caches.
 	if [[ -d "$MINIFORGE_DIR" ]]; then
 		log "Miniforge already installed at ${MINIFORGE_DIR} ✓"
-	elif [[ -n "$EXISTING_CONDA" && "$EXISTING_CONDA" != "${MINIFORGE_DIR}/bin/conda" ]]; then
-		# Auto-use existing conda installation
-		EXISTING_DIR="$(dirname "$(dirname "$EXISTING_CONDA")")"
-		USE_EXISTING_CONDA=true
-		MINIFORGE_DIR="$EXISTING_DIR"
-		log "Using existing conda at ${EXISTING_DIR} ✓"
 	fi
 
 	if [[ ! -d "$MINIFORGE_DIR" ]]; then
