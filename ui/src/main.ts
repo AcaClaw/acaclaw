@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing, svg } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { t, LocaleController } from "./i18n.js";
 
 // Eager: default/primary views needed immediately
 import "./views/monitor.js";
@@ -92,6 +93,7 @@ const NAV_GROUPS: NavGroup[] = [
 
 @customElement("acaclaw-app")
 export class AcaClawApp extends LitElement {
+  private _lc = new LocaleController(this);
   @state() private _route: Route = "chat";
   @state() private _gatewayState: GatewayState = "disconnected";
   @state() private _agentStatus = "idle";
@@ -502,11 +504,11 @@ export class AcaClawApp extends LitElement {
   private _gatewayLabel() {
     switch (this._gatewayState) {
       case "connected":
-        return "Running";
+        return t("nav.status.running");
       case "connecting":
-        return "Connecting…";
+        return t("nav.status.connecting");
       case "disconnected":
-        return "Disconnected";
+        return t("nav.status.disconnected");
     }
   }
 
@@ -559,8 +561,8 @@ export class AcaClawApp extends LitElement {
                     >
                       <span class="icon">${NAV_ICONS[item.id]}</span>
                       <div class="label-group">
-                        <span class="label">${item.label}</span>
-                        <span class="desc">${item.description}</span>
+                        <span class="label">${t("nav." + item.id)}</span>
+                        <span class="desc">${t("nav." + item.id + ".desc")}</span>
                       </div>
                     </div>
                   `
@@ -595,7 +597,7 @@ export class AcaClawApp extends LitElement {
                 (this._sidebarCollapsed = !this._sidebarCollapsed)}
             >
               ${this._sidebarCollapsed ? "›" : "‹"}
-              ${this._sidebarCollapsed ? nothing : html`<span>Collapse</span>`}
+              ${this._sidebarCollapsed ? nothing : html`<span>${t("nav.collapse")}</span>`}
             </div>
           </div>
         </nav>

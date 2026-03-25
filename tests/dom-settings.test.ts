@@ -205,9 +205,10 @@ describe("SettingsView DOM", () => {
   it("theme buttons include light, dark, system", async () => {
     const el = await createElement();
     const themeBtns = qa(el, ".theme-btn");
-    expect(themeBtns.length).toBe(3);
+    // 2 language buttons (English, 中文) + 3 theme buttons = 5 total
+    expect(themeBtns.length).toBe(5);
     const labels = Array.from(themeBtns).map((b) => b.textContent?.trim());
-    expect(labels).toEqual(["Light", "Dark", "System"]);
+    expect(labels).toEqual(["English", "中文", "Light", "Dark", "System"]);
     cleanup(el);
   });
 

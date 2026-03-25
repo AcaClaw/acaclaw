@@ -2,6 +2,7 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { gateway } from "../controllers/gateway.js";
+import { t, getLocale, setLocale, LocaleController, type Locale } from "../i18n.js";
 
 type Theme = "light" | "dark" | "system";
 type SecurityMode = "standard" | "maximum";
@@ -205,6 +206,7 @@ export class SettingsView extends LitElement {
     .confirm-actions { display: flex; gap: 8px; }
   `;
 
+  private _lc = new LocaleController(this);
   @state() private _tab: Tab = "appearance";
   @state() private _theme: Theme = (localStorage.getItem(THEME_KEY) as Theme) ?? "system";
   @state() private _security: SecuritySettings = {
@@ -288,13 +290,20 @@ export class SettingsView extends LitElement {
   }
 
   override render() {
+    const tabLabels: Record<Tab, string> = {
+      appearance: t("settings.tab.appearance"),
+      security: t("settings.tab.security"),
+      connection: t("settings.tab.connection"),
+      openclaw: t("settings.tab.openclaw"),
+      uninstall: t("settings.tab.uninstall"),
+    };
     return html`
-      <h1>Settings</h1>
-      <div class="subtitle">Appearance, security policies, and connection health</div>
+      <h1>${t("settings.title")}</h1>
+      <div class="subtitle">${t("settings.subtitle")}</div>
 
       <div class="tabs">
         ${(["appearance", "security", "connection", "openclaw", "uninstall"] as Tab[]).map(
-          (t) => html`<div class="tab ${this._tab === t ? "active" : ""}" @click=${() => { if (t === "openclaw") { this._openOpenClawUI(); } else { this._tab = t; } }}>${t === "openclaw" ? "OpenClaw" : t === "uninstall" ? "Uninstall" : t[0].toUpperCase() + t.slice(1)}</div>`
+          (tab) => html`<div class="tab ${this._tab === tab ? "active" : ""}" @click=${() => { if (tab === "openclaw") { this._openOpenClawUI(); } else { this._tab = tab; } }}>${tabLabels[tab]}</div>`
         )}
       </div>
 
@@ -302,23 +311,44 @@ export class SettingsView extends LitElement {
       ${this._tab === "security" ? this._renderSecurity() : nothing}
       ${this._tab === "connection" ? this._renderConnection() : nothing}
       ${this._tab === "uninstall" ? this._renderUninstall() : nothing}
-      ${this._dirty ? html`<div class="save-banner" @click=${this._saveSecuritySettings}>Save changes</div>` : nothing}
+      ${this._dirty ? html`<div class="save-banner" @click=${this._saveSecuritySettings}>${t("settings.save")}</div>` : nothing}
     `;
   }
 
   private _renderAppearance() {
+    const locale = getLocale();
+    const themeLabels: Record<Theme, string> = {
+      light: t("settings.theme.light"),
+      dark: t("settings.theme.dark"),
+      system: t("settings.theme.system"),
+    };
     return html`
       <div class="section">
-        <div class="section-title">Theme</div>
-        <div class="section-desc">Choose how AcaClaw looks — matches your system preference by default</div>
+        <div class="section-title">${t("settings.lang.title")}</div>
+        <div class="section-desc">${t("settings.lang.desc")}</div>
         <div class="setting-row">
           <div>
-            <div class="setting-label">Color scheme</div>
-            <div class="setting-hint">Switch between light and dark appearance</div>
+            <div class="setting-label">${t("settings.lang.label")}</div>
+            <div class="setting-hint">${t("settings.lang.hint")}</div>
+          </div>
+          <div class="theme-options">
+            <button class="theme-btn ${locale === "en" ? "active" : ""}" @click=${() => setLocale("en")}>English</button>
+            <button class="theme-btn ${locale === "zh-CN" ? "active" : ""}" @click=${() => setLocale("zh-CN")}>中文</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">${t("settings.theme.title")}</div>
+        <div class="section-desc">${t("settings.theme.desc")}</div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">${t("settings.theme.label")}</div>
+            <div class="setting-hint">${t("settings.theme.hint")}</div>
           </div>
           <div class="theme-options">
             ${(["light", "dark", "system"] as Theme[]).map(
-              (t) => html`<button class="theme-btn ${this._theme === t ? "active" : ""}" @click=${() => this._setTheme(t)}>${t[0].toUpperCase() + t.slice(1)}</button>`
+              (th) => html`<button class="theme-btn ${this._theme === th ? "active" : ""}" @click=${() => this._setTheme(th)}>${themeLabels[th]}</button>`
             )}
           </div>
         </div>
@@ -330,28 +360,28 @@ export class SettingsView extends LitElement {
     const sec = this._security;
     return html`
       <div class="section">
-        <div class="section-title">Security mode</div>
-        <div class="section-desc">Controls the overall security posture for agent operations</div>
+        <div class="section-title">${t("settings.security.mode.title")}</div>
+        <div class="section-desc">${t("settings.security.mode.desc")}</div>
         <div class="setting-row">
           <div>
-            <div class="setting-label">Policy level</div>
-            <div class="setting-hint">Standard allows most operations · Maximum restricts network and dangerous commands</div>
+            <div class="setting-label">${t("settings.security.mode.label")}</div>
+            <div class="setting-hint">${t("settings.security.mode.hint")}</div>
           </div>
           <div class="mode-options">
-            <button class="mode-btn ${sec.mode === "standard" ? "active" : ""}" @click=${() => this._setSecurityMode("standard")}>Standard</button>
-            <button class="mode-btn ${sec.mode === "maximum" ? "active" : ""}" @click=${() => this._setSecurityMode("maximum")}>Maximum</button>
+            <button class="mode-btn ${sec.mode === "standard" ? "active" : ""}" @click=${() => this._setSecurityMode("standard")}>${t("settings.security.mode.standard")}</button>
+            <button class="mode-btn ${sec.mode === "maximum" ? "active" : ""}" @click=${() => this._setSecurityMode("maximum")}>${t("settings.security.mode.maximum")}</button>
           </div>
         </div>
       </div>
 
       <div class="section">
-        <div class="section-title">Protections</div>
-        <div class="section-desc">Enable or disable individual security features</div>
+        <div class="section-title">${t("settings.security.protections.title")}</div>
+        <div class="section-desc">${t("settings.security.protections.desc")}</div>
 
         <div class="setting-row">
           <div>
-            <div class="setting-label">Credential scrubbing</div>
-            <div class="setting-hint">Automatically redact API keys, tokens, and secrets from agent outputs</div>
+            <div class="setting-label">${t("settings.security.credential.label")}</div>
+            <div class="setting-hint">${t("settings.security.credential.hint")}</div>
           </div>
           <label class="toggle">
             <input type="checkbox" .checked=${sec.enableCredentialScrubbing} @change=${() => this._toggleSecurity("enableCredentialScrubbing")} />
@@ -361,8 +391,8 @@ export class SettingsView extends LitElement {
 
         <div class="setting-row">
           <div>
-            <div class="setting-label">Injection detection</div>
-            <div class="setting-hint">Detect and block prompt injection and jailbreak attempts</div>
+            <div class="setting-label">${t("settings.security.injection.label")}</div>
+            <div class="setting-hint">${t("settings.security.injection.hint")}</div>
           </div>
           <label class="toggle">
             <input type="checkbox" .checked=${sec.enableInjectionDetection} @change=${() => this._toggleSecurity("enableInjectionDetection")} />
@@ -372,8 +402,8 @@ export class SettingsView extends LitElement {
 
         <div class="setting-row">
           <div>
-            <div class="setting-label">Network allowlist</div>
-            <div class="setting-hint">Restrict outbound connections to approved academic domains only</div>
+            <div class="setting-label">${t("settings.security.network.label")}</div>
+            <div class="setting-hint">${t("settings.security.network.hint")}</div>
           </div>
           <label class="toggle">
             <input type="checkbox" .checked=${sec.enableNetworkPolicy} @change=${() => this._toggleSecurity("enableNetworkPolicy")} />
@@ -395,19 +425,19 @@ export class SettingsView extends LitElement {
   private _renderConnection() {
     return html`
       <div class="section">
-        <div class="section-title">Gateway</div>
-        <div class="section-desc">Connection to the local OpenClaw gateway</div>
+        <div class="section-title">${t("settings.conn.title")}</div>
+        <div class="section-desc">${t("settings.conn.desc")}</div>
         <div class="setting-row">
           <div>
-            <div class="setting-label">Loopback API</div>
+            <div class="setting-label">${t("settings.conn.label")}</div>
             <div class="setting-hint">localhost:2090</div>
           </div>
           <div style="display:flex;align-items:center;gap:12px;">
             <div>
-              <span class="status-badge ${this._gwState}">${this._gwState === "healthy" ? "Healthy" : "Unreachable"}</span>
-              ${this._gwState === "healthy" ? html`<div class="conn-meta">${this._gwLatency}ms latency</div>` : nothing}
+              <span class="status-badge ${this._gwState}">${this._gwState === "healthy" ? t("settings.conn.healthy") : t("settings.conn.unreachable")}</span>
+              ${this._gwState === "healthy" ? html`<div class="conn-meta">${t("settings.conn.latency", this._gwLatency)}</div>` : nothing}
             </div>
-            <button class="btn-action" @click=${this._checkGateway}>Check</button>
+            <button class="btn-action" @click=${this._checkGateway}>${t("settings.conn.check")}</button>
           </div>
         </div>
       </div>
@@ -468,45 +498,42 @@ export class SettingsView extends LitElement {
     return html`
       <div class="uninstall-warning">
         <span class="uninstall-warning-icon">⚠️</span>
-        <div class="uninstall-warning-text">
-          Uninstalling will permanently remove AcaClaw components from your system.
-          This action cannot be undone.
-        </div>
+        <div class="uninstall-warning-text">${t("settings.uninstall.warning")}</div>
       </div>
 
       <div class="section">
-        <div class="section-title">What gets removed</div>
-        <div class="section-desc">AcaClaw profile, conda environments, and config data</div>
+        <div class="section-title">${t("settings.uninstall.removes.title")}</div>
+        <div class="section-desc">${t("settings.uninstall.removes.desc")}</div>
         <ul class="removes-list">
-          <li>AcaClaw OpenClaw profile (<code>~/.openclaw-acaclaw/</code>)</li>
-          <li>AcaClaw conda environments (acaclaw, acaclaw-bio, etc.)</li>
-          <li>AcaClaw config and audit data (<code>~/.acaclaw/</code>)</li>
-          <li>AcaClaw-installed Miniforge (if applicable)</li>
+          <li>${t("settings.uninstall.removes.profile")}</li>
+          <li>${t("settings.uninstall.removes.conda")}</li>
+          <li>${t("settings.uninstall.removes.config")}</li>
+          <li>${t("settings.uninstall.removes.miniforge")}</li>
         </ul>
       </div>
 
       <div class="section">
-        <div class="section-title">What stays untouched</div>
-        <div class="section-desc">Your research data and OpenClaw are safe</div>
+        <div class="section-title">${t("settings.uninstall.keeps.title")}</div>
+        <div class="section-desc">${t("settings.uninstall.keeps.desc")}</div>
         <ul class="keeps-list">
-          <li>✓ OpenClaw itself (<code>~/.openclaw/</code>)</li>
-          <li>✓ Your research data (<code>~/AcaClaw/</code>)</li>
-          <li>✓ System conda installations</li>
+          <li>${t("settings.uninstall.keeps.openclaw")}</li>
+          <li>${t("settings.uninstall.keeps.research")}</li>
+          <li>${t("settings.uninstall.keeps.conda")}</li>
         </ul>
       </div>
 
       <div class="section">
-        <div class="section-title">Uninstall</div>
-        <div class="section-desc">Remove AcaClaw from this machine</div>
+        <div class="section-title">${t("settings.uninstall.section.title")}</div>
+        <div class="section-desc">${t("settings.uninstall.section.desc")}</div>
 
         <div class="uninstall-actions">
           <button class="btn-danger-outline" ?disabled=${running || confirming}
             @click=${() => this._startUninstall("acaclaw")}>
-            Remove AcaClaw only
+            ${t("settings.uninstall.removeAcaclaw")}
           </button>
           <button class="btn-danger" ?disabled=${running || confirming}
             @click=${() => this._startUninstall("all")}>
-            Remove everything
+            ${t("settings.uninstall.removeAll")}
           </button>
         </div>
 
@@ -514,32 +541,32 @@ export class SettingsView extends LitElement {
           <div class="uninstall-confirm">
             <div class="uninstall-confirm-text">
               ${this._uninstallState === "confirm-all"
-                ? "This will remove AcaClaw AND OpenClaw. Are you sure?"
-                : "This will remove AcaClaw (OpenClaw stays). Are you sure?"}
+                ? t("settings.uninstall.confirmAll")
+                : t("settings.uninstall.confirmAcaclaw")}
             </div>
             <div class="confirm-actions">
-              <button class="btn-danger" @click=${this._confirmUninstall}>Yes, uninstall</button>
-              <button class="btn-action" @click=${this._cancelUninstall}>Cancel</button>
+              <button class="btn-danger" @click=${this._confirmUninstall}>${t("settings.uninstall.yes")}</button>
+              <button class="btn-action" @click=${this._cancelUninstall}>${t("settings.uninstall.cancel")}</button>
             </div>
           </div>
         ` : nothing}
 
         ${this._uninstallState === "done" ? html`
           <div class="uninstall-confirm" style="border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.06);">
-            <div class="uninstall-confirm-text" style="color: #10b981;">Uninstall completed successfully.</div>
+            <div class="uninstall-confirm-text" style="color: #10b981;">${t("settings.uninstall.done")}</div>
           </div>
         ` : nothing}
 
         ${this._uninstallState === "failed" ? html`
           <div class="uninstall-confirm">
-            <div class="uninstall-confirm-text" style="color: #ef4444;">Uninstall failed. Check the log below or run the command manually.</div>
+            <div class="uninstall-confirm-text" style="color: #ef4444;">${t("settings.uninstall.failed")}</div>
           </div>
         ` : nothing}
       </div>
 
       ${this._uninstallLog.length > 0 ? html`
         <div class="section">
-          <div class="section-title">${running ? "Uninstall in progress…" : "Uninstall log"}</div>
+          <div class="section-title">${running ? t("settings.uninstall.inProgress") : t("settings.uninstall.log")}</div>
           <div class="uninstall-log">
             ${this._uninstallLog.map((line) => html`<div class="uninstall-log-line">${line}</div>`)}
           </div>
@@ -547,24 +574,24 @@ export class SettingsView extends LitElement {
       ` : nothing}
 
       <div class="section">
-        <div class="section-title">Manual uninstall</div>
-        <div class="section-desc">Alternatively, copy and run in your terminal</div>
+        <div class="section-title">${t("settings.uninstall.manual.title")}</div>
+        <div class="section-desc">${t("settings.uninstall.manual.desc")}</div>
 
-        <div class="cmd-label">Remove AcaClaw only (keeps OpenClaw)</div>
+        <div class="cmd-label">${t("settings.uninstall.manual.acaclawOnly")}</div>
         <div class="cmd-box">
           <code class="cmd-code">${acaclawCmd}</code>
           <button class="btn-copy ${this._copyState["acaclaw"] ? "copied" : ""}"
             @click=${() => this._copyCmd("acaclaw", acaclawCmd)}>
-            ${this._copyState["acaclaw"] ? "Copied!" : "Copy"}
+            ${this._copyState["acaclaw"] ? t("settings.uninstall.copied") : t("settings.uninstall.copy")}
           </button>
         </div>
 
-        <div class="cmd-label" style="margin-top:16px">Remove everything (AcaClaw + OpenClaw)</div>
+        <div class="cmd-label" style="margin-top:16px">${t("settings.uninstall.manual.everything")}</div>
         <div class="cmd-box">
           <code class="cmd-code">${fullCmd}</code>
           <button class="btn-copy ${this._copyState["full"] ? "copied" : ""}"
             @click=${() => this._copyCmd("full", fullCmd)}>
-            ${this._copyState["full"] ? "Copied!" : "Copy"}
+            ${this._copyState["full"] ? t("settings.uninstall.copied") : t("settings.uninstall.copy")}
           </button>
         </div>
       </div>
