@@ -143,6 +143,30 @@ if [[ -d "$ACACLAW_DIR" ]]; then
 fi
 log "AcaClaw data removed ✓"
 
+# --- Remove AcaClaw desktop shortcut ---
+
+DESKTOP_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/install-desktop.sh"
+if [[ -f "$DESKTOP_SCRIPT" ]]; then
+	bash "$DESKTOP_SCRIPT" --remove 2>/dev/null || true
+fi
+
+# --- Stop AcaClaw gateway service (after files removed) ---
+
+ACACLAW_SVC_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/acaclaw-service.sh"
+if [[ -f "$ACACLAW_SVC_SCRIPT" ]]; then
+	bash "$ACACLAW_SVC_SCRIPT" remove 2>/dev/null || true
+else
+	SYSTEMD_UNIT="${HOME}/.config/systemd/user/acaclaw-gateway.service"
+	if [[ -f "$SYSTEMD_UNIT" ]] && command -v systemctl &>/dev/null; then
+		systemctl --user stop acaclaw-gateway.service 2>/dev/null || true
+		systemctl --user disable acaclaw-gateway.service 2>/dev/null || true
+		rm -f "$SYSTEMD_UNIT"
+		systemctl --user daemon-reload 2>/dev/null || true
+		log "AcaClaw service removed ✓"
+	fi
+fi
+bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/stop.sh" 2>/dev/null || true
+
 # =========================================================
 # Part 2: Remove OpenClaw
 # =========================================================

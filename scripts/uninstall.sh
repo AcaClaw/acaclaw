@@ -98,28 +98,6 @@ if [[ "$AUTO_YES" == "false" ]]; then
 	fi
 fi
 
-# --- Stop and remove auto-restart service ---
-
-header "Removing Gateway Service"
-
-SERVICE_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/acaclaw-service.sh"
-if [[ -f "$SERVICE_SCRIPT" ]]; then
-	bash "$SERVICE_SCRIPT" remove 2>/dev/null || true
-else
-	# Manual cleanup fallback
-	SYSTEMD_UNIT="${HOME}/.config/systemd/user/acaclaw-gateway.service"
-	if [[ -f "$SYSTEMD_UNIT" ]] && command -v systemctl &>/dev/null; then
-		systemctl --user stop acaclaw-gateway.service 2>/dev/null || true
-		systemctl --user disable acaclaw-gateway.service 2>/dev/null || true
-		rm -f "$SYSTEMD_UNIT"
-		systemctl --user daemon-reload 2>/dev/null || true
-		log "systemd service removed ✓"
-	fi
-fi
-
-# Stop any running gateway process
-bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/stop.sh" 2>/dev/null || true
-
 # --- Remove desktop shortcut ---
 
 DESKTOP_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/install-desktop.sh"
@@ -213,6 +191,28 @@ if [[ -d "$ACACLAW_DIR" ]]; then
 		log "Kept ${ACACLAW_DIR}/ (contains remaining files)"
 	fi
 fi
+
+# --- Stop and remove auto-restart service (last — kills the gateway process) ---
+
+header "Removing Gateway Service"
+
+SERVICE_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/acaclaw-service.sh"
+if [[ -f "$SERVICE_SCRIPT" ]]; then
+	bash "$SERVICE_SCRIPT" remove 2>/dev/null || true
+else
+	# Manual cleanup fallback
+	SYSTEMD_UNIT="${HOME}/.config/systemd/user/acaclaw-gateway.service"
+	if [[ -f "$SYSTEMD_UNIT" ]] && command -v systemctl &>/dev/null; then
+		systemctl --user stop acaclaw-gateway.service 2>/dev/null || true
+		systemctl --user disable acaclaw-gateway.service 2>/dev/null || true
+		rm -f "$SYSTEMD_UNIT"
+		systemctl --user daemon-reload 2>/dev/null || true
+		log "systemd service removed ✓"
+	fi
+fi
+
+# Stop any running gateway process
+bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/stop.sh" 2>/dev/null || true
 
 # --- Summary ---
 
