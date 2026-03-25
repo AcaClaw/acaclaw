@@ -1,6 +1,7 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { gateway } from "../controllers/gateway.js";
+import { t, LocaleController } from "../i18n.js";
 
 interface DisciplineOption {
   id: string;
@@ -63,6 +64,7 @@ type WizardStep =
 
 @customElement("acaclaw-onboarding")
 export class OnboardingView extends LitElement {
+  private _lc = new LocaleController(this);
   @state() private _step: WizardStep = "discipline";
   @state() private _selectedDisciplines: Set<string> = new Set([
     "general",
@@ -552,7 +554,7 @@ export class OnboardingView extends LitElement {
         <div class="wizard-header">
           <img src="/logo/AcaClaw.svg" alt="AcaClaw" />
           <div>
-            <div class="title">Welcome to AcaClaw</div>
+            <div class="title">${t("onboarding.welcome")}</div>
             <div class="subtitle">
               Set up your AI research assistant
             </div>
@@ -593,7 +595,7 @@ export class OnboardingView extends LitElement {
                 @click=${this._finish}
                 ?disabled=${this._installing}
               >
-                ${this._installing ? "Setting up…" : "Finish Setup"}
+                ${this._installing ? t("onboarding.settingUp") : t("onboarding.finishSetup")}
               </button>`
             : html`<button class="nav-btn next-btn" @click=${this._next}>
                 Next →
@@ -609,7 +611,7 @@ export class OnboardingView extends LitElement {
     ).reduce((sum, d) => sum + d.sizeGB, 0);
 
     return html`
-      <h2>Choose Your Discipline</h2>
+      <h2>${t("onboarding.discipline.title")}</h2>
       <p class="step-desc">
         Select the disciplines you work in. Each adds specialized
         packages to your computing environment.
@@ -646,7 +648,7 @@ export class OnboardingView extends LitElement {
 
   private _renderProvider() {
     return html`
-      <h2>AI Provider Setup</h2>
+      <h2>${t("onboarding.provider.title")}</h2>
       <p class="step-desc">
         Choose your AI provider and enter your API key. You can change this later in Settings.
       </p>
@@ -681,7 +683,7 @@ export class OnboardingView extends LitElement {
       ${this._provider !== "web"
         ? html`
             <div class="key-group">
-              <label class="key-label">API Key</label>
+              <label class="key-label">${t("onboarding.provider.apiKey")}</label>
               <div class="key-row">
                 <input
                   class="key-input"
@@ -708,7 +710,7 @@ export class OnboardingView extends LitElement {
                         ? "Testing connection…"
                         : this._testResult === "success"
                           ? "✓ Connection successful"
-                          : "✗ Connection failed — check your key"}
+                          : t("onboarding.provider.failed")}
                     </div>
                   `
                 : ""}
@@ -720,13 +722,13 @@ export class OnboardingView extends LitElement {
 
   private _renderWorkspace() {
     return html`
-      <h2>Workspace Location</h2>
+      <h2>${t("onboarding.workspace.title")}</h2>
       <p class="step-desc">
         Your workspace is where AcaClaw stores your research files. The
         default location works for most users.
       </p>
 
-      <label class="key-label">Workspace path</label>
+      <label class="key-label">${t("onboarding.workspace.path")}</label>
       <input
         class="path-input"
         .value=${this._workspacePath}
@@ -736,7 +738,7 @@ export class OnboardingView extends LitElement {
           ).value)}
       />
 
-      <label class="key-label" style="margin-top: 16px">Workspace structure</label>
+      <label class="key-label" style="margin-top: 16px">${t("onboarding.workspace.structure")}</label>
       <div class="tree-preview">
         📁 ${this._workspacePath}<br />
         ├── 📁 data/<br />
@@ -755,7 +757,7 @@ export class OnboardingView extends LitElement {
 
   private _renderSecurity() {
     return html`
-      <h2>Security Level</h2>
+      <h2>${t("onboarding.security.title")}</h2>
       <p class="step-desc">
         Choose how tightly AcaClaw controls what the AI can do.
       </p>
@@ -812,7 +814,7 @@ export class OnboardingView extends LitElement {
 
   private _renderReady() {
     return html`
-      <h2>Ready to Go!</h2>
+      <h2>${t("onboarding.ready.title")}</h2>
       <p class="step-desc">
         Here's a summary of your setup. Click "Finish Setup" to start
         using AcaClaw.
@@ -820,7 +822,7 @@ export class OnboardingView extends LitElement {
 
       <div class="summary-list">
         <div class="summary-item">
-          <span class="label">Disciplines</span>
+          <span class="label">${t("onboarding.ready.disciplines")}</span>
           <span class="value"
             >${[...this._selectedDisciplines]
               .map((d) => d.charAt(0).toUpperCase() + d.slice(1))
@@ -828,22 +830,22 @@ export class OnboardingView extends LitElement {
           >
         </div>
         <div class="summary-item">
-          <span class="label">AI Provider</span>
+          <span class="label">${t("onboarding.ready.aiProvider")}</span>
           <span class="value"
             >${this._provider.charAt(0).toUpperCase() +
             this._provider.slice(1)}</span
           >
         </div>
         <div class="summary-item">
-          <span class="label">Workspace</span>
+          <span class="label">${t("backup.snapshots.header.workspace")}</span>
           <span class="value">${this._workspacePath}</span>
         </div>
         <div class="summary-item">
-          <span class="label">Security</span>
+          <span class="label">${t("settings.tab.security")}</span>
           <span class="value"
             >${this._securityLevel === "standard"
               ? "Standard"
-              : "Maximum (Docker)"}</span
+              : t("onboarding.ready.maximum")}</span
           >
         </div>
       </div>
@@ -860,7 +862,7 @@ export class OnboardingView extends LitElement {
               <div class="progress-label">
                 ${this._installProgress < 100
                   ? "Setting up your environment…"
-                  : "All done! Redirecting to dashboard…"}
+                  : t("onboarding.ready.done")}
               </div>
             </div>
           `

@@ -1,6 +1,7 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { gateway } from "../controllers/gateway.js";
+import { t, LocaleController } from "../i18n.js";
 
 export interface StaffMember {
   id: string;
@@ -323,6 +324,7 @@ export function getCustomizedStaff(): StaffMember[] {
 
 @customElement("acaclaw-staff")
 export class StaffView extends LitElement {
+  private _lc = new LocaleController(this);
   @state() private _staff: StaffMember[] = applyCustomizations(STAFF_MEMBERS.map((s) => ({ ...s, skills: [...s.skills] })));
   @state() private _panel: PanelState | null = null;
   /** Tracks editable name — which staff id is being edited */
@@ -1808,24 +1810,24 @@ export class StaffView extends LitElement {
   override render() {
     const available = PREBUILT_TEMPLATES.filter((t) => !this._staff.find((s) => s.id === t.id));
     return html`
-      <h1>Staff</h1>
+      <h1>${t("staff.title")}</h1>
       <div class="page-header">
         <div class="page-header-left">
           <div class="subtitle">
-            Your digital life team \u2014 configure environments, assign skills, and install each member's workspace
+            ${t("staff.subtitle")}
           </div>
         </div>
         <div style="position:relative">
-          <button class="btn-new-staff" @click=${() => { this._showNewPicker = !this._showNewPicker; }}>+ New Staff</button>
+          <button class="btn-new-staff" @click=${() => { this._showNewPicker = !this._showNewPicker; }}>${t("staff.newStaff")}</button>
           ${this._showNewPicker ? html`
             <div class="new-picker-overlay" @click=${() => { this._showNewPicker = false; }}></div>
             <div class="new-picker">
-              ${available.map((t) => html`
-                <div class="new-picker-item" @click=${() => this._addNewStaff(t)}>
-                  <div class="new-picker-icon">${t.icon}</div>
+              ${available.map((tmpl) => html`
+                <div class="new-picker-item" @click=${() => this._addNewStaff(tmpl)}>
+                  <div class="new-picker-icon">${tmpl.icon}</div>
                   <div class="new-picker-info">
-                    <div class="new-picker-name">${t.name}</div>
-                    <div class="new-picker-role">${t.role} \u2014 ${t.discipline}</div>
+                    <div class="new-picker-name">${tmpl.name}</div>
+                    <div class="new-picker-role">${t("staff.role." + tmpl.id) || tmpl.role} \u2014 ${tmpl.discipline}</div>
                   </div>
                 </div>
               `)}
@@ -1833,8 +1835,8 @@ export class StaffView extends LitElement {
               <div class="new-picker-item" @click=${() => this._addNewStaff()}>
                 <div class="new-picker-icon">\u2795</div>
                 <div class="new-picker-info">
-                  <div class="new-picker-name">Custom Staff</div>
-                  <div class="new-picker-role">Blank assistant \u2014 configure from scratch</div>
+                  <div class="new-picker-name">${t("staff.customStaff")}</div>
+                  <div class="new-picker-role">${t("staff.customStaff.desc")}</div>
                 </div>
               </div>
             </div>
@@ -1862,7 +1864,7 @@ export class StaffView extends LitElement {
               : s.icon}
             ${this._showAvatarPicker === s.id ? html`
               <div class="avatar-picker" @click=${(e: Event) => e.stopPropagation()}>
-                <button class="avatar-upload-btn" @click=${() => this._triggerPhotoUpload(s.id)}>📷 Upload Photo</button>
+                <button class="avatar-upload-btn" @click=${() => this._triggerPhotoUpload(s.id)}>${t("staff.uploadPhoto")}</button>
                 ${AVATAR_EMOJIS.map(em => html`
                   <button @click=${() => this._setAvatar(s.id, em)}>${em}</button>
                 `)}
@@ -1886,47 +1888,47 @@ export class StaffView extends LitElement {
                     <span style="cursor:pointer" @click=${() => this._startEditName(s)}>${s.name}</span>
                   `}
             </div>
-            <div class="staff-role">${s.role}</div>
+            <div class="staff-role">${t("staff.role." + s.id) || s.role}</div>
           </div>
         </div>
 
         <div class="kv-row">
-          <div class="kv-label">About</div>
-          <div class="kv-value secondary">${s.description}</div>
+          <div class="kv-label">${t("staff.about")}</div>
+          <div class="kv-value secondary">${t("staff.desc." + s.id) || s.description}</div>
         </div>
 
         <div class="kv-row">
-          <div class="kv-label">Env</div>
+          <div class="kv-label">${t("agents.env")}</div>
           <div class="kv-value" style="display:flex;align-items:center;gap:6px">
             <span class="env-badge">
               <span class="env-status-dot ${s.envInstalled ? "installed" : "not-installed"}" style="width:6px;height:6px"></span>
               ${s.condaEnv}
             </span>
-            <button class="manage-link" @click=${() => this._openPanel(s.id, "config")}>Manage</button>
+            <button class="manage-link" @click=${() => this._openPanel(s.id, "config")}>${t("staff.manage")}</button>
           </div>
         </div>
 
         <div class="kv-row">
-          <div class="kv-label">Skills</div>
+          <div class="kv-label">${t("skills.title")}</div>
           <div class="kv-value" style="display:flex;align-items:center;gap:6px">
             ${this._gatewaySkillsLoaded
-              ? html`<span class="skills-count">${this._installedGatewaySkills.length} skill${this._installedGatewaySkills.length !== 1 ? 's' : ''}</span>`
+              ? html`<span class="skills-count">${t("staff.skillsCount", this._installedGatewaySkills.length)}</span>`
               : html`<span class="skills-count" style="color:var(--ac-text-muted)">…</span>`}
-            <button class="manage-link" @click=${() => this._openPanel(s.id, "skills")}>Manage</button>
+            <button class="manage-link" @click=${() => this._openPanel(s.id, "skills")}>${t("staff.manage")}</button>
           </div>
         </div>
 
         <div class="staff-actions">
           ${s.envInstalled ? html`
-            <button class="btn-action" @click=${() => this._openPanel(s.id, "config")}>\u2699\uFE0F Config</button>
-            <button class="btn-action" @click=${() => this._openChat(s.id)}>\u{1F4AC} Chat</button>
+            <button class="btn-action" @click=${() => this._openPanel(s.id, "config")}>${t("staff.config")}</button>
+            <button class="btn-action" @click=${() => this._openChat(s.id)}>${t("staff.chat")}</button>
           ` : html`
             ${this._envAction[s.id] === "installing" ? html`
               <button class="btn-action btn-install installing" disabled>
-                <span class="install-spinner"></span>Installing\u2026
+                <span class="install-spinner"></span>${t("staff.installing")}
               </button>
             ` : html`
-              <button class="btn-action btn-install" @click=${() => this._installStaffEnv(s.id)}>\u{1F4E6} Install</button>
+              <button class="btn-action btn-install" @click=${() => this._installStaffEnv(s.id)}>${t("staff.install")}</button>
             `}
           `}
         </div>
@@ -1939,7 +1941,7 @@ export class StaffView extends LitElement {
           </div>
           ${!this._envAction[s.id] ? html`
             <div class="status-bar-actions">
-              <button class="status-bar-dismiss" @click=${() => this._clearLog(s.id)}>Dismiss</button>
+              <button class="status-bar-dismiss" @click=${() => this._clearLog(s.id)}>${t("staff.dismiss")}</button>
             </div>
           ` : ""}
         ` : ""}
@@ -1954,8 +1956,8 @@ export class StaffView extends LitElement {
     if (!staff) return "";
 
     let title = "";
-    if (type === "config") title = `${staff.name} \u2014 Environment`;
-    if (type === "skills") title = `${staff.name} \u2014 Skills`;
+    if (type === "config") title = t("staff.panel.env", staff.name);
+    if (type === "skills") title = t("staff.panel.skills", staff.name);
 
     return html`
       <div class="panel-overlay" @click=${this._closePanel}></div>
@@ -1974,7 +1976,7 @@ export class StaffView extends LitElement {
                 <button
                   class="btn-panel-action"
                   @click=${this._closePanel}
-                >Done</button>
+                >${t("monitor.done")}</button>
               </div>
             `
           : ""}
@@ -1984,7 +1986,7 @@ export class StaffView extends LitElement {
                 <button
                   class="btn-panel-action"
                   @click=${() => { this._persistStaff(); this._closePanel(); }}
-                >Close</button>
+                >${t("staff.close")}</button>
               </div>
             `
           : ""}
@@ -1998,7 +2000,7 @@ export class StaffView extends LitElement {
     const pkgInput = this._pkgInput[staff.id] ?? "";
 
     return html`
-      <div class="panel-section-title">Environment</div>
+      <div class="panel-section-title">${t("env.title")}</div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
         <select class="env-select" style="margin-bottom:0;flex:1"
           .value=${staff.condaEnv}
@@ -2015,16 +2017,16 @@ export class StaffView extends LitElement {
         <span class="env-status-dot ${staff.envInstalled ? "installed" : "not-installed"}" style="width:8px;height:8px;flex-shrink:0"></span>
         ${envAct ? html`
           <button class="env-action-sm ${envAct === "installing" ? "env-install-sm" : "env-uninstall-sm"}" disabled style="white-space:nowrap">
-            ${envAct === "installing" ? "Installing\u2026" : "Removing\u2026"}
+            ${envAct === "installing" ? t("staff.installingEnv") : t("staff.removingEnv")}
           </button>
         ` : staff.envInstalled ? html`
-          <button class="env-action-sm env-uninstall-sm" @click=${() => this._uninstallStaffEnv(staff.id)} style="white-space:nowrap">Remove</button>
+          <button class="env-action-sm env-uninstall-sm" @click=${() => this._uninstallStaffEnv(staff.id)} style="white-space:nowrap">${t("apikeys.remove")}</button>
         ` : html`
-          <button class="env-action-sm env-install-sm" @click=${() => this._installStaffEnv(staff.id)} style="white-space:nowrap">Install</button>
+          <button class="env-action-sm env-install-sm" @click=${() => this._installStaffEnv(staff.id)} style="white-space:nowrap">${t("skills.install")}</button>
         `}
       </div>
 
-      <div class="panel-section-title" style="margin-top:20px">Packages (${packages.length})</div>
+      <div class="panel-section-title" style="margin-top:20px">${t("staff.packages", packages.length)}</div>
       ${packages.length > 0 ? html`
         <div class="pkg-list">
           ${packages.map(pkg => html`
@@ -2035,16 +2037,16 @@ export class StaffView extends LitElement {
               <button class="pkg-remove-btn"
                 ?disabled=${this._pkgAction[`${staff.id}:${pkg.name}`] === "removing"}
                 @click=${() => this._removePackage(staff.id, pkg.name)}>
-                ${this._pkgAction[`${staff.id}:${pkg.name}`] === "removing" ? "Removing\u2026" : "Remove"}
+                ${this._pkgAction[`${staff.id}:${pkg.name}`] === "removing" ? t("staff.removingPkg") : t("staff.remove")}
               </button>
             </div>
           `)}
         </div>
-      ` : html`<p style="color:var(--ac-text-muted);font-size:13px;margin-bottom:12px">No packages</p>`}
+      ` : html`<p style="color:var(--ac-text-muted);font-size:13px;margin-bottom:12px">${t("staff.noPackages")}</p>`}
 
       <div class="pkg-install-row">
         <input class="pkg-install-input"
-          placeholder="Package name (e.g. seaborn)"
+          placeholder=${t("staff.pkgPlaceholder")}
           .value=${pkgInput}
           @input=${(e: Event) => { this._pkgInput = { ...this._pkgInput, [staff.id]: (e.target as HTMLInputElement).value }; }}
           @keydown=${(e: KeyboardEvent) => { if (e.key === "Enter" && pkgInput.trim()) this._installPackage(staff.id); }}
@@ -2052,12 +2054,12 @@ export class StaffView extends LitElement {
         <button class="pkg-install-btn"
           ?disabled=${!pkgInput.trim() || this._pkgAction[`${staff.id}:install`] === "installing"}
           @click=${() => this._installPackage(staff.id)}>
-          ${this._pkgAction[`${staff.id}:install`] === "installing" ? "Installing\u2026" : "+ Add"}
+          ${this._pkgAction[`${staff.id}:install`] === "installing" ? t("staff.pkgInstalling") : t("staff.addPkg")}
         </button>
       </div>
 
       ${(this._installLog[staff.id]?.length ?? 0) > 0 ? html`
-        <div class="panel-section-title" style="margin-top:20px">Status</div>
+        <div class="panel-section-title" style="margin-top:20px">${t("agents.status")}</div>
         <div class="install-status-bar" id="status-bar-${staff.id}">
           ${this._installLog[staff.id]!.map(line => html`
             <div class="status-line ${line.startsWith("\u2717") ? "error" : line.startsWith("\u2713") ? "success" : ""}">${line}</div>
@@ -2065,7 +2067,7 @@ export class StaffView extends LitElement {
         </div>
         ${!this._envAction[staff.id] && !Object.keys(this._pkgAction).some(k => k.startsWith(staff.id)) ? html`
           <div class="status-bar-actions">
-            <button class="status-bar-dismiss" @click=${() => this._clearLog(staff.id)}>Clear log</button>
+            <button class="status-bar-dismiss" @click=${() => this._clearLog(staff.id)}>${t("staff.clearLog")}</button>
           </div>
         ` : ""}
       ` : ""}
@@ -2136,7 +2138,7 @@ export class StaffView extends LitElement {
     const installed = this._installedGatewaySkills;
 
     return html`
-      <div class="panel-section-title">Installed Skills (${installed.length})</div>
+      <div class="panel-section-title">${t("staff.installedSkills", installed.length)}</div>
       <div class="skill-pills" style="margin-bottom:20px">
         ${installed.map(gw => html`
           <span class="skill-pill ${gw.bundled ? "bundled" : ""}" title="${gw.description || gw.name}">
@@ -2145,9 +2147,9 @@ export class StaffView extends LitElement {
         `)}
       </div>
 
-      <div class="panel-section-title">Search ClawHub</div>
+      <div class="panel-section-title">${t("staff.searchClawHub")}</div>
       <div class="search-skill-bar" style="margin-bottom:12px">
-        <input class="search-skill-input" placeholder="Search ClawHub skills\u2026"
+        <input class="search-skill-input" placeholder=${t("staff.searchPlaceholder")}
           .value=${query}
           @input=${(e: Event) => { this._searchQuery = { ...this._searchQuery, [staff.id]: (e.target as HTMLInputElement).value }; this._searchResults = []; }}
           @keydown=${(e: KeyboardEvent) => { if (e.key === "Enter") this._searchClawhub(staff.id); }}
@@ -2169,15 +2171,15 @@ export class StaffView extends LitElement {
                 }
                 this._searchResults = this._searchResults.filter(x => x.id !== r.id);
                 this._installClawHubSkill(staff.id, r.id);
-              }}>${this._skillInstalling[r.id] ? "Installing…" : "Install & Add"}</button>
+              }}>${this._skillInstalling[r.id] ? t("skills.installing") : t("staff.installAndAdd")}</button>
             </div>
           `)}
         </div>
       ` : ""}
 
       <div class="panel-section-title" style="margin-bottom:4px">
-        Recommended for ${staff.discipline}
-        <span style="font-size:11px;color:var(--ac-text-muted);font-weight:normal;margin-left:6px">(${relevantSkills.length} skills)</span>
+        ${t("staff.recommendedFor", staff.discipline)}
+        <span style="font-size:11px;color:var(--ac-text-muted);font-weight:normal;margin-left:6px">(${t("staff.skillsCount", relevantSkills.length)})</span>
       </div>
       ${categoryOrder.map(cat => html`
         <div style="margin-top:12px;margin-bottom:6px;font-size:12px;font-weight:600;color:var(--ac-text-muted);text-transform:uppercase;letter-spacing:0.5px">${cat}</div>
@@ -2196,19 +2198,19 @@ export class StaffView extends LitElement {
                 <div class="skill-check-desc">${skill.description}</div>
               </div>
               ${isAvailable ? html`
-                <span style="flex-shrink:0;font-size:11px;color:var(--ac-text-muted)">${isBundledEligible ? "Bundled" : ""}</span>
+                <span style="flex-shrink:0;font-size:11px;color:var(--ac-text-muted)">${isBundledEligible ? t("skills.Bundled") : ""}</span>
                 ${!isBundledEligible ? html`
                   <button class="search-result-add" style="flex-shrink:0;font-size:11px;background:transparent;color:var(--ac-danger,#e53935);border-color:var(--ac-danger,#e53935)"
                     ?disabled=${uninstalling}
                     @click=${(e: Event) => { e.stopPropagation(); this._uninstallSkill(skill.id); }}>
-                    ${uninstalling ? "Removing\u2026" : "Uninstall"}
+                    ${uninstalling ? t("staff.removing") : t("settings.tab.uninstall")}
                   </button>
                 ` : ""}
               ` : html`
                 <button class="search-result-add" style="flex-shrink:0;background:var(--ac-primary);color:#fff;border-color:var(--ac-primary)"
                   ?disabled=${installing}
                   @click=${(e: Event) => { e.stopPropagation(); this._installClawHubSkill(staff.id, skill.id); }}>
-                  ${installing ? "Installing\u2026" : "Install"}
+                  ${installing ? t("staff.skillInstalling") : t("env.pkgInstall")}
                 </button>
               `}
             </div>
@@ -2217,7 +2219,7 @@ export class StaffView extends LitElement {
       `)}
 
       ${this._skillInstallLog.length > 0 ? html`
-        <div class="panel-section-title" style="margin-top:20px">Install Log</div>
+        <div class="panel-section-title" style="margin-top:20px">${t("staff.installLog")}</div>
         <div class="install-status-bar" style="max-height:200px;overflow-y:auto">
           ${this._skillInstallLog.map(line => html`
             <div class="status-line ${line.startsWith("\u2717") ? "error" : line.startsWith("\u2713") ? "success" : ""}">${line}</div>
@@ -2225,7 +2227,7 @@ export class StaffView extends LitElement {
         </div>
         ${Object.keys(this._skillInstalling).length === 0 ? html`
           <div class="status-bar-actions">
-            <button class="status-bar-dismiss" @click=${() => { this._skillInstallLog = []; }}>Clear log</button>
+            <button class="status-bar-dismiss" @click=${() => { this._skillInstallLog = []; }}>${t("staff.clearLog")}</button>
           </div>
         ` : ""}
       ` : ""}

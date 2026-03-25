@@ -1,6 +1,7 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { gateway } from "../controllers/gateway.js";
+import { t, LocaleController } from "../i18n.js";
 
 /** Skills from skills.json agent_required — bundled by gateway but installed via clawhub. */
 const AGENT_REQUIRED_SKILLS = new Set(["nano-pdf", "xurl", "summarize", "humanizer"]);
@@ -44,6 +45,7 @@ const CURATED_SKILLS: ClawHubSkill[] = [
 
 @customElement("acaclaw-skills")
 export class SkillsView extends LitElement {
+  private _lc = new LocaleController(this);
   @state() private _tab: "installed" | "clawhub" = "installed";
   @state() private _installed: Skill[] = [];
   @state() private _searchQuery = "";
@@ -514,20 +516,20 @@ export class SkillsView extends LitElement {
 
   override render() {
     return html`
-      <h1>Skills</h1>
+      <h1>${t("skills.title")}</h1>
 
       <div class="tabs">
         <div
           class="tab ${this._tab === "installed" ? "active" : ""}"
           @click=${() => { this._tab = "installed"; this._searchQuery = ""; }}
         >
-          Installed (${this._installed.filter(isUserInstalled).length})
+          ${t("skills.tab.installed", this._installed.filter(isUserInstalled).length)}
         </div>
         <div
           class="tab ${this._tab === "clawhub" ? "active" : ""}"
           @click=${() => { this._tab = "clawhub"; this._searchQuery = ""; }}
         >
-          ClawHub
+          ${t("skills.tab.clawhub")}
         </div>
       </div>
 
@@ -550,7 +552,7 @@ export class SkillsView extends LitElement {
       <div class="search-bar">
         <input
           class="search-input"
-          placeholder="Search installed skills…"
+          placeholder=${t("skills.search.installed")}
           .value=${this._searchQuery}
           @input=${(e: Event) =>
             (this._searchQuery = (e.target as HTMLInputElement).value)}
@@ -558,7 +560,7 @@ export class SkillsView extends LitElement {
       </div>
 
       ${skills.length === 0
-        ? html`<div class="empty-state">No skills found</div>`
+        ? html`<div class="empty-state">${t("skills.empty")}</div>`
         : html`
             <div class="skill-grid">
               ${skills.map(
@@ -568,16 +570,16 @@ export class SkillsView extends LitElement {
                       <div class="skill-name">
                         ${s.name}
                         ${isUserInstalled(s)
-                          ? html`<span class="skill-version">installed</span>`
-                          : html`<span class="skill-version">bundled</span>`}
+                          ? html`<span class="skill-version">${t("skills.installed")}</span>`
+                          : html`<span class="skill-version">${t("skills.bundled")}</span>`}
                       </div>
                       <div class="skill-desc">${s.description}</div>
                       <div class="skill-meta">
                         ${s.eligible
-                          ? html`<span style="color: var(--ac-success)">✓ Eligible</span>`
-                          : html`<span style="color: var(--ac-text-muted)">Not eligible</span>`}
+                          ? html`<span style="color: var(--ac-success)">${t("skills.eligible")}</span>`
+                          : html`<span style="color: var(--ac-text-muted)">${t("skills.notEligible")}</span>`}
                         ${s.disabled
-                          ? html` · <span style="color: var(--ac-warning)">Disabled</span>`
+                          ? html` · <span style="color: var(--ac-warning)">${t("skills.disabled")}</span>`
                           : ""}
                       </div>
                     </div>
@@ -585,21 +587,21 @@ export class SkillsView extends LitElement {
                       ${!isUserInstalled(s)
                         ? html`<span
                             style="font-size: 11px; color: var(--ac-text-muted)"
-                            >Bundled</span
+                            >${t("skills.Bundled")}</span
                           >`
                         : html`
                           <button
                             class="action-btn disable-btn"
                             @click=${() => this._toggleSkill(s.name, s.disabled)}
                           >
-                            ${s.disabled ? "Enable" : "Disable"}
+                            ${s.disabled ? t("skills.enable") : t("skills.disable")}
                           </button>
                           <button
                             class="action-btn uninstall-btn"
                             ?disabled=${this._uninstalling === s.name}
                             @click=${() => this._uninstallSkill(s.name)}
                           >
-                            ${this._uninstalling === s.name ? "Removing…" : "Uninstall"}
+                            ${this._uninstalling === s.name ? t("skills.removing") : t("settings.tab.uninstall")}
                           </button>`}
                     </div>
                   </div>
@@ -622,7 +624,7 @@ export class SkillsView extends LitElement {
       <div class="search-bar">
         <input
           class="search-input"
-          placeholder="Search ClawHub…"
+          placeholder=${t("skills.search.clawhub")}
           .value=${this._searchQuery}
           @input=${(e: Event) => {
             this._searchQuery = (e.target as HTMLInputElement).value;
@@ -636,7 +638,7 @@ export class SkillsView extends LitElement {
             }
           }}
         />
-        ${this._searching ? html`<span class="searching-indicator">Searching…</span>` : ""}
+        ${this._searching ? html`<span class="searching-indicator">${t("skills.searching")}</span>` : ""}
       </div>
 
       ${skills.length === 0
@@ -645,7 +647,7 @@ export class SkillsView extends LitElement {
               <p>
                 ${CURATED_SKILLS.length === 0
                   ? "No curated skills available."
-                  : "All curated skills are already installed!"}
+                  : t("skills.clawhub.allInstalled")}
               </p>
             </div>
           `
@@ -659,7 +661,7 @@ export class SkillsView extends LitElement {
                         ${s.name}
                         ${s.recommended
                           ? html`<span class="recommended-badge"
-                              >Recommended</span
+                              >${t("skills.recommended")}</span
                             >`
                           : ""}
                       </div>
@@ -676,7 +678,7 @@ export class SkillsView extends LitElement {
                       >
                         ${this._installing === s.name
                           ? "Installing…"
-                          : "Install"}
+                          : t("skills.install")}
                       </button>
                     </div>
                   </div>

@@ -26,7 +26,7 @@ export function setLocale(locale: Locale) {
 export function t(key: string, ...args: (string | number)[]): string {
   let str = _dict[key] ?? dictionaries.en[key] ?? key;
   for (let i = 0; i < args.length; i++) {
-    str = str.replace(`{${i}}`, String(args[i]));
+    str = str.replaceAll(`{${i}}`, String(args[i]));
   }
   return str;
 }

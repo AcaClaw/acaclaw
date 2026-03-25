@@ -573,7 +573,7 @@ export class AcaClawApp extends LitElement {
           <div class="sidebar-footer">
             <div class="statusbar-mini">
               <div class="item gateway-status ${this._gatewayState === "connecting" ? "reconnecting" : ""}"
-                   title=${this._gatewayState === "disconnected" ? "Click to reconnect" : this._gatewayState === "connecting" ? "Reconnecting…" : "Connected to gateway"}
+                   title=${this._gatewayState === "disconnected" ? t("monitor.status.clickReconnect") : this._gatewayState === "connecting" ? t("monitor.status.reconnecting") : t("monitor.status.connected")}
                    @click=${this._onStatusClick}>
                 <span class="status-dot ${this._gatewayDotClass()}"></span>
                 <span class="status-text">${this._gatewayLabel()}</span>
@@ -582,7 +582,7 @@ export class AcaClawApp extends LitElement {
                 <span class="status-icon">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
                 </span>
-                <span class="status-text">${this._agentStatus}</span>
+                <span class="status-text">${t("monitor.status." + this._agentStatus) || this._agentStatus}</span>
               </div>
               <div class="item">
                 <span class="status-icon">

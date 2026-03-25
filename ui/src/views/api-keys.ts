@@ -1,6 +1,7 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { gateway } from "../controllers/gateway.js";
+import { t, LocaleController } from "../i18n.js";
 
 interface KeyEntry {
   id: string;
@@ -51,6 +52,7 @@ function genId(): string {
 
 @customElement("acaclaw-api-keys")
 export class ApiKeysView extends LitElement {
+  private _lc = new LocaleController(this);
   @state() private _tab: "llm" | "browser" = "llm";
 
   // LLM state
@@ -653,22 +655,22 @@ export class ApiKeysView extends LitElement {
     const browserCount = this._countActiveKeys(this._browserKeys);
 
     return html`
-      <h1>API Keys</h1>
-      <p class="subtitle">Manage your LLM and search provider keys. Stored locally on your machine.</p>
+      <h1>${t("apikeys.title")}</h1>
+      <p class="subtitle">${t("apikeys.subtitle")}</p>
 
       <div class="tabs">
         <div
           class="tab ${this._tab === "llm" ? "active" : ""}"
           @click=${() => (this._tab = "llm")}
         >
-          LLM Providers
+          ${t("apikeys.tab.llm")}
           ${llmCount > 0 ? html`<span class="count">${llmCount}</span>` : ""}
         </div>
         <div
           class="tab ${this._tab === "browser" ? "active" : ""}"
           @click=${() => (this._tab = "browser")}
         >
-          Browser / Search
+          ${t("apikeys.tab.browser")}
           ${browserCount > 0 ? html`<span class="count">${browserCount}</span>` : ""}
         </div>
       </div>
@@ -698,7 +700,7 @@ export class ApiKeysView extends LitElement {
 
     return html`
       <div class="card">
-        <h2>Provider</h2>
+        <h2>${t("apikeys.provider")}</h2>
         <div class="provider-chips">
           ${sorted.map(
             (p) => html`
@@ -733,8 +735,8 @@ export class ApiKeysView extends LitElement {
           ? html`
               <div class="empty-state">
                 <div class="icon">🔐</div>
-                <div>No API keys configured for ${provider.name}.</div>
-                <div style="margin-top: 4px">Click "Add Key" below to get started.</div>
+                <div>${t("apikeys.noKeys", provider.name)}</div>
+                <div style="margin-top: 4px">${t("apikeys.noKeys.hint")}</div>
               </div>
             `
           : !allSaved
@@ -752,15 +754,15 @@ export class ApiKeysView extends LitElement {
                   class="btn btn-outline"
                   @click=${() => this._addKey(this._llmProvider, "llm", provider.placeholder)}
                 >
-                  + Add Key
+                  ${t("apikeys.addKey")}
                 </button>
               `
             : ""}
           ${hasUnsaved
-            ? html`<button class="btn btn-primary" @click=${() => this._saveKeys("llm")}>Save</button>`
+            ? html`<button class="btn btn-primary" @click=${() => this._saveKeys("llm")}>${t("apikeys.save")}</button>`
             : ""}
           ${allSaved
-            ? html`<button class="btn btn-outline" @click=${() => this._addKey(this._llmProvider, "llm", provider.placeholder)}>+ Add Another Key</button>`
+            ? html`<button class="btn btn-outline" @click=${() => this._addKey(this._llmProvider, "llm", provider.placeholder)}>${t("apikeys.addAnother")}</button>`
             : ""}
           ${this._saveMessage ? html`<span class="save-msg">${this._saveMessage}</span>` : ""}
         </div>
@@ -768,19 +770,19 @@ export class ApiKeysView extends LitElement {
 
       <!-- Default model -->
       <div class="card">
-        <h2>Default Model</h2>
+        <h2>${t("apikeys.defaultModel")}</h2>
         ${this._configuredModels.length > 0
           ? this._savedModel && !this._changingModel
             ? html`
                 <div class="saved-model">
                   <span>✅</span>
-                  <div>Using <code>${this._savedModel}</code></div>
-                  <span class="change-link" @click=${() => (this._changingModel = true)}>Change</span>
+                  <div>${t("apikeys.using")} <code>${this._savedModel}</code></div>
+                  <span class="change-link" @click=${() => (this._changingModel = true)}>${t("apikeys.change")}</span>
                 </div>
               `
             : html`
                 <div class="model-row">
-                  <label style="font-size: 13px; color: var(--ac-text-secondary)">Model</label>
+                  <label style="font-size: 13px; color: var(--ac-text-secondary)">${t("apikeys.model")}</label>
                   <select
                     class="model-select"
                     .value=${this._defaultModel}
@@ -791,15 +793,15 @@ export class ApiKeysView extends LitElement {
                 </div>
                 <div class="btn-row" style="margin-top: 12px">
                   ${modelChanged || !this._savedModel
-                    ? html`<button class="btn btn-primary" @click=${() => this._saveDefaultModel()}>Save Model</button>`
-                    : html`<button class="btn btn-outline" @click=${() => (this._changingModel = false)}>Cancel</button>`}
+                    ? html`<button class="btn btn-primary" @click=${() => this._saveDefaultModel()}>${t("apikeys.saveModel")}</button>`
+                    : html`<button class="btn btn-outline" @click=${() => (this._changingModel = false)}>${t("apikeys.cancel")}</button>`}
                   ${this._saveMessage ? html`<span class="save-msg">${this._saveMessage}</span>` : ""}
                 </div>
               `
           : html`
               <div class="empty-state">
                 <div class="icon">🤖</div>
-                <div>Configure an LLM provider above to select a default model.</div>
+                <div>${t("apikeys.configureProvider")}</div>
               </div>
             `}
       </div>
@@ -817,7 +819,7 @@ export class ApiKeysView extends LitElement {
 
     return html`
       <div class="card">
-        <h2>Search Provider</h2>
+        <h2>${t("apikeys.searchProvider")}</h2>
         <div class="provider-chips">
           ${sorted.map(
             (p) => html`
@@ -834,15 +836,15 @@ export class ApiKeysView extends LitElement {
       </div>
 
       <div class="card">
-        <h2>${provider.name} — API Keys</h2>
+        <h2>${t("apikeys.apiKeys", provider.name)}</h2>
 
         ${allSaved
           ? html`
               <div class="configured-banner">
                 <span class="check">✅</span>
                 <div>
-                  <div>${provider.name} is configured and ready to use.</div>
-                  <div class="detail">Key: ${keys[0]?.value?.startsWith("••") ? keys[0].value : "••••••••" + (keys[0]?.value?.slice(-4) ?? "")}</div>
+                  <div>${t("apikeys.configured", provider.name)}</div>
+                  <div class="detail">${t("apikeys.keyPrefix")}${keys[0]?.value?.startsWith("••") ? keys[0].value : "••••••••" + (keys[0]?.value?.slice(-4) ?? "")}</div>
                 </div>
               </div>
             `
@@ -852,8 +854,8 @@ export class ApiKeysView extends LitElement {
           ? html`
               <div class="empty-state">
                 <div class="icon">🌐</div>
-                <div>No API keys configured for ${provider.name}.</div>
-                <div style="margin-top: 4px">Click "Add Key" below to get started.</div>
+                <div>${t("apikeys.noKeys", provider.name)}</div>
+                <div style="margin-top: 4px">${t("apikeys.noKeys.hint")}</div>
               </div>
             `
           : !allSaved
@@ -871,15 +873,15 @@ export class ApiKeysView extends LitElement {
                   class="btn btn-outline"
                   @click=${() => this._addKey(this._browserProvider, "browser", provider.placeholder)}
                 >
-                  + Add Key
+                  ${t("apikeys.addKey")}
                 </button>
               `
             : ""}
           ${hasUnsaved
-            ? html`<button class="btn btn-primary" @click=${() => this._saveKeys("browser")}>Save</button>`
+            ? html`<button class="btn btn-primary" @click=${() => this._saveKeys("browser")}>${t("apikeys.save")}</button>`
             : ""}
           ${allSaved
-            ? html`<button class="btn btn-outline" @click=${() => this._addKey(this._browserProvider, "browser", provider.placeholder)}>+ Add Another Key</button>`
+            ? html`<button class="btn btn-outline" @click=${() => this._addKey(this._browserProvider, "browser", provider.placeholder)}>${t("apikeys.addAnother")}</button>`
             : ""}
           ${this._saveMessage ? html`<span class="save-msg">${this._saveMessage}</span>` : ""}
         </div>
@@ -899,7 +901,7 @@ export class ApiKeysView extends LitElement {
           <input
             class="key-label-input"
             type="text"
-            placeholder="Label (optional)"
+            placeholder=${t("apikeys.label")}
             .value=${entry.label}
             @input=${(e: Event) => {
               entry.label = (e.target as HTMLInputElement).value;
@@ -907,7 +909,7 @@ export class ApiKeysView extends LitElement {
             }}
           />
           <span class="key-status ${entry.saved ? "connected" : ""}">
-            ${entry.saved ? "● Saved" : "○ Unsaved"}
+            ${entry.saved ? t("apikeys.saved") : t("apikeys.unsaved")}
           </span>
         </div>
         <div class="key-row">
@@ -924,7 +926,7 @@ export class ApiKeysView extends LitElement {
           />
           <button
             class="icon-btn"
-            title="${entry.visible ? "Hide" : "Show"}"
+            title="${entry.visible ? t("apikeys.hide") : t("apikeys.show")}"
             @click=${() => {
               entry.visible = !entry.visible;
               this.requestUpdate();
@@ -934,7 +936,7 @@ export class ApiKeysView extends LitElement {
           </button>
           <button
             class="icon-btn danger"
-            title="Remove"
+            title=${t("apikeys.remove")}
             @click=${() => this._removeKey(providerId, category, entry.id)}
           >
             ✕
@@ -955,7 +957,7 @@ export class ApiKeysView extends LitElement {
     const existing = map.get(providerId) ?? [];
     existing.push({
       id: genId(),
-      label: existing.length === 0 ? "Default" : `Key ${existing.length + 1}`,
+      label: existing.length === 0 ? t("apikeys.defaultLabel") : t("apikeys.keyLabel", existing.length + 1),
       value: "",
       visible: true,
       saved: false,
@@ -1027,7 +1029,7 @@ export class ApiKeysView extends LitElement {
       await gateway.call("config.set", { raw: JSON.stringify(config, null, 2), baseHash });
       this._savedModel = this._defaultModel;
       this._changingModel = false;
-      this._saveMessage = "✓ Default model saved";
+      this._saveMessage = t("apikeys.savedModel");
       setTimeout(() => (this._saveMessage = ""), 3000);
     } catch (err) {
       this._saveMessage = `✗ ${err instanceof Error ? err.message : err}`;
@@ -1107,14 +1109,14 @@ export class ApiKeysView extends LitElement {
         }
       }
 
-      this._saveMessage = "✓ Keys saved";
+      this._saveMessage = t("apikeys.savedKeys");
       this.requestUpdate();
       setTimeout(() => {
         this._saveMessage = "";
         this.requestUpdate();
       }, 3000);
     } catch {
-      this._saveMessage = "⚠ Save failed — is the gateway running?";
+      this._saveMessage = t("apikeys.saveFailed");
       this.requestUpdate();
       setTimeout(() => {
         this._saveMessage = "";

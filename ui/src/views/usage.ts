@@ -1,6 +1,7 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { gateway } from "../controllers/gateway.js";
+import { t, LocaleController } from "../i18n.js";
 
 const USAGE_RESET_KEY = "acaclaw-usage-reset";
 const TOKEN_RESET_KEY = "acaclaw-token-reset";
@@ -123,6 +124,7 @@ function billingCycleStart(billingDay: number): string {
 
 @customElement("acaclaw-usage")
 export class UsageView extends LitElement {
+  private _lc = new LocaleController(this);
   @state() private _daily: DayUsage[] = [];
   @state() private _totalCost = 0;
   @state() private _totalTokens = 0;
@@ -591,69 +593,69 @@ export class UsageView extends LitElement {
     const adjSearchCalls = Math.max(0, this._monthlySearchCalls - (qOff?.total ?? 0));
 
     return html`
-      <h1>Usage</h1>
+      <h1>${t("usage.title")}</h1>
 
       <div class="controls">
         <button
           class="period-btn ${this._period === "week" ? "active" : ""}"
           @click=${() => this._switchPeriod("week")}
         >
-          Week
+          ${t("usage.week")}
         </button>
         <button
           class="period-btn ${this._period === "month" ? "active" : ""}"
           @click=${() => this._switchPeriod("month")}
         >
-          Month
+          ${t("usage.month")}
         </button>
         ${tOff ? html`
           <span class="reset-info">
-            Since ${new Date(tOff.date).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-            <button class="clear-reset-btn" @click=${this._clearTokenReset}>Clear</button>
+            ${t("usage.since", new Date(tOff.date).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }))}
+            <button class="clear-reset-btn" @click=${this._clearTokenReset}>${t("usage.clear")}</button>
           </span>
         ` : ""}
-        <button class="reset-btn" @click=${this._resetTokens}>↺ Reset Tokens</button>
+        <button class="reset-btn" @click=${this._resetTokens}>${t("usage.resetTokens")}</button>
         <button class="export-btn" @click=${this._exportCSV}>
-          Export CSV
+          ${t("usage.exportCSV")}
         </button>
       </div>
 
       ${adjTokens > 0 || adjCost > 0 ? html`
       <div class="summary-cards">
         <div class="summary-card">
-          <div class="summary-label">Total Tokens</div>
+          <div class="summary-label">${t("usage.totalTokens")}</div>
           <div class="summary-value">
             ${this._formatTokens(adjTokens)}
           </div>
         </div>
         <div class="summary-card">
-          <div class="summary-label">Total Cost</div>
+          <div class="summary-label">${t("usage.totalCost")}</div>
           <div class="summary-value">$${adjCost.toFixed(2)}</div>
         </div>
         <div class="summary-card">
-          <div class="summary-label">Input / Output</div>
+          <div class="summary-label">${t("usage.inputOutput")}</div>
           <div class="summary-value">${this._formatTokens(adjInput)} / ${this._formatTokens(adjOutput)}</div>
         </div>
       </div>
       ` : html`
       <div class="summary-cards">
         <div class="summary-card">
-          <div class="summary-label">Total Messages</div>
+          <div class="summary-label">${t("usage.totalMessages")}</div>
           <div class="summary-value">${adjMessages}</div>
         </div>
         <div class="summary-card">
-          <div class="summary-label">Total Tool Calls</div>
+          <div class="summary-label">${t("usage.totalToolCalls")}</div>
           <div class="summary-value">${adjToolCalls}</div>
         </div>
         <div class="summary-card">
-          <div class="summary-label">Token Tracking</div>
-          <div class="summary-value" style="font-size:13px;color:var(--ac-text-muted)">Not available</div>
+          <div class="summary-label">${t("usage.tokenTracking")}</div>
+          <div class="summary-value" style="font-size:13px;color:var(--ac-text-muted)">${t("usage.notAvailable")}</div>
         </div>
       </div>
       `}
 
       <div class="card">
-        <h2>Daily Usage</h2>
+        <h2>${t("usage.dailyUsage")}</h2>
         ${this._daily.length > 0
           ? html`
               <div class="chart">
@@ -689,14 +691,14 @@ export class UsageView extends LitElement {
                     class="legend-dot"
                     style="background: var(--ac-primary)"
                   ></div>
-                  Input
+                  ${t("usage.input")}
                 </div>
                 <div class="legend-item">
                   <div
                     class="legend-dot"
                     style="background: var(--ac-primary-light)"
                   ></div>
-                  Output
+                  ${t("usage.output")}
                 </div>
               </div>
             `
@@ -721,24 +723,24 @@ export class UsageView extends LitElement {
               <div class="legend">
                 <div class="legend-item">
                   <div class="legend-dot" style="background: var(--ac-primary)"></div>
-                  Messages
+                  ${t("usage.messages")}
                 </div>
               </div>
             `
-            : html`<p style="color: var(--ac-text-muted); font-size: 13px">No usage data yet</p>`}
+            : html`<p style="color: var(--ac-text-muted); font-size: 13px">${t("usage.noUsage")}</p>`}
       </div>
 
       <div class="card">
-        <h2>By Day</h2>
+        <h2>${t("usage.byDay")}</h2>
         ${this._daily.length > 0
           ? html`
               <table>
                 <thead>
                   <tr>
-                    <th>Date</th>
-                    <th>Input</th>
-                    <th>Output</th>
-                    <th>Cost</th>
+                    <th>${t("usage.header.date")}</th>
+                    <th>${t("usage.input")}</th>
+                    <th>${t("usage.output")}</th>
+                    <th>${t("monitor.cost")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -760,9 +762,9 @@ export class UsageView extends LitElement {
               <table>
                 <thead>
                   <tr>
-                    <th>Date</th>
-                    <th>Messages</th>
-                    <th>Tool Calls</th>
+                    <th>${t("usage.header.date")}</th>
+                    <th>${t("monitor.messages")}</th>
+                    <th>${t("monitor.toolCalls")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -778,24 +780,24 @@ export class UsageView extends LitElement {
                 </tbody>
               </table>
             `
-            : html`<p style="color: var(--ac-text-muted); font-size: 13px">No daily data yet</p>`}
+            : html`<p style="color: var(--ac-text-muted); font-size: 13px">${t("usage.noDaily")}</p>`}
       </div>
 
       <div class="card">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <h2 style="margin:0">Search Quota</h2>
+          <h2 style="margin:0">${t("usage.searchQuota")}</h2>
           ${qOff ? html`
             <span class="reset-info" style="margin-left:auto">
-              Since ${new Date(qOff.date).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-              <button class="clear-reset-btn" @click=${this._clearQuotaReset}>Clear</button>
+              ${t("usage.since", new Date(qOff.date).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }))}
+              <button class="clear-reset-btn" @click=${this._clearQuotaReset}>${t("usage.clear")}</button>
             </span>
           ` : ""}
-          <button class="reset-btn" style="${qOff ? '' : 'margin-left:auto'}" @click=${this._resetQuota}>↺ Reset Quota</button>
+          <button class="reset-btn" style="${qOff ? '' : 'margin-left:auto'}" @click=${this._resetQuota}>${t("usage.resetQuota")}</button>
         </div>
         <p style="font-size: 13px; color: var(--ac-text-secondary); margin-bottom: 8px">
-          Monthly web API usage
+          ${t("usage.monthlyWeb")}
           <span class="billing-cycle">
-            — resets on day
+            ${t("usage.resetsOnDay")}
             <select
               .value=${String(this._billingDay)}
               @change=${(e: Event) => this._setBillingDay(Number((e.target as HTMLSelectElement).value))}
@@ -804,20 +806,20 @@ export class UsageView extends LitElement {
                 (d) => html`<option value=${d} ?selected=${d === this._billingDay}>${d}</option>`,
               )}
             </select>
-            of each month
+            ${t("usage.ofEachMonth")}
           </span>
         </p>
         <div class="summary-cards" style="margin-bottom: 12px">
           <div class="summary-card">
-            <div class="summary-label">Total Search Calls</div>
+            <div class="summary-label">${t("usage.totalSearchCalls")}</div>
             <div class="summary-value">${adjSearchCalls}</div>
           </div>
           <div class="summary-card">
-            <div class="summary-label">Combined Quota</div>
+            <div class="summary-label">${t("usage.combinedQuota")}</div>
             <div class="summary-value">${this._totalQuota() || '∞'}</div>
           </div>
           <div class="summary-card">
-            <div class="summary-label">Remaining</div>
+            <div class="summary-label">${t("usage.remaining")}</div>
             <div class="summary-value">${this._totalQuota() ? Math.max(0, this._totalQuota() - adjSearchCalls) : '∞'}</div>
           </div>
         </div>
@@ -826,39 +828,39 @@ export class UsageView extends LitElement {
       </div>
 
       <div class="card">
-        <h2>Tool Usage</h2>
+        <h2>${t("usage.toolUsage")}</h2>
         <div class="summary-cards" style="margin-bottom: 16px">
           <div class="summary-card">
-            <div class="summary-label">Total Tool Calls</div>
+            <div class="summary-label">${t("usage.totalToolCalls")}</div>
             <div class="summary-value">${this._totalToolCalls}</div>
           </div>
           <div class="summary-card">
-            <div class="summary-label">Messages</div>
+            <div class="summary-label">${t("monitor.messages")}</div>
             <div class="summary-value">${this._totalMessages}</div>
           </div>
           <div class="summary-card">
-            <div class="summary-label">Unique Tools</div>
+            <div class="summary-label">${t("usage.uniqueTools")}</div>
             <div class="summary-value">${this._toolUsage.length}</div>
           </div>
         </div>
         ${this._toolUsage.length === 0
           ? html`<p style="color: var(--ac-text-muted); font-size: 13px">
-              No tool usage yet
+              ${t("usage.noToolUsage")}
             </p>`
           : html`
               <table>
                 <thead>
                   <tr>
-                    <th>Tool</th>
-                    <th>Calls</th>
+                    <th>${t("usage.header.tool")}</th>
+                    <th>${t("usage.header.calls")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   ${this._toolUsage.map(
-                    (t) => html`
+                    (tu) => html`
                       <tr>
-                        <td>${this._toolLabel(t.name)}</td>
-                        <td>${t.count}</td>
+                        <td>${this._toolLabel(tu.name)}</td>
+                        <td>${tu.count}</td>
                       </tr>
                     `,
                   )}
@@ -947,7 +949,7 @@ export class UsageView extends LitElement {
                       <div class="quota-bar-fill ${barClass}" style="width: ${pct}%"></div>
                     </div>
                   `
-                : html`<span style="font-size: 12px; color: var(--ac-text-muted)">no limit</span>`}
+                : html`<span style="font-size: 12px; color: var(--ac-text-muted)">${t("usage.noLimit")}</span>`}
             </div>
             <div class="pq-count">${count} / ${this._editingQuotaTool === tool
               ? html`<input

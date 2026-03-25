@@ -3,6 +3,7 @@ import { customElement, state } from "lit/decorators.js";
 import { gateway } from "../controllers/gateway.js";
 import { STAFF_MEMBERS, getCustomizedStaff } from "./staff.js";
 import type { StaffMember } from "./staff.js";
+import { t, LocaleController } from "../i18n.js";
 
 /** macOS-style folder icon (inline SVG) */
 const folderIcon = (size = 16) => svg`
@@ -72,6 +73,7 @@ function defaultWorkdirFor(agentId: string): string {
 
 @customElement("acaclaw-chat")
 export class ChatView extends LitElement {
+  private _lc = new LocaleController(this);
   @state() private _tabs: AgentTab[] = [];
   @state() private _activeTabId = GENERAL_TAB_ID;
   @state() private _workdir = "";
@@ -1497,9 +1499,9 @@ export class ChatView extends LitElement {
       }}>
         <div class="workdir-dialog">
           <div class="workdir-dialog-header">
-            <h3>Working Directory</h3>
+            <h3>${t("chat.workdir")}</h3>
             <div class="dialog-sub">
-              Choose a workspace folder for ${agentName}
+              ${t("chat.workdir.choose", agentName)}
             </div>
           </div>
 
@@ -1517,9 +1519,9 @@ export class ChatView extends LitElement {
           <!-- Directory listing -->
           <div class="dir-browser">
             ${this._dirBrowserLoading
-              ? html`<div class="dir-browser-loading">Loading\u2026</div>`
+              ? html`<div class="dir-browser-loading">${t("chat.workdir.loading")}</div>`
               : this._dirBrowserEntries.length === 0
-                ? html`<div class="dir-browser-empty">No subdirectories</div>`
+                ? html`<div class="dir-browser-empty">${t("chat.workdir.noSubs")}</div>`
                 : this._dirBrowserEntries.map(
                     (entry) => html`
                       <div class="dir-item" @click=${() => this._dirBrowserOpen(entry.name)}>
@@ -1538,15 +1540,15 @@ export class ChatView extends LitElement {
               .value=${this._workdirInput}
               @input=${(e: Event) => { this._workdirInput = (e.target as HTMLInputElement).value; }}
               @keydown=${(e: KeyboardEvent) => { if (e.key === "Enter") this._saveWorkdir(); if (e.key === "Escape") this._closeWorkdirDialog(); }}
-              placeholder="Or type a path manually\u2026"
+              placeholder=${t("chat.workdir.typePath")}
             />
           </div>
 
           <div class="dialog-actions">
-            <button class="dialog-btn reset" @click=${this._resetWorkdir}>Reset</button>
-            <button class="dialog-btn" @click=${this._closeWorkdirDialog}>Cancel</button>
+            <button class="dialog-btn reset" @click=${this._resetWorkdir}>${t("chat.workdir.reset")}</button>
+            <button class="dialog-btn" @click=${this._closeWorkdirDialog}>${t("settings.uninstall.cancel")}</button>
             <button class="dialog-btn primary" @click=${this._selectCurrentDir}>
-              Select this folder
+              ${t("chat.workdir.select")}
             </button>
           </div>
         </div>
@@ -1573,40 +1575,40 @@ export class ChatView extends LitElement {
     switch (agentId) {
       case "biologist":
         return [
-          { icon: "\u{1F9EC}", label: "Analyze sequences", text: "Analyze the FASTA sequences in my data directory" },
-          { icon: "\u{1F52C}", label: "RNA-seq pipeline", text: "Set up an RNA-seq differential expression analysis pipeline" },
-          { icon: "\u{1F333}", label: "Phylogenetics", text: "Build a phylogenetic tree from aligned sequences" },
+          { icon: "\u{1F9EC}", label: t("chat.quick.analyzeSeq"), text: t("chat.quick.analyzeSeq.text") },
+          { icon: "\u{1F52C}", label: t("chat.quick.rnaSeq"), text: t("chat.quick.rnaSeq.text") },
+          { icon: "\u{1F333}", label: t("chat.quick.phylogenetics"), text: t("chat.quick.phylogenetics.text") },
         ];
       case "medscientist":
         return [
-          { icon: "\u{1F4C8}", label: "Survival analysis", text: "Run a Kaplan-Meier survival analysis on my clinical data" },
-          { icon: "\u{1F3E5}", label: "Clinical trial", text: "Help me design a randomized controlled trial" },
-          { icon: "\u{1F4CA}", label: "Meta-analysis", text: "Conduct a meta-analysis of treatment outcomes" },
+          { icon: "\u{1F4C8}", label: t("chat.quick.survival"), text: t("chat.quick.survival.text") },
+          { icon: "\u{1F3E5}", label: t("chat.quick.clinicalTrial"), text: t("chat.quick.clinicalTrial.text") },
+          { icon: "\u{1F4CA}", label: t("chat.quick.metaAnalysis"), text: t("chat.quick.metaAnalysis.text") },
         ];
       case "ai-researcher":
         return [
-          { icon: "\u{1F4DD}", label: "Search arxiv", text: "Search arxiv for recent papers on protein language models" },
-          { icon: "\u{1F916}", label: "Train model", text: "Set up a fine-tuning pipeline for a transformer model" },
-          { icon: "\u{1F4CA}", label: "Benchmark", text: "Compare model performance across standard benchmarks" },
+          { icon: "\u{1F4DD}", label: t("chat.quick.searchArxiv"), text: t("chat.quick.searchArxiv.text") },
+          { icon: "\u{1F916}", label: t("chat.quick.trainModel"), text: t("chat.quick.trainModel.text") },
+          { icon: "\u{1F4CA}", label: t("chat.quick.benchmark"), text: t("chat.quick.benchmark.text") },
         ];
       case "data-analyst":
         return [
-          { icon: "\u{1F4CA}", label: "Analyze data", text: "Run exploratory data analysis on my dataset" },
-          { icon: "\u{1F4C8}", label: "Visualize", text: "Create publication-quality visualizations of my results" },
-          { icon: "\u{1F9EE}", label: "Statistics", text: "Perform hypothesis testing with appropriate corrections" },
+          { icon: "\u{1F4CA}", label: t("chat.quick.eda"), text: t("chat.quick.eda.text") },
+          { icon: "\u{1F4C8}", label: t("chat.quick.visualize"), text: t("chat.quick.visualize.text") },
+          { icon: "\u{1F9EE}", label: t("chat.quick.statistics"), text: t("chat.quick.statistics.text") },
         ];
       case "cs-scientist":
         return [
-          { icon: "\u{1F4BB}", label: "Algorithm", text: "Design an efficient algorithm for this problem" },
-          { icon: "\u{1F50D}", label: "Code review", text: "Review my code for correctness and performance" },
-          { icon: "\u{1F6E0}\u{FE0F}", label: "Architecture", text: "Help me design the system architecture" },
+          { icon: "\u{1F4BB}", label: t("chat.quick.algorithm"), text: t("chat.quick.algorithm.text") },
+          { icon: "\u{1F50D}", label: t("chat.quick.codeReview"), text: t("chat.quick.codeReview.text") },
+          { icon: "\u{1F6E0}\u{FE0F}", label: t("chat.quick.architecture"), text: t("chat.quick.architecture.text") },
         ];
       default:
         return [
-          { icon: "\u{1F4CA}", label: "Analyze data", text: "Analyze my latest experiment data" },
-          { icon: "\u{1F50D}", label: "Search papers", text: "Search for recent papers on CRISPR delivery" },
-          { icon: "\u{1F4DD}", label: "Write Methods", text: "Help me write the Methods section of my paper" },
-          { icon: "\u{1F4C8}", label: "Create figure", text: "Create a publication-quality figure" },
+          { icon: "\u{1F4CA}", label: t("chat.quick.analyzeData"), text: t("chat.quick.analyzeData.text") },
+          { icon: "\u{1F50D}", label: t("chat.quick.searchPapers"), text: t("chat.quick.searchPapers.text") },
+          { icon: "\u{1F4DD}", label: t("chat.quick.writeMethods"), text: t("chat.quick.writeMethods.text") },
+          { icon: "\u{1F4C8}", label: t("chat.quick.createFigure"), text: t("chat.quick.createFigure.text") },
         ];
     }
   }
@@ -1618,13 +1620,12 @@ export class ChatView extends LitElement {
       return html`
         <div class="no-tabs-state">
           <span class="no-tabs-icon">\u{1F9EA}</span>
-          <span class="no-tabs-text">No agents active</span>
+          <span class="no-tabs-text">${t("chat.noAgents")}</span>
           <span class="no-tabs-sub">
-            Go to the Staff page and start a digital life to begin chatting.
-            Each staff has its own persona, skills, and workspace.
+            ${t("chat.noAgents.desc")}
           </span>
           <button class="btn-go-agents" @click=${() => { location.hash = "staff"; }}>
-            Go to Staff
+            ${t("chat.goToStaff")}
           </button>
         </div>
       `;
@@ -1632,22 +1633,22 @@ export class ChatView extends LitElement {
 
     return html`
       <div class="header">
-        <h1>Chat</h1>
+        <h1>${t("chat.title")}</h1>
         <div class="header-right" style="position:relative">
-          <div class="workdir-badge" @click=${this._openWorkdirDialog} title="Working directory: ${this._workdir} (click to change)">
+          <div class="workdir-badge" @click=${this._openWorkdirDialog} title=${t("chat.workdir.tooltip", this._workdir)}>
             <span class="workdir-icon">${folderIcon(14)}</span>
             <span class="workdir-path">${this._shortenPath(this._workdir)}</span>
             <span class="workdir-edit-icon">\u270E</span>
           </div>
           <button class="new-project-btn" @click=${() => { this._showNewProject = !this._showNewProject; this._newProjectName = ""; }}>
-            + Project
+            ${t("chat.project")}
           </button>
-          <button class="new-project-btn" @click=${this._newChat} title="Start a new chat session">
-            + Chat
+          <button class="new-project-btn" @click=${this._newChat} title=${t("chat.newChat.title")}>
+            ${t("chat.newChat")}
           </button>
           ${this._showNewProject ? html`
             <div class="new-project-popover">
-              <div class="new-project-popover-label">New Project</div>
+              <div class="new-project-popover-label">${t("workspace.dialog.newProject")}</div>
               <div class="new-project-popover-row">
                 <input
                   type="text"
@@ -1656,7 +1657,7 @@ export class ChatView extends LitElement {
                   @keydown=${(e: KeyboardEvent) => { if (e.key === "Enter") this._createNewProject(); if (e.key === "Escape") { this._showNewProject = false; this._newProjectName = ""; } }}
                   placeholder="my-experiment"
                 />
-                <button @click=${this._createNewProject} ?disabled=${this._newProjectCreating || !this._newProjectName.trim()}>Create</button>
+                <button @click=${this._createNewProject} ?disabled=${this._newProjectCreating || !this._newProjectName.trim()}>${t("env.create")}</button>
               </div>
               ${this._newProjectName.trim() ? html`
                 <div class="new-project-path-preview">
@@ -1705,10 +1706,10 @@ export class ChatView extends LitElement {
                       <div class="empty-state">
                         <span class="empty-icon">${activeTab.agent.icon}</span>
                         <span class="empty-text">
-                          Chat with ${activeTab.agent.name}
+                          ${t("chat.chatWith", activeTab.agent.name)}
                         </span>
                         <span class="empty-sub">
-                          ${activeTab.agent.role} \u2014 ${activeTab.agent.description}
+                          ${t("staff.role." + activeTab.agent.id) || activeTab.agent.role} \u2014 ${t("staff.desc." + activeTab.agent.id) || activeTab.agent.description}
                         </span>
                         ${this._renderSuggestions(activeTab.agent)}
                       </div>
@@ -1729,13 +1730,13 @@ export class ChatView extends LitElement {
                                 ${m.thinking
                                   ? html`<details class="msg-thinking"
                                       ?open=${activeTab.sending && idx === activeTab.messages.length - 1}>
-                                      <summary>\uD83D\uDCA1 Reasoning</summary>
+                                      <summary>${t("chat.reasoning")}</summary>
                                       <div class="msg-thinking-body">${m.thinking}</div>
                                     </details>`
                                   : ""}
                                 <div class="msg-content">
                                   ${m.content || (activeTab.sending
-                                    ? m.thinking ? "Reasoning\u2026" : "Thinking\u2026"
+                                    ? m.thinking ? t("chat.reasoningProgress") : t("chat.thinking")
                                     : "")}
                                 </div>
                               </div>
@@ -1745,7 +1746,7 @@ export class ChatView extends LitElement {
                         : html`
                           <div class="message user">
                             <div class="msg-header">
-                              You${m.timestamp ? ` \u00B7 ${m.timestamp}` : ""}
+                              ${t("chat.you")}${m.timestamp ? ` \u00B7 ${m.timestamp}` : ""}
                             </div>
                             <div class="msg-content">${m.content}</div>
                           </div>
@@ -1758,7 +1759,7 @@ export class ChatView extends LitElement {
                   ${activeTab.agent.icon} ${activeTab.agent.name}
                 </div>
                 <textarea
-                  placeholder="Ask ${activeTab.agent.name} anything\u2026"
+                  placeholder=${t("chat.askAnything", activeTab.agent.name)}
                   .value=${activeTab.input}
                   @input=${this._handleInput}
                   @keydown=${this._handleKeyDown}
@@ -1769,7 +1770,7 @@ export class ChatView extends LitElement {
                   @click=${this._send}
                   ?disabled=${activeTab.sending || !activeTab.input.trim()}
                 >
-                  ${activeTab.sending ? "Sending\u2026" : "Send"}
+                  ${activeTab.sending ? t("chat.sending") : t("chat.send")}
                 </button>
               </div>
             </div>

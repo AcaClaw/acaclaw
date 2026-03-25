@@ -1,6 +1,7 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { gateway } from "../controllers/gateway.js";
+import { t, LocaleController } from "../i18n.js";
 
 type EcoTab = "python" | "system" | "r" | "cuda" | "nodejs";
 
@@ -113,6 +114,7 @@ const DEMO_ENVS: CondaEnv[] = [
 
 @customElement("acaclaw-environment")
 export class EnvironmentView extends LitElement {
+  private _lc = new LocaleController(this);
   @state() private _environments: CondaEnv[] = [];
   @state() private _packages: Record<string, Pkg[]> = {};
   @state() private _searchQuery = "";
@@ -517,26 +519,26 @@ export class EnvironmentView extends LitElement {
     const allPkgs = isInstalled ? (this._packages[this._pkgKey()] ?? []) : [];
 
     return html`
-      <h1>Environment</h1>
-      <div class="subtitle">Manage packages and tools across Python, R, CUDA, Node.js, and system environments</div>
+      <h1>${t("env.title")}</h1>
+      <div class="subtitle">${t("env.subtitle")}</div>
 
       <!-- Tabs -->
       <div class="tabs">
-        ${(Object.keys(TAB_META) as EcoTab[]).map(t => html`
-          <button class="tab ${this._activeTab === t ? "active" : ""}"
-            @click=${() => { this._activeTab = t; this._searchQuery = ""; }}>
-            ${TAB_META[t].icon} ${TAB_META[t].label}
+        ${(Object.keys(TAB_META) as EcoTab[]).map(tab => html`
+          <button class="tab ${this._activeTab === tab ? "active" : ""}"
+            @click=${() => { this._activeTab = tab; this._searchQuery = ""; }}>
+            ${TAB_META[tab].icon} ${tab === "system" ? t("env.tools") : TAB_META[tab].label}
           </button>
         `)}
       </div>
 
       <!-- Env selector -->
       <div class="env-selector">
-        <label>Environment:</label>
+        <label>${t("env.label")}</label>
         <select class="env-dropdown" .value=${this._selectedEnv} @change=${this._onEnvChange}>
           ${this._environments.map(e => html`
             <option value=${e.name} ?selected=${e.name === this._selectedEnv}>
-              ${e.name}${e.active ? " ● active" : !e.installed ? " ○ not installed" : ""}
+              ${e.name}${e.active ? ` ${t("env.active")}` : !e.installed ? ` ${t("env.notInstalled")}` : ""}
             </option>
           `)}
         </select>
@@ -546,26 +548,26 @@ export class EnvironmentView extends LitElement {
               <span>Python ${env.python}</span>
               <span>R ${env.rVersion}</span>
               <span>${env.sizeGB.toFixed(1)} GB</span>
-              ${isActive ? html`<span class="active-badge">Active</span>` : nothing}
-            ` : html`<span style="color:var(--ac-text-muted)">Not installed</span>`}
+              ${isActive ? html`<span class="active-badge">${t("env.activeBadge")}</span>` : nothing}
+            ` : html`<span style="color:var(--ac-text-muted)">${t("env.notInstalledLabel")}</span>`}
           </div>
         ` : nothing}
         <div class="env-actions">
           <button class="env-action-btn env-new-btn"
             @click=${() => { this._showCreateForm = !this._showCreateForm; }}>
-            + New Env
+            ${t("env.newEnv")}
           </button>
           ${isInstalled ? html`
             <button class="env-action-btn env-del-btn"
               ?disabled=${this._removingEnv !== "" && this._removingEnv === this._selectedEnv}
               @click=${this._removeEnv}>
-              ${this._removingEnv !== "" && this._removingEnv === this._selectedEnv ? "Uninstalling…" : `Uninstall ${this._selectedEnv}`}
+              ${this._removingEnv !== "" && this._removingEnv === this._selectedEnv ? t("env.uninstalling") : t("env.uninstallEnv", this._selectedEnv)}
             </button>
           ` : html`
             <button class="env-action-btn env-new-btn" style="border-style:solid;color:var(--ac-primary);border-color:var(--ac-primary)"
               ?disabled=${this._installingEnv !== "" && this._installingEnv === this._selectedEnv}
               @click=${this._installEnv}>
-              ${this._installingEnv !== "" && this._installingEnv === this._selectedEnv ? "Installing…" : `Install ${this._selectedEnv}`}
+              ${this._installingEnv !== "" && this._installingEnv === this._selectedEnv ? t("skills.installing") : t("env.installEnv", this._selectedEnv)}
             </button>
           `}
         </div>
@@ -574,23 +576,23 @@ export class EnvironmentView extends LitElement {
       <!-- Create env inline -->
       ${this._showCreateForm ? html`
         <div class="create-inline">
-          <input placeholder="New environment name (e.g. acaclaw-nlp)"
+          <input placeholder=${t("env.create.placeholder")}
             .value=${this._newEnvName}
             @input=${(e: Event) => { this._newEnvName = (e.target as HTMLInputElement).value; }}
             @keydown=${(e: KeyboardEvent) => { if (e.key === "Enter") this._createEnv(); }}
           />
           <button class="create-btn" ?disabled=${this._creatingEnv || !this._newEnvName.trim()}
             @click=${this._createEnv}>
-            ${this._creatingEnv ? "Creating…" : "Create"}
+            ${this._creatingEnv ? t("env.creating") : t("env.create")}
           </button>
-          <button class="cancel-btn" @click=${() => { this._showCreateForm = false; }}>Cancel</button>
+          <button class="cancel-btn" @click=${() => { this._showCreateForm = false; }}>${t("settings.uninstall.cancel")}</button>
         </div>
       ` : nothing}
 
       ${isInstalled ? html`
       <!-- Install package -->
       <div class="card">
-        <h2>${meta.icon} Install ${meta.label} Package</h2>
+        <h2>${meta.icon} ${t("env.installPkg", meta.label)}</h2>
         <div class="install-bar">
           <input class="install-input"
             placeholder="${meta.installCmd}"
@@ -600,32 +602,32 @@ export class EnvironmentView extends LitElement {
           />
           <button class="install-btn" ?disabled=${this._installing || !this._installQuery.trim()}
             @click=${this._installPackage}>
-            ${this._installing ? "Installing…" : "Install"}
+            ${this._installing ? t("skills.installing") : t("skills.install")}
           </button>
         </div>
       </div>
 
       <!-- Package table -->
       <div class="card">
-        <h2>Installed ${meta.label} Packages — ${this._selectedEnv}</h2>
+        <h2>${t("env.installedPkgs", meta.label, this._selectedEnv)}</h2>
         <div class="pkg-summary">
-          <span>${this._loadingPkgs ? "Loading…" : html`<strong>${allPkgs.length}</strong> packages`}</span>
+          <span>${this._loadingPkgs ? t("env.loading") : t("env.packages", allPkgs.length)}</span>
         </div>
         <div class="search-bar">
-          <input class="search-input" placeholder="Search ${meta.label.toLowerCase()} packages…"
+          <input class="search-input" placeholder=${t("env.searchPkgs", meta.label.toLowerCase())}
             .value=${this._searchQuery}
             @input=${(e: Event) => { this._searchQuery = (e.target as HTMLInputElement).value; }}
           />
         </div>
         ${pkgs.length === 0
-          ? html`<p class="empty-msg">${this._searchQuery ? "No packages match" : `No ${meta.label.toLowerCase()} packages in ${this._selectedEnv}`}</p>`
+          ? html`<p class="empty-msg">${this._searchQuery ? t("env.noMatch") : t("env.noPkgs", meta.label.toLowerCase(), this._selectedEnv)}</p>`
           : html`
             <table>
               <thead>
                 <tr>
-                  <th>Package</th>
-                  <th>Version</th>
-                  <th>Source</th>
+                  <th>${t("env.pkgHeader.package")}</th>
+                  <th>${t("env.pkgHeader.version")}</th>
+                  <th>${t("env.pkgHeader.source")}</th>
                   <th></th>
                 </tr>
               </thead>
@@ -642,7 +644,7 @@ export class EnvironmentView extends LitElement {
                       <button class="uninstall-btn"
                         ?disabled=${this._uninstalling === p.name}
                         @click=${() => this._uninstallPackage(p.name)}>
-                        ${this._uninstalling === p.name ? "…" : "Uninstall"}
+                        ${this._uninstalling === p.name ? "…" : t("settings.tab.uninstall")}
                       </button>
                     </td>
                   </tr>
@@ -653,7 +655,7 @@ export class EnvironmentView extends LitElement {
       </div>
       ` : html`
       <div class="card">
-        <p class="empty-msg">Environment <strong>${this._selectedEnv}</strong> is not installed. Click <strong>Install ${this._selectedEnv}</strong> above to set it up.</p>
+        <p class="empty-msg">${t("env.envNotInstalled", this._selectedEnv)}</p>
       </div>
       `}
     `;

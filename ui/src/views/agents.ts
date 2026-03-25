@@ -1,5 +1,6 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { t, LocaleController } from "../i18n.js";
 
 export interface AcademicAgent {
   id: string;
@@ -61,6 +62,7 @@ export const ACADEMIC_AGENTS: AcademicAgent[] = [
 
 @customElement("acaclaw-agents")
 export class AgentsView extends LitElement {
+  private _lc = new LocaleController(this);
   @state() private _agentStatus: Record<string, "idle" | "working" | "starting"> = {};
 
   static override styles = css`
@@ -391,7 +393,7 @@ export class AgentsView extends LitElement {
     return html`
       <div class="header-row">
         <div>
-          <h1>Digital Life Agents</h1>
+          <h1>${t("agents.title")}</h1>
           <div class="subtitle">
             ${activeCount} of ${ACADEMIC_AGENTS.length} agents active
             \u2014 each agent has its own persona, skills, and workspace
@@ -403,7 +405,7 @@ export class AgentsView extends LitElement {
       </div>
 
       <div class="card">
-        <div class="card-title">Academic Agent Roster</div>
+        <div class="card-title">${t("agents.roster.title")}</div>
         <div class="card-subtitle">
           Five specialized digital life agents, each with a unique discipline,
           Conda environment, and behavioral persona. Start an agent to open its
@@ -424,7 +426,7 @@ export class AgentsView extends LitElement {
                 </div>
 
                 <div class="kv-row">
-                  <div class="kv-label">Status</div>
+                  <div class="kv-label">${t("agents.status")}</div>
                   <div class="kv-value">
                     <span class="status-badge ${status}">
                       <span class="status-dot ${status}"></span>
@@ -434,19 +436,19 @@ export class AgentsView extends LitElement {
                 </div>
 
                 <div class="kv-row">
-                  <div class="kv-label">Discipline</div>
+                  <div class="kv-label">${t("agents.discipline")}</div>
                   <div class="kv-value">${agent.discipline}</div>
                 </div>
 
                 <div class="kv-row">
-                  <div class="kv-label">Env</div>
+                  <div class="kv-label">${t("agents.env")}</div>
                   <div class="kv-value">
                     <code>${agent.condaEnv}</code>
                   </div>
                 </div>
 
                 <div class="kv-row">
-                  <div class="kv-label">Expertise</div>
+                  <div class="kv-label">${t("agents.expertise")}</div>
                   <div class="kv-value secondary">${agent.description}</div>
                 </div>
 
@@ -476,7 +478,7 @@ export class AgentsView extends LitElement {
       </div>
 
       <div class="architecture-card">
-        <div class="arch-title">How parallel agents work</div>
+        <div class="arch-title">${t("agents.arch.title")}</div>
         <div class="arch-desc">
           Each agent runs in its own session context on the OpenClaw gateway.
           Messages are routed via session keys

@@ -2,6 +2,7 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { gateway } from "../controllers/gateway.js";
+import { t, LocaleController } from "../i18n.js";
 
 interface FileEntry {
   name: string;
@@ -31,6 +32,7 @@ const CODE_EXTS = new Set([
 
 @customElement("acaclaw-workspace")
 export class WorkspaceView extends LitElement {
+  private _lc = new LocaleController(this);
   @state() private _currentPath: string[] = [];
   @state() private _entries: FileEntry[] = [];
   @state() private _loading = false;
@@ -576,14 +578,14 @@ export class WorkspaceView extends LitElement {
       <div class="toolbar">
         ${this._atProjectsRoot ? html`
           <button class="toolbar-btn primary" @click=${() => this._openDialog("project")}>
-            + New Project
+            ${t("workspace.newProject")}
           </button>
         ` : nothing}
         <button class="toolbar-btn" @click=${() => this._openDialog("folder")}>
-          + New Folder
+          ${t("workspace.newFolder")}
         </button>
         <button class="toolbar-btn" @click=${() => this._openDialog("file")}>
-          + New File
+          ${t("workspace.newFile")}
         </button>
       </div>
     `;
@@ -595,7 +597,7 @@ export class WorkspaceView extends LitElement {
     const sorted = [...dirs, ...files];
 
     if (sorted.length === 0 && !this._loading) {
-      return html`<div class="empty-state"><div class="empty-icon">📂</div>Empty folder</div>`;
+      return html`<div class="empty-state"><div class="empty-icon">📂</div>${t("workspace.emptyFolder")}</div>`;
     }
 
     return html`
@@ -624,21 +626,21 @@ export class WorkspaceView extends LitElement {
       return html`
         <div class="overlay" @click=${(e: Event) => { if (e.target === e.currentTarget) this._closeDialogs(); }}>
           <div class="dialog">
-            <h3>New Project</h3>
+            <h3>${t("workspace.dialog.newProject")}</h3>
             <div class="field">
-              <label>Project Name</label>
+              <label>${t("workspace.field.projectName")}</label>
               <input type="text" placeholder="my-research-project"
                 .value=${this._createName}
                 @input=${(e: InputEvent) => { this._createName = (e.target as HTMLInputElement).value; }}>
             </div>
             <div class="field">
-              <label>Description</label>
+              <label>${t("workspace.field.description")}</label>
               <textarea placeholder="Brief project description..."
                 .value=${this._createDesc}
                 @input=${(e: InputEvent) => { this._createDesc = (e.target as HTMLTextAreaElement).value; }}></textarea>
             </div>
             <div class="field">
-              <label>Discipline</label>
+              <label>${t("agents.discipline")}</label>
               <select .value=${this._createDiscipline}
                 @change=${(e: Event) => { this._createDiscipline = (e.target as HTMLSelectElement).value; }}>
                 <option value="general">General</option>
@@ -651,9 +653,9 @@ export class WorkspaceView extends LitElement {
             </div>
             ${this._createError ? html`<div class="form-error">${this._createError}</div>` : nothing}
             <div class="dialog-actions">
-              <button class="btn-cancel" @click=${() => this._closeDialogs()}>Cancel</button>
+              <button class="btn-cancel" @click=${() => this._closeDialogs()}>${t("settings.uninstall.cancel")}</button>
               <button class="btn-create" ?disabled=${!this._createName.trim()}
-                @click=${() => this._submitCreateProject()}>Create Project</button>
+                @click=${() => this._submitCreateProject()}>${t("workspace.createProject")}</button>
             </div>
           </div>
         </div>
@@ -664,18 +666,18 @@ export class WorkspaceView extends LitElement {
       return html`
         <div class="overlay" @click=${(e: Event) => { if (e.target === e.currentTarget) this._closeDialogs(); }}>
           <div class="dialog">
-            <h3>New Folder</h3>
+            <h3>${t("workspace.dialog.newFolder")}</h3>
             <div class="field">
-              <label>Folder Name</label>
+              <label>${t("workspace.field.folderName")}</label>
               <input type="text" placeholder="my-folder"
                 .value=${this._createName}
                 @input=${(e: InputEvent) => { this._createName = (e.target as HTMLInputElement).value; }}>
             </div>
             ${this._createError ? html`<div class="form-error">${this._createError}</div>` : nothing}
             <div class="dialog-actions">
-              <button class="btn-cancel" @click=${() => this._closeDialogs()}>Cancel</button>
+              <button class="btn-cancel" @click=${() => this._closeDialogs()}>${t("settings.uninstall.cancel")}</button>
               <button class="btn-create" ?disabled=${!this._createName.trim()}
-                @click=${() => this._submitCreateFolder()}>Create</button>
+                @click=${() => this._submitCreateFolder()}>${t("env.create")}</button>
             </div>
           </div>
         </div>
@@ -686,18 +688,18 @@ export class WorkspaceView extends LitElement {
       return html`
         <div class="overlay" @click=${(e: Event) => { if (e.target === e.currentTarget) this._closeDialogs(); }}>
           <div class="dialog">
-            <h3>New File</h3>
+            <h3>${t("workspace.dialog.newFile")}</h3>
             <div class="field">
-              <label>File Name</label>
+              <label>${t("workspace.field.fileName")}</label>
               <input type="text" placeholder="notes.md"
                 .value=${this._createName}
                 @input=${(e: InputEvent) => { this._createName = (e.target as HTMLInputElement).value; }}>
             </div>
             ${this._createError ? html`<div class="form-error">${this._createError}</div>` : nothing}
             <div class="dialog-actions">
-              <button class="btn-cancel" @click=${() => this._closeDialogs()}>Cancel</button>
+              <button class="btn-cancel" @click=${() => this._closeDialogs()}>${t("settings.uninstall.cancel")}</button>
               <button class="btn-create" ?disabled=${!this._createName.trim()}
-                @click=${() => this._submitCreateFile()}>Create</button>
+                @click=${() => this._submitCreateFile()}>${t("env.create")}</button>
             </div>
           </div>
         </div>
@@ -712,7 +714,7 @@ export class WorkspaceView extends LitElement {
       return html`
         <div class="preview-overlay" @click=${(e: Event) => { if (e.target === e.currentTarget) this._closePreview(); }}>
           <div class="preview-panel">
-            <div class="preview-loading">Loading preview…</div>
+            <div class="preview-loading">${t("workspace.preview.loading")}</div>
           </div>
         </div>
       `;
@@ -732,7 +734,7 @@ export class WorkspaceView extends LitElement {
                 <button class="zoom-btn" @click=${() => this._zoomOut()}>−</button>
                 <span class="zoom-label">${this._zoom}%</span>
                 <button class="zoom-btn" @click=${() => this._zoomIn()}>+</button>
-                <button class="zoom-btn" @click=${() => this._zoomReset()} style="font-size:11px;">Fit</button>
+                <button class="zoom-btn" @click=${() => this._zoomReset()} style="font-size:11px;">${t("workspace.preview.fit")}</button>
               </div>
             ` : nothing}
             <button class="preview-close" @click=${() => this._closePreview()}>✕</button>
@@ -757,7 +759,7 @@ export class WorkspaceView extends LitElement {
             }
           </div>
           ${p.truncated && p.type === "text" ? html`
-            <div class="preview-truncated">File truncated — showing first 512 KB</div>
+            <div class="preview-truncated">${t("workspace.preview.truncated")}</div>
           ` : nothing}
         </div>
       </div>
@@ -766,8 +768,8 @@ export class WorkspaceView extends LitElement {
 
   override render() {
     return html`
-      <h1>Workspace</h1>
-      <div class="subtitle">Browse files and manage research projects in ~/AcaClaw</div>
+      <h1>${t("backup.snapshots.header.workspace")}</h1>
+      <div class="subtitle">${t("workspace.subtitle")}</div>
 
       ${this._renderBreadcrumb()}
       ${this._renderToolbar()}

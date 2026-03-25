@@ -3,6 +3,7 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { gateway } from "../controllers/gateway.js";
 import { STAFF_MEMBERS } from "./staff.js";
+import { t, LocaleController } from "../i18n.js";
 
 /** Read session titles saved by chat view. */
 function getSessionTitles(): Record<string, string> {
@@ -72,6 +73,7 @@ function cleanTitle(raw: string): string {
 
 @customElement("acaclaw-monitor")
 export class MonitorView extends LitElement {
+  private _lc = new LocaleController(this);
   @state() private _tokensToday = 0;
   @state() private _costToday = 0;
   @state() private _totalInput = 0;
@@ -1085,7 +1087,7 @@ export class MonitorView extends LitElement {
       return html`
         <div class="card">
           <div class="card-header">
-            <div class="card-title">System Resources</div>
+            <div class="card-title">${t("monitor.resources")}</div>
           </div>
           <div class="resource-unavailable">System stats plugin not available. Install the acaclaw-system-stats plugin.</div>
         </div>
@@ -1095,21 +1097,21 @@ export class MonitorView extends LitElement {
     return html`
       <div class="card">
         <div class="card-header">
-          <div class="card-title">System Resources</div>
-          <div class="meta">${this._lastCheck ? `Updated ${this._lastCheck}` : ""}</div>
+          <div class="card-title">${t("monitor.resources")}</div>
+          <div class="meta">${this._lastCheck ? t("monitor.updated", this._lastCheck) : ""}</div>
         </div>
-        <div class="card-subtitle">CPU, memory, disk, and GPU usage</div>
+        <div class="card-subtitle">${t("monitor.resources.desc")}</div>
         <div class="resource-grid">
           <div class="resource-item">
-            <div class="resource-label"><span class="icon">🖥️</span>CPU</div>
+            <div class="resource-label"><span class="icon">🖥️</span>${t("monitor.cpu")}</div>
             <div class="resource-value">${this._cpuPercent.toFixed(1)}%</div>
             <div class="resource-bar-track">
               <div class="resource-bar-fill ${this._barColor(this._cpuPercent)}" style="width:${this._cpuPercent}%"></div>
             </div>
-            <div class="resource-sub">${this._cpuCores} cores · Load ${this._loadAvg.map(l => l.toFixed(2)).join(", ")}</div>
+            <div class="resource-sub">${t("monitor.cores", this._cpuCores)} · ${t("monitor.load")} ${this._loadAvg.map(l => l.toFixed(2)).join(", ")}</div>
           </div>
           <div class="resource-item">
-            <div class="resource-label"><span class="icon">🧠</span>Memory</div>
+            <div class="resource-label"><span class="icon">🧠</span>${t("monitor.memory")}</div>
             <div class="resource-value">${this._memPercent.toFixed(1)}%</div>
             <div class="resource-bar-track">
               <div class="resource-bar-fill ${this._barColor(this._memPercent)}" style="width:${this._memPercent}%"></div>
@@ -1117,7 +1119,7 @@ export class MonitorView extends LitElement {
             <div class="resource-sub">${this._fmtSize(this._memUsed)} / ${this._fmtSize(this._memTotal)}</div>
           </div>
           <div class="resource-item">
-            <div class="resource-label"><span class="icon">💾</span>Disk</div>
+            <div class="resource-label"><span class="icon">💾</span>${t("monitor.disk")}</div>
             <div class="resource-value">${this._diskPercent.toFixed(1)}%</div>
             <div class="resource-bar-track">
               <div class="resource-bar-fill ${this._barColor(this._diskPercent)}" style="width:${this._diskPercent}%"></div>
@@ -1126,7 +1128,7 @@ export class MonitorView extends LitElement {
           </div>
           ${this._gpuAvailable ? html`
           <div class="resource-item">
-            <div class="resource-label"><span class="icon">🎮</span>GPU</div>
+            <div class="resource-label"><span class="icon">🎮</span>${t("monitor.gpu")}</div>
             <div class="resource-value">${this._gpuUsagePercent.toFixed(1)}%</div>
             <div class="resource-bar-track">
               <div class="resource-bar-fill ${this._barColor(this._gpuUsagePercent)}" style="width:${this._gpuUsagePercent}%"></div>
@@ -1141,7 +1143,7 @@ export class MonitorView extends LitElement {
         </div>
         <div class="sys-info-row">
           <span>📍 ${this._sysHostname}</span>
-          <span>⏱️ Uptime ${this._fmtUptime(this._sysUptime)}</span>
+          <span>⏱️ ${t("monitor.uptime", this._fmtUptime(this._sysUptime))}</span>
           <span>🖥️ ${this._sysPlatform}</span>
           <span>💻 ${this._cpuModel}</span>
         </div>
@@ -1153,30 +1155,30 @@ export class MonitorView extends LitElement {
     return html`
       <div class="card">
         <div class="card-header">
-          <div class="card-title">Workspace</div>
+          <div class="card-title">${t("monitor.workspace")}</div>
         </div>
-        <div class="card-subtitle">Environments, skills, and backups</div>
+        <div class="card-subtitle">${t("monitor.workspace.desc")}</div>
         <div class="ws-grid">
           <div class="ws-item">
             <div class="ws-icon">🐍</div>
             <div>
-              <div class="ws-info-label">Environments</div>
+              <div class="ws-info-label">${t("monitor.envs")}</div>
               <div class="ws-info-value">${this._envCount}</div>
-              ${this._activeEnv ? html`<div class="ws-info-sub">Active: ${this._activeEnv}</div>` : nothing}
+              ${this._activeEnv ? html`<div class="ws-info-sub">${t("monitor.activeEnv", this._activeEnv)}</div>` : nothing}
             </div>
           </div>
           <div class="ws-item">
             <div class="ws-icon">⚡</div>
             <div>
-              <div class="ws-info-label">Skills</div>
+              <div class="ws-info-label">${t("monitor.skills")}</div>
               <div class="ws-info-value">${this._skillCount}</div>
-              <div class="ws-info-sub">Installed</div>
+              <div class="ws-info-sub">${t("monitor.installed")}</div>
             </div>
           </div>
           <div class="ws-item">
             <div class="ws-icon">📦</div>
             <div>
-              <div class="ws-info-label">Backups</div>
+              <div class="ws-info-label">${t("monitor.backups")}</div>
               <div class="ws-info-value">${this._backupCount}</div>
               ${this._backupSize > 0 ? html`<div class="ws-info-sub">${this._fmtSize(this._backupSize)}</div>` : nothing}
             </div>
@@ -1195,29 +1197,29 @@ export class MonitorView extends LitElement {
     return html`
       <div class="card">
         <div class="card-header">
-          <div class="card-title">Agents</div>
+          <div class="card-title">${t("monitor.agents")}</div>
           <div class="meta">${this._activeRuns.length > 0 ? `${this._activeRuns.length} active` : `${this._sessions.length} session${this._sessions.length !== 1 ? "s" : ""}`}</div>
         </div>
-        <div class="card-subtitle">Running and recently finished agent sessions</div>
+        <div class="card-subtitle">${t("monitor.agents.desc")}</div>
 
         ${hasActive ? html`
-          <div class="section-divider"><span class="pulse"></span>Running</div>
+          <div class="section-divider"><span class="pulse"></span>${t("monitor.running")}</div>
           <div class="agent-run-list">
             ${this._activeRuns.map((r) => html`
               <div class="agent-run running">
                 <span class="agent-run-icon">${r.agentIcon}</span>
                 <div class="agent-run-info">
                   <div class="agent-run-name">${r.agentName}</div>
-                  <div class="agent-run-time">Started ${r.startedAt}</div>
+                  <div class="agent-run-time">${t("monitor.started", r.startedAt)}</div>
                 </div>
-                <span class="agent-run-status status-running">Running</span>
+                <span class="agent-run-status status-running">${t("monitor.running")}</span>
               </div>
             `)}
           </div>
         ` : nothing}
 
         ${hasRecent ? html`
-          <div class="section-divider">Recent</div>
+          <div class="section-divider">${t("monitor.recent")}</div>
           <div class="agent-run-list">
             ${this._recentRuns.map((r) => html`
               <div class="agent-run ${r.status}">
@@ -1226,14 +1228,14 @@ export class MonitorView extends LitElement {
                   <div class="agent-run-name">${r.agentName}</div>
                   <div class="agent-run-time">${r.finishedAt ?? ""}</div>
                 </div>
-                <span class="agent-run-status status-${r.status}">${r.status === "completed" ? "Done" : "Error"}</span>
+                <span class="agent-run-status status-${r.status}">${r.status === "completed" ? t("monitor.done") : t("monitor.error")}</span>
               </div>
             `)}
           </div>
         ` : nothing}
 
         ${hasSessions ? html`
-          <div class="section-divider">Sessions</div>
+          <div class="section-divider">${t("monitor.sessions")}</div>
           <div class="agent-run-list">
             ${(this._showAllSessions ? this._sessions : this._sessions.slice(0, 3)).map((s) => html`
               <div class="agent-run session-info">
@@ -1253,20 +1255,20 @@ export class MonitorView extends LitElement {
                 </div>
                 <div class="session-meta">
                   <span class="session-model">${s.model}</span>
-                  ${s.totalTokens > 0 ? html`<span class="session-tokens">${this._fmtTokens(s.totalTokens)} tokens</span>` : nothing}
+                  ${s.totalTokens > 0 ? html`<span class="session-tokens">${this._fmtTokens(s.totalTokens)} ${t("monitor.tokens").toLowerCase()}</span>` : nothing}
                 </div>
-                <button class="session-load-btn" @click=${() => this._openSession(s)}>Load</button>
+                <button class="session-load-btn" @click=${() => this._openSession(s)}>${t("monitor.load")}</button>
               </div>
             `)}
           </div>
           ${!this._showAllSessions && this._sessions.length > 3 ? html`
             <button class="load-more-btn" @click=${() => (this._showAllSessions = true)}>
-              Load more (${this._sessions.length - 3} more)
+              ${t("monitor.loadMore", this._sessions.length - 3)}
             </button>
           ` : nothing}
           ${this._showAllSessions && this._sessions.length > 3 ? html`
             <button class="load-more-btn" @click=${() => (this._showAllSessions = false)}>
-              Show less
+              ${t("monitor.showLess")}
             </button>
           ` : nothing}
         ` : nothing}
@@ -1324,28 +1326,28 @@ export class MonitorView extends LitElement {
     return html`
       <div class="card">
         <div class="card-header">
-          <div class="card-title">Activity</div>
-          <div class="meta">Last 7 days</div>
+          <div class="card-title">${t("monitor.activity")}</div>
+          <div class="meta">${t("monitor.activity.last7")}</div>
         </div>
-        <div class="card-subtitle">Messages, tool calls, and errors</div>
+        <div class="card-subtitle">${t("monitor.activity.desc")}</div>
 
         ${hasActivity ? html`
           <div class="activity-grid">
             <div class="activity-stat">
               <div class="activity-stat-value">${this._totalMessages}</div>
-              <div class="activity-stat-label">Messages</div>
+              <div class="activity-stat-label">${t("monitor.messages")}</div>
             </div>
             <div class="activity-stat">
               <div class="activity-stat-value">${this._totalToolCalls}</div>
-              <div class="activity-stat-label">Tool Calls</div>
+              <div class="activity-stat-label">${t("monitor.toolCalls")}</div>
             </div>
             <div class="activity-stat">
               <div class="activity-stat-value">${this._toolErrors}</div>
-              <div class="activity-stat-label">Errors</div>
+              <div class="activity-stat-label">${t("monitor.errors")}</div>
             </div>
             <div class="activity-stat">
               <div class="activity-stat-value">${this._topTools.length}</div>
-              <div class="activity-stat-label">Tools Used</div>
+              <div class="activity-stat-label">${t("monitor.toolsUsed")}</div>
             </div>
           </div>
 
@@ -1362,8 +1364,8 @@ export class MonitorView extends LitElement {
               `)}
             </div>
             <div class="chart-legend">
-              <span><span class="legend-dot messages"></span>Messages</span>
-              <span><span class="legend-dot tools"></span>Tool Calls</span>
+              <span><span class="legend-dot messages"></span>${t("monitor.messages")}</span>
+              <span><span class="legend-dot tools"></span>${t("monitor.toolCalls")}</span>
             </div>
           ` : nothing}
 
@@ -1375,7 +1377,7 @@ export class MonitorView extends LitElement {
             </div>
           ` : nothing}
         ` : html`
-          <div class="empty-state">No activity recorded yet.</div>
+          <div class="empty-state">${t("monitor.noActivity")}</div>
         `}
       </div>
     `;
@@ -1387,16 +1389,16 @@ export class MonitorView extends LitElement {
     return html`
       <div class="card">
         <div class="card-header">
-          <div class="card-title">Projects</div>
-          <div class="meta">${this._projects.length} project${this._projects.length !== 1 ? "s" : ""}</div>
+          <div class="card-title">${t("monitor.projects")}</div>
+          <div class="meta">${t("monitor.projectCount", this._projects.length)}</div>
         </div>
-        <div class="card-subtitle">Recent workspaces and active project</div>
+        <div class="card-subtitle">${t("monitor.projects.desc")}</div>
         <div class="project-list">
           ${this._projects.map((p) => html`
             <div class="project-item ${p.active ? "active" : ""}">
               <span class="project-icon">${p.active ? "📂" : "📁"}</span>
               <span class="project-name">${p.name}</span>
-              ${p.active ? html`<span class="project-badge">Active</span>` : nothing}
+              ${p.active ? html`<span class="project-badge">${t("monitor.active")}</span>` : nothing}
             </div>
           `)}
         </div>
@@ -1406,26 +1408,26 @@ export class MonitorView extends LitElement {
 
   override render() {
     const healthScore = this._gatewayHealthy ? 100 : 0;
-    const posture = this._gatewayHealthy ? "Stable" : "Degraded";
+    const posture = this._gatewayHealthy ? t("monitor.stable") : t("monitor.degraded");
     const postureDesc = this._gatewayHealthy
-      ? "Gateway connected. All systems operational."
-      : "Gateway is not responding. Check that the gateway is running.";
-    const flowLabel = this._gatewayHealthy ? "Flowing well" : "Offline";
+      ? t("monitor.healthy.desc")
+      : t("monitor.degraded.desc");
+    const flowLabel = this._gatewayHealthy ? t("monitor.flowingWell") : t("monitor.offline");
 
     return html`
       <div class="header-row">
         <div>
-          <h1>Monitor</h1>
-          <div class="subtitle">System health, resources, and workspace overview.</div>
+          <h1>${t("monitor.title")}</h1>
+          <div class="subtitle">${t("monitor.subtitle")}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
-          <button class="btn-outline" @click=${this._fetchData}>${this._loading ? "Checking\u2026" : "Refresh"}</button>
+          <button class="btn-outline" @click=${this._fetchData}>${this._loading ? "Checking\u2026" : t("monitor.refresh")}</button>
         </div>
       </div>
 
       <div class="card">
         <div class="card-header">
-          <div class="card-title">Health</div>
+          <div class="card-title">${t("monitor.health")}</div>
           <div class="${this._gatewayHealthy ? "badge-stable" : "badge-degraded"}">${posture}</div>
         </div>
         <div class="card-subtitle">${postureDesc}</div>
@@ -1433,12 +1435,12 @@ export class MonitorView extends LitElement {
         <div class="health-banner">
           <div class="health-circle ${this._gatewayHealthy ? "healthy" : "degraded"}">
             <div class="num">${healthScore}</div>
-            <div class="lbl">Health</div>
+            <div class="lbl">${t("monitor.health")}</div>
           </div>
           <div class="health-info">
             <h3>${flowLabel}</h3>
-            <p>Tokens ${this._fmtTokens(this._tokensToday)} · Cost $${this._costToday.toFixed(4)}</p>
-            <div class="meta">${this._lastCheck ? `Last check ${this._lastCheck}` : ""}</div>
+            <p>${t("monitor.tokens")} ${this._fmtTokens(this._tokensToday)} · ${t("monitor.cost")} $${this._costToday.toFixed(4)}</p>
+            <div class="meta">${this._lastCheck ? t("monitor.lastCheck", this._lastCheck) : ""}</div></div>
           </div>
         </div>
       </div>

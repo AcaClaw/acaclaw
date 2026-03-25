@@ -1,6 +1,7 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { gateway } from "../controllers/gateway.js";
+import { t, LocaleController } from "../i18n.js";
 
 interface BackupEntry {
   time: string;
@@ -27,6 +28,7 @@ interface SnapshotEntry {
 
 @customElement("acaclaw-backup")
 export class BackupView extends LitElement {
+  private _lc = new LocaleController(this);
   @state() private _tab: "files" | "trash" | "snapshots" | "settings" =
     "files";
   @state() private _backups: BackupEntry[] = [];
@@ -380,32 +382,32 @@ export class BackupView extends LitElement {
 
   override render() {
     return html`
-      <h1>Backup</h1>
+      <h1>${t("backup.title")}</h1>
 
       <div class="tabs">
         <div
           class="tab ${this._tab === "files" ? "active" : ""}"
           @click=${() => (this._tab = "files")}
         >
-          File Backups
+          ${t("backup.tab.files")}
         </div>
         <div
           class="tab ${this._tab === "trash" ? "active" : ""}"
           @click=${() => (this._tab = "trash")}
         >
-          Trash
+          ${t("backup.tab.trash")}
         </div>
         <div
           class="tab ${this._tab === "snapshots" ? "active" : ""}"
           @click=${() => (this._tab = "snapshots")}
         >
-          Snapshots
+          ${t("backup.tab.snapshots")}
         </div>
         <div
           class="tab ${this._tab === "settings" ? "active" : ""}"
           @click=${() => (this._tab = "settings")}
         >
-          Settings
+          ${t("backup.tab.settings")}
         </div>
       </div>
 
@@ -422,26 +424,26 @@ export class BackupView extends LitElement {
     return html`
       ${this._backupDir
         ? html`<div class="card" style="margin-bottom: 16px; padding: 12px 16px; font-size: 13px; color: var(--ac-text-secondary)">
-            <strong>Storage:</strong> <code style="font-size: 12px; background: var(--ac-bg-secondary, #f3f4f6); padding: 2px 6px; border-radius: 4px">${this._backupDir}</code>
+            <strong>${t("backup.storage")}</strong> <code style="font-size: 12px; background: var(--ac-bg-secondary, #f3f4f6); padding: 2px 6px; border-radius: 4px">${this._backupDir}</code>
           </div>`
         : ""}
       <div class="stats">
         <div class="stat-card">
-          <div class="stat-label">Total Storage</div>
+          <div class="stat-label">${t("backup.stat.totalStorage")}</div>
           <div class="stat-value">${this._totalSize}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">File Backups</div>
+          <div class="stat-label">${t("backup.tab.files")}</div>
           <div class="stat-value">${this._fileCount}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Snapshots</div>
+          <div class="stat-label">${t("backup.tab.snapshots")}</div>
           <div class="stat-value">${this._snapshotCount} (${this._snapshotSize})</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Retention</div>
+          <div class="stat-label">${t("backup.stat.retention")}</div>
           <div class="stat-value">
-            ${this._settings.retentionDays} days
+            ${t("backup.stat.retentionDays", this._settings.retentionDays)}
           </div>
         </div>
       </div>
@@ -450,7 +452,7 @@ export class BackupView extends LitElement {
         <div class="search-bar">
           <input
             class="search-input"
-            placeholder="Search backed up files…"
+            placeholder=${t("backup.search")}
             .value=${this._searchQuery}
             @input=${(e: Event) =>
               (this._searchQuery = (
@@ -461,17 +463,17 @@ export class BackupView extends LitElement {
         ${backups.length === 0
           ? html`<div class="empty-state">
               ${this._searchQuery
-                ? "No files match your search"
-                : "No backups yet. Files are automatically backed up when modified by the AI."}
+                ? t("backup.noMatch")
+                : t("backup.noBackups")}
             </div>`
           : html`
               <table>
                 <thead>
                   <tr>
-                    <th>Time</th>
-                    <th>File</th>
-                    <th>Size</th>
-                    <th>Action</th>
+                    <th>${t("backup.header.time")}</th>
+                    <th>${t("backup.header.file")}</th>
+                    <th>${t("backup.header.size")}</th>
+                    <th>${t("backup.header.action")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -488,8 +490,8 @@ export class BackupView extends LitElement {
                             @click=${() => this._restore(b.file)}
                           >
                             ${this._restoring === b.file
-                              ? "Restoring…"
-                              : "Restore"}
+                              ? t("backup.restoring")
+                              : t("backup.restore")}
                           </button>
                         </td>
                       </tr>
@@ -505,17 +507,15 @@ export class BackupView extends LitElement {
   private _renderTrash() {
     return html`
       <div class="card">
-        <h2>Trash</h2>
+        <h2>${t("backup.tab.trash")}</h2>
         <p style="color: var(--ac-text-secondary); font-size: 13px; margin-bottom: 16px">
-          Deleted files are kept for
-          ${this._settings.trashAutoEmptyDays} days before permanent
-          removal.
+          ${t("backup.trash.desc", this._settings.trashAutoEmptyDays)}
         </p>
         <p style="font-size: 13px; margin-bottom: 16px">
-          Current trash size:
+          ${t("backup.trash.size")}
           <strong>${this._settings.trashSizeMB} MB</strong>
         </p>
-        <button class="empty-trash-btn">Empty Trash Now</button>
+        <button class="empty-trash-btn">${t("backup.emptyTrash")}</button>
       </div>
     `;
   }
@@ -523,16 +523,16 @@ export class BackupView extends LitElement {
   private _renderSnapshots() {
     return html`
       <div class="card">
-        <h2>Workspace Snapshots</h2>
+        <h2>${t("backup.snapshots.title")}</h2>
         <p style="color: var(--ac-text-secondary); font-size: 13px; margin-bottom: 20px">
-          Create a full backup of your workspace. Snapshots are stored as compressed archives in ~/.acaclaw/backups/snapshots/.
+          ${t("backup.snapshots.desc")}
         </p>
         <button
           class="snapshot-btn"
           ?disabled=${this._snapshotting}
           @click=${() => this._createSnapshot()}
         >
-          ${this._snapshotting ? "Creating snapshot…" : "Backup Now"}
+          ${this._snapshotting ? t("backup.snapshots.creating") : t("backup.snapshots.backupNow")}
         </button>
         ${this._snapshotSuccess
           ? html`<div class="snapshot-msg success">${this._snapshotSuccess}</div>`
@@ -544,13 +544,13 @@ export class BackupView extends LitElement {
         ${this._snapshots.length > 0
           ? html`
               <div class="snapshot-list">
-                <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">Previous Snapshots</h3>
+                <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">${t("backup.snapshots.previous")}</h3>
                 <table>
                   <thead>
                     <tr>
-                      <th>Time</th>
-                      <th>Size</th>
-                      <th>Workspace</th>
+                      <th>${t("backup.header.time")}</th>
+                      <th>${t("backup.header.size")}</th>
+                      <th>${t("backup.snapshots.header.workspace")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -568,7 +568,7 @@ export class BackupView extends LitElement {
               </div>
             `
           : html`<div class="empty-state" style="padding: 20px 0">
-              No snapshots yet.
+              ${t("backup.snapshots.empty")}
             </div>`}
       </div>
     `;
@@ -577,42 +577,42 @@ export class BackupView extends LitElement {
   private _renderSettings() {
     return html`
       <div class="card">
-        <h2>Backup Settings</h2>
+        <h2>${t("backup.settings.title")}</h2>
 
         <div class="form-group">
-          <label class="form-label">Keep file backups for</label>
+          <label class="form-label">${t("backup.settings.retention")}</label>
           <select class="form-select" .value=${String(this._settings.retentionDays)}>
-            <option value="7">7 days</option>
-            <option value="30">30 days</option>
-            <option value="90">90 days</option>
-            <option value="-1">Forever</option>
+            <option value="7">${t("backup.settings.days7")}</option>
+            <option value="30">${t("backup.settings.days30")}</option>
+            <option value="90">${t("backup.settings.days90")}</option>
+            <option value="-1">${t("backup.settings.forever")}</option>
           </select>
         </div>
 
         <div class="form-group">
-          <label class="form-label">Maximum backup storage</label>
+          <label class="form-label">${t("backup.settings.maxStorage")}</label>
           <select class="form-select" .value=${String(this._settings.maxStorageGB)}>
             <option value="1">1 GB</option>
             <option value="5">5 GB</option>
             <option value="10">10 GB</option>
-            <option value="-1">Unlimited</option>
+            <option value="-1">${t("backup.settings.unlimited")}</option>
           </select>
         </div>
 
         <div class="form-group">
           <label class="form-checkbox">
             <input type="checkbox" checked />
-            Sync workspace changes periodically
+            ${t("backup.settings.syncChanges")}
           </label>
         </div>
 
         <div class="form-group">
-          <label class="form-label">Sync interval</label>
+          <label class="form-label">${t("backup.settings.syncInterval")}</label>
           <select class="form-select" .value=${String(this._settings.syncIntervalMin)}>
-            <option value="5">5 minutes</option>
-            <option value="15">15 minutes</option>
-            <option value="30">30 minutes</option>
-            <option value="60">60 minutes</option>
+            <option value="5">${t("backup.settings.min5")}</option>
+            <option value="15">${t("backup.settings.min15")}</option>
+            <option value="30">${t("backup.settings.min30")}</option>
+            <option value="60">${t("backup.settings.min60")}</option>
           </select>
         </div>
 
@@ -622,17 +622,17 @@ export class BackupView extends LitElement {
               type="checkbox"
               ?checked=${this._settings.snapshotsEnabled}
             />
-            Enable full workspace snapshots
+            ${t("backup.settings.enableSnapshots")}
           </label>
         </div>
 
         <div class="form-group">
-          <label class="form-label">Empty trash after</label>
+          <label class="form-label">${t("backup.settings.emptyTrash")}</label>
           <select class="form-select" .value=${String(this._settings.trashAutoEmptyDays)}>
-            <option value="7">7 days</option>
-            <option value="30">30 days</option>
-            <option value="90">90 days</option>
-            <option value="-1">Never</option>
+            <option value="7">${t("backup.settings.days7")}</option>
+            <option value="30">${t("backup.settings.days30")}</option>
+            <option value="90">${t("backup.settings.days90")}</option>
+            <option value="-1">${t("backup.settings.never")}</option>
           </select>
         </div>
       </div>
