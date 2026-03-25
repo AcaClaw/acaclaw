@@ -5,7 +5,7 @@ import { gateway } from "../controllers/gateway.js";
 
 type Theme = "light" | "dark" | "system";
 type SecurityMode = "standard" | "maximum";
-type Tab = "appearance" | "security" | "connection" | "openclaw";
+type Tab = "appearance" | "security" | "connection" | "openclaw" | "uninstall";
 
 interface SecuritySettings {
   mode: SecurityMode;
@@ -142,6 +142,67 @@ export class SettingsView extends LitElement {
       animation: slide-up 0.2s ease-out;
     }
     @keyframes slide-up { from { opacity: 0; transform: translateX(-50%) translateY(12px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
+    /* Uninstall tab */
+    .uninstall-warning {
+      background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.2);
+      border-radius: var(--ac-radius-lg); padding: 16px 20px; margin-bottom: 24px;
+      display: flex; gap: 12px; align-items: flex-start;
+    }
+    .uninstall-warning-icon { font-size: 20px; flex-shrink: 0; line-height: 1.4; }
+    .uninstall-warning-text { font-size: 13px; color: #ef4444; line-height: 1.6; }
+    .removes-list, .keeps-list { margin: 0; padding-left: 18px; font-size: 13px; line-height: 2; }
+    .removes-list li { color: var(--ac-text); }
+    .keeps-list li { color: #10b981; }
+    .cmd-box {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--ac-bg-surface); border: 1px solid var(--ac-border-subtle);
+      border-radius: var(--ac-radius-lg); padding: 14px 16px; margin-bottom: 8px;
+    }
+    .cmd-code {
+      flex: 1; font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 13px; color: var(--ac-text); word-break: break-all;
+    }
+    .cmd-label { font-size: 12px; color: var(--ac-text-muted); margin-bottom: 6px; font-weight: 600; }
+    .btn-copy {
+      background: var(--ac-bg-hover); border: 1px solid var(--ac-border);
+      color: var(--ac-text-muted); font-size: 12px; font-weight: 600;
+      padding: 6px 14px; border-radius: var(--ac-radius-full);
+      cursor: pointer; transition: all var(--ac-transition-fast); flex-shrink: 0;
+    }
+    .btn-copy:hover { background: var(--ac-primary); color: #fff; border-color: var(--ac-primary); }
+    .btn-copy.copied { background: #10b981; color: #fff; border-color: #10b981; }
+
+    .btn-danger {
+      background: #ef4444; border: 1px solid #ef4444; color: #fff;
+      font-size: 13px; font-weight: 600; padding: 10px 24px;
+      border-radius: var(--ac-radius-full); cursor: pointer;
+      transition: all var(--ac-transition-fast);
+    }
+    .btn-danger:hover { background: #dc2626; border-color: #dc2626; }
+    .btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-danger-outline {
+      background: transparent; border: 1px solid #ef4444; color: #ef4444;
+      font-size: 13px; font-weight: 600; padding: 10px 24px;
+      border-radius: var(--ac-radius-full); cursor: pointer;
+      transition: all var(--ac-transition-fast);
+    }
+    .btn-danger-outline:hover { background: rgba(239,68,68,0.08); }
+    .btn-danger-outline:disabled { opacity: 0.5; cursor: not-allowed; }
+    .uninstall-actions { display: flex; gap: 12px; margin-top: 8px; }
+    .uninstall-log {
+      background: #0d1117; color: #c9d1d9; font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 12px; line-height: 1.6; padding: 16px; border-radius: var(--ac-radius-lg);
+      max-height: 300px; overflow-y: auto; margin-top: 16px;
+      border: 1px solid var(--ac-border-subtle);
+    }
+    .uninstall-log-line { white-space: pre-wrap; word-break: break-all; }
+    .uninstall-confirm {
+      background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.3);
+      border-radius: var(--ac-radius-lg); padding: 16px 20px; margin-top: 16px;
+    }
+    .uninstall-confirm-text { font-size: 13px; color: var(--ac-text); margin-bottom: 12px; font-weight: 600; }
+    .confirm-actions { display: flex; gap: 8px; }
   `;
 
   @state() private _tab: Tab = "appearance";
@@ -155,6 +216,9 @@ export class SettingsView extends LitElement {
   @state() private _gwState: "healthy" | "error" = "error";
   @state() private _gwLatency = 0;
   @state() private _dirty = false;
+  @state() private _uninstallState: "idle" | "confirm-acaclaw" | "confirm-all" | "running" | "done" | "failed" = "idle";
+  @state() private _uninstallLog: string[] = [];
+  private _uninstallCleanup: (() => void) | null = null;
 
 
   override connectedCallback() {
@@ -229,14 +293,15 @@ export class SettingsView extends LitElement {
       <div class="subtitle">Appearance, security policies, and connection health</div>
 
       <div class="tabs">
-        ${(["appearance", "security", "connection", "openclaw"] as Tab[]).map(
-          (t) => html`<div class="tab ${this._tab === t ? "active" : ""}" @click=${() => { if (t === "openclaw") { this._openOpenClawUI(); } else { this._tab = t; } }}>${t === "openclaw" ? "OpenClaw" : t[0].toUpperCase() + t.slice(1)}</div>`
+        ${(["appearance", "security", "connection", "openclaw", "uninstall"] as Tab[]).map(
+          (t) => html`<div class="tab ${this._tab === t ? "active" : ""}" @click=${() => { if (t === "openclaw") { this._openOpenClawUI(); } else { this._tab = t; } }}>${t === "openclaw" ? "OpenClaw" : t === "uninstall" ? "Uninstall" : t[0].toUpperCase() + t.slice(1)}</div>`
         )}
       </div>
 
       ${this._tab === "appearance" ? this._renderAppearance() : nothing}
       ${this._tab === "security" ? this._renderSecurity() : nothing}
       ${this._tab === "connection" ? this._renderConnection() : nothing}
+      ${this._tab === "uninstall" ? this._renderUninstall() : nothing}
       ${this._dirty ? html`<div class="save-banner" @click=${this._saveSecuritySettings}>Save changes</div>` : nothing}
     `;
   }
@@ -344,6 +409,158 @@ export class SettingsView extends LitElement {
             </div>
             <button class="btn-action" @click=${this._checkGateway}>Check</button>
           </div>
+        </div>
+      </div>
+    `;
+  }
+
+  @state() private _copyState: Record<string, boolean> = {};
+
+  private async _copyCmd(key: string, cmd: string) {
+    await navigator.clipboard.writeText(cmd);
+    this._copyState = { ...this._copyState, [key]: true };
+    setTimeout(() => { this._copyState = { ...this._copyState, [key]: false }; }, 2000);
+  }
+
+  private _startUninstall(mode: "acaclaw" | "all") {
+    this._uninstallState = mode === "all" ? "confirm-all" : "confirm-acaclaw";
+  }
+
+  private _cancelUninstall() {
+    this._uninstallState = "idle";
+  }
+
+  private async _confirmUninstall() {
+    const mode = this._uninstallState === "confirm-all" ? "all" : "acaclaw";
+    this._uninstallState = "running";
+    this._uninstallLog = [];
+
+    this._uninstallCleanup = gateway.onNotification("acaclaw.uninstall.progress", (data: unknown) => {
+      const d = data as { line?: string };
+      if (d.line) {
+        this._uninstallLog = [...this._uninstallLog, d.line];
+        const logEl = this.shadowRoot?.querySelector(".uninstall-log");
+        if (logEl) requestAnimationFrame(() => { logEl.scrollTop = logEl.scrollHeight; });
+      }
+    });
+
+    try {
+      await gateway.call("acaclaw.uninstall", { mode });
+      this._uninstallState = "done";
+    } catch {
+      this._uninstallState = "failed";
+    } finally {
+      this._uninstallCleanup?.();
+      this._uninstallCleanup = null;
+    }
+  }
+
+  private _renderUninstall() {
+    const acaclawCmd = "bash ~/github/acaclaw/scripts/uninstall.sh";
+    const fullCmd = "bash ~/github/acaclaw/scripts/uninstall-all.sh";
+    const running = this._uninstallState === "running";
+    const confirming = this._uninstallState === "confirm-acaclaw" || this._uninstallState === "confirm-all";
+    return html`
+      <div class="uninstall-warning">
+        <span class="uninstall-warning-icon">⚠️</span>
+        <div class="uninstall-warning-text">
+          Uninstalling will permanently remove AcaClaw components from your system.
+          This action cannot be undone.
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">What gets removed</div>
+        <div class="section-desc">AcaClaw profile, conda environments, and config data</div>
+        <ul class="removes-list">
+          <li>AcaClaw OpenClaw profile (<code>~/.openclaw-acaclaw/</code>)</li>
+          <li>AcaClaw conda environments (acaclaw, acaclaw-bio, etc.)</li>
+          <li>AcaClaw config and audit data (<code>~/.acaclaw/</code>)</li>
+          <li>AcaClaw-installed Miniforge (if applicable)</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <div class="section-title">What stays untouched</div>
+        <div class="section-desc">Your research data and OpenClaw are safe</div>
+        <ul class="keeps-list">
+          <li>✓ OpenClaw itself (<code>~/.openclaw/</code>)</li>
+          <li>✓ Your research data (<code>~/AcaClaw/</code>)</li>
+          <li>✓ System conda installations</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Uninstall</div>
+        <div class="section-desc">Remove AcaClaw from this machine</div>
+
+        <div class="uninstall-actions">
+          <button class="btn-danger-outline" ?disabled=${running || confirming}
+            @click=${() => this._startUninstall("acaclaw")}>
+            Remove AcaClaw only
+          </button>
+          <button class="btn-danger" ?disabled=${running || confirming}
+            @click=${() => this._startUninstall("all")}>
+            Remove everything
+          </button>
+        </div>
+
+        ${confirming ? html`
+          <div class="uninstall-confirm">
+            <div class="uninstall-confirm-text">
+              ${this._uninstallState === "confirm-all"
+                ? "This will remove AcaClaw AND OpenClaw. Are you sure?"
+                : "This will remove AcaClaw (OpenClaw stays). Are you sure?"}
+            </div>
+            <div class="confirm-actions">
+              <button class="btn-danger" @click=${this._confirmUninstall}>Yes, uninstall</button>
+              <button class="btn-action" @click=${this._cancelUninstall}>Cancel</button>
+            </div>
+          </div>
+        ` : nothing}
+
+        ${this._uninstallState === "done" ? html`
+          <div class="uninstall-confirm" style="border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.06);">
+            <div class="uninstall-confirm-text" style="color: #10b981;">Uninstall completed successfully.</div>
+          </div>
+        ` : nothing}
+
+        ${this._uninstallState === "failed" ? html`
+          <div class="uninstall-confirm">
+            <div class="uninstall-confirm-text" style="color: #ef4444;">Uninstall failed. Check the log below or run the command manually.</div>
+          </div>
+        ` : nothing}
+      </div>
+
+      ${this._uninstallLog.length > 0 ? html`
+        <div class="section">
+          <div class="section-title">${running ? "Uninstall in progress…" : "Uninstall log"}</div>
+          <div class="uninstall-log">
+            ${this._uninstallLog.map((line) => html`<div class="uninstall-log-line">${line}</div>`)}
+          </div>
+        </div>
+      ` : nothing}
+
+      <div class="section">
+        <div class="section-title">Manual uninstall</div>
+        <div class="section-desc">Alternatively, copy and run in your terminal</div>
+
+        <div class="cmd-label">Remove AcaClaw only (keeps OpenClaw)</div>
+        <div class="cmd-box">
+          <code class="cmd-code">${acaclawCmd}</code>
+          <button class="btn-copy ${this._copyState["acaclaw"] ? "copied" : ""}"
+            @click=${() => this._copyCmd("acaclaw", acaclawCmd)}>
+            ${this._copyState["acaclaw"] ? "Copied!" : "Copy"}
+          </button>
+        </div>
+
+        <div class="cmd-label" style="margin-top:16px">Remove everything (AcaClaw + OpenClaw)</div>
+        <div class="cmd-box">
+          <code class="cmd-code">${fullCmd}</code>
+          <button class="btn-copy ${this._copyState["full"] ? "copied" : ""}"
+            @click=${() => this._copyCmd("full", fullCmd)}>
+            ${this._copyState["full"] ? "Copied!" : "Copy"}
+          </button>
         </div>
       </div>
     `;

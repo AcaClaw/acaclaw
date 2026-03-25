@@ -805,6 +805,44 @@ const academicEnvPlugin = {
 			});
 		}
 
+		// --- Gateway: acaclaw.uninstall ---
+		api.registerGatewayMethod("acaclaw.uninstall", async ({ params, respond, context }) => {
+			const mode = typeof params.mode === "string" && params.mode === "all" ? "all" : "acaclaw";
+			const dryRun = params.dryRun === true;
+			const scriptName = mode === "all" ? "uninstall-all.sh" : "uninstall.sh";
+
+			// Resolve scripts dir: plugin-relative → repo checkout fallback
+			const pluginScripts = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "scripts");
+			const repoScripts = join(homedir(), "github", "acaclaw", "scripts");
+			const scriptsDir = fs.existsSync(join(pluginScripts, scriptName)) ? pluginScripts : repoScripts;
+			const scriptPath = join(scriptsDir, scriptName);
+
+			if (!fs.existsSync(scriptPath)) {
+				respond(false, undefined, { code: "SCRIPT_NOT_FOUND", message: `${scriptName} not found` });
+				return;
+			}
+
+			if (dryRun) {
+				respond(true, { mode, dryRun: true, scriptPath });
+				return;
+			}
+
+			context.broadcast("acaclaw.uninstall.progress", { line: `Starting ${mode} uninstall…` });
+
+			const result = await runWithProgress(
+				"bash", [scriptPath, "--yes"],
+				context.broadcast,
+				"acaclaw.uninstall.progress",
+				mode,
+			);
+
+			if (result.code === 0) {
+				respond(true, { mode, success: true });
+			} else {
+				respond(false, undefined, { code: "UNINSTALL_FAILED", message: `Uninstall exited with code ${result.code}` });
+			}
+		});
+
 		api.registerCli(
 			({ program }) => {
 				const cmd = program.command("acaclaw-env").description("AcaClaw environment management");
