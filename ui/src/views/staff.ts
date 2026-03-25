@@ -114,6 +114,8 @@ interface AvailableSkill {
   category: string;
   default: boolean;
   disciplines: SkillDiscipline[];
+  /** Gateway skill name when it differs from the clawhub slug (id). */
+  gatewayName?: string;
 }
 
 /** Cross-discipline skills that can be assigned to any staff member.
@@ -126,7 +128,7 @@ export const AVAILABLE_SKILLS: AvailableSkill[] = [
 
   // ── Writing ──
   { id: "academic-citation-manager", name: "academic-citation-manager", description: "Format references in APA, Vancouver, Nature, and 9000+ styles", category: "Writing", default: false, disciplines: ["cross"] },
-  { id: "ai-humanizer", name: "ai-humanizer", description: "Detect and remove AI-typical writing patterns", category: "Writing", default: false, disciplines: ["cross"] },
+  { id: "ai-humanizer", name: "ai-humanizer", description: "Detect and remove AI-typical writing patterns", category: "Writing", default: false, disciplines: ["cross"], gatewayName: "humanizer" },
   { id: "academic-writing", name: "academic-writing", description: "Expert agent for scholarly papers, literature reviews, methodology", category: "Writing", default: false, disciplines: ["cross"] },
 
   // ── Literature & Research ──
@@ -1921,9 +1923,14 @@ export class StaffView extends LitElement {
     // Gateway skills first
     for (const gw of this._gatewaySkills) {
       seenNames.add(gw.name);
-      const avail = AVAILABLE_SKILLS.find(a => a.id === gw.name);
+      // Match by id OR gatewayName so that e.g. ai-humanizer ↔ humanizer unifies
+      const avail = AVAILABLE_SKILLS.find(a => a.id === gw.name || a.gatewayName === gw.name);
+      if (avail) {
+        // Also mark the avail slug as seen so it's not double-added below
+        seenNames.add(avail.id);
+      }
       allSkills.push({
-        id: gw.name, name: gw.name,
+        id: avail?.id ?? gw.name, name: avail?.name ?? gw.name,
         description: avail?.description ?? gw.description,
         category: avail?.category ?? (gw.bundled ? "Foundation" : gw.source),
         installed: gw.eligible, bundled: gw.bundled, eligible: gw.eligible,
@@ -2009,10 +2016,11 @@ export class StaffView extends LitElement {
         <div style="margin-top:12px;margin-bottom:6px;font-size:12px;font-weight:600;color:var(--ac-text-muted);text-transform:uppercase;letter-spacing:0.5px">${cat}</div>
         ${byCategory.get(cat)!.map((skill) => {
           const installing = this._skillInstalling[skill.name] ?? false;
-          const gwEntry = this._gatewaySkills.find(g => g.name === skill.id);
-          const isBundled = gwEntry?.bundled ?? false;
-          const isBundledEligible = isBundled && (gwEntry?.eligible ?? false);
-          const isUserInstalled = this._installedGatewaySkills.some(g => g.name === skill.id);
+          const gwName = skill.gatewayName ?? skill.id;
+          const gwEntry = this._gatewaySkills.find(g => g.name === gwName);
+          const isBundledEligible = (gwEntry?.bundled && gwEntry?.eligible) ?? false;
+          // skill.installed is set to gw.eligible when merged from gateway; also check by gateway name
+          const isUserInstalled = skill.installed || this._installedGatewaySkills.some(g => g.name === gwName);
           const isAvailable = isBundledEligible || isUserInstalled;
           return html`
             <div class="skill-check-item ${isAvailable ? "assigned" : ""}">
