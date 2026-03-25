@@ -15,6 +15,7 @@ AcaClaw ships a curated set of academic skills — selected, tested, and maintai
 
 - [Skill Categories](#skill-categories)
 - [Where Skills Live](#where-skills-live)
+- [Skills UI](#skills-ui)
 - [How Skills Are Selected](#how-skills-are-selected)
 - [Expand the Ecosystem, Don't Diverge](#expand-the-ecosystem-dont-diverge)
 - [Teamwork, Not Individual Heroics](#teamwork-not-individual-heroics)
@@ -28,67 +29,45 @@ AcaClaw ships a curated set of academic skills — selected, tested, and maintai
 
 ## Skill Categories
 
-AcaClaw organizes skills into four tiers. Each tier serves a different purpose and has different selection criteria.
+AcaClaw organizes skills into three tiers. Each tier serves a different purpose.
 
 ### Foundation Skills (Bundled with OpenClaw)
 
-These ship with OpenClaw itself. AcaClaw inherits them — no installation needed.
+These ship with OpenClaw itself and are required by the AcaClaw agents. AcaClaw inherits them — no installation needed.
 
 | Skill | What it does |
 |---|---|
 | `nano-pdf` | Read and extract text from PDF files |
 | `xurl` | Fetch and parse web content |
-| `coding-agent` | Write and execute code |
 | `summarize` | Summarize documents and text |
+| `humanizer` | Humanize AI-generated text to sound natural and human |
 | `clawhub` | Browse and install skills from ClawHub |
 
 **Selection rule**: AcaClaw never replaces or overrides foundation skills. If OpenClaw ships it, we use it.
 
 ### Core Academic Skills (Cross-Discipline)
 
-Recommended for every researcher regardless of discipline. Installed from ClawHub via the Staff panel.
+Cross-discipline skills recommended for every researcher. They are listed in the Staff panel and can be added to any staff member. All are verified and available on ClawHub.
 
 | Skill | Category | What it does |
 |---|---|---|
-| `paper-search` | Literature | Search arXiv, PubMed, Semantic Scholar |
+| `literature-search` | Literature | Search arXiv, PubMed, Semantic Scholar |
 | `academic-deep-research` | Literature | Transparent, rigorous research across academic databases with audit trail |
-| `citation-manager` | Writing | Format references in APA, Vancouver, Nature, etc. |
-| `academic-writing` | Writing | Expert agent for scholarly papers, literature reviews, methodology |
+| `literature-review` | Literature | Structured literature reviews with synthesis and gap analysis |
+| `arxiv-cli-tools` | Literature | CLI tools for fetching and searching arXiv papers |
+| `academic-citation-manager` | Writing | Format references in APA, Vancouver, Nature, and 9000+ styles |
 | `ai-humanizer` | Writing | Detect and remove AI-typical writing patterns |
+| `academic-writing` | Writing | Expert agent for scholarly papers, literature reviews, methodology |
+| `autonomous-research` | Research | Multi-step independent research for qualitative or quantitative studies |
+| `survey-designer` | Research | Design and manage surveys for research data collection |
 | `data-analyst` | Data Analysis | Data visualisation, reports, SQL, spreadsheets |
-| `chart-image` | Data Analysis | Generate publication-quality chart images for papers |
-| `mermaid` | Presentation | Generate diagrams (flowcharts, sequence, class) from text |
+| `mermaid` | Data Analysis | Generate diagrams (flowcharts, sequence, class) from text |
+| `pandoc-convert-openclaw` | Documents | Convert between Word, PDF, LaTeX, and Markdown via Pandoc |
+| `agentic-coding` | Development | Write and execute code autonomously |
+| `docker-essentials` | Development | Essential Docker commands for container management |
+| `git-essentials` | Development | Essential Git commands for version control |
 
-**Selection rule**: one best tool per job. If two skills do the same thing, we pick the better one and don't ship both.
-
-### Discipline Skills
-
-Specialized skills for specific research fields. Shown in the Staff panel when a staff member's discipline matches.
-
-| Skill | Discipline | What it does |
-|---|---|---|
-| `bioskills` | Biology | 425 bioinformatics tools: RNA-seq, single-cell, variant calling, metagenomics |
-| `lobster-bio-dev` | Biology | Multi-agent bioinformatics engine for collaborative genomics pipelines |
-| `admet-prediction` | Biology, Chemistry, Medicine | ADMET prediction for drug/compound candidates |
-| `chemistry-query` | Chemistry | PubChem API: compound info, SMILES structures, synthesis routes |
-| `paramus-chemistry` | Chemistry | Hundreds of chemistry and scientific computing tools |
-| `clarity-research` | Chemistry, Biology | Search protein folding research data from Clarity Protocol |
-| `medical-research-toolkit` | Medicine | Query 14+ biomedical databases for drug repurposing and clinical trials |
-| `medical-clinicaltrials` | Medicine | Search ClinicalTrials.gov with advanced protocol filtering |
-| `pmc-harvest` | Medicine, Biology | Fetch full-text articles from PubMed Central |
-| `pubmed-edirect` | Medicine, Biology | Advanced PubMed search and retrieval via NCBI EDirect CLI |
-| `wolfram-alpha` | Physics, Mathematics | Complex calculations, physics simulations, unit conversions |
-| `acorn-prover` | Mathematics, Physics | Verify and write formal proofs using the Acorn theorem prover |
-| `arxiv-cli-tools` | Physics, Mathematics, CS | CLI tools for fetching arXiv papers |
-| `agentic-paper-digest` | AI / ML | Auto-fetch and summarize recent arXiv and Hugging Face AI/ML papers |
-| `arxiv-paper-reviews` | AI / ML | Fetch AI/ML papers and manage review notes via arXiv Crawler |
-| `github` | Computer Science | Interact with GitHub: issues, PRs, CI runs, advanced queries |
-| `docker-essentials` | Computer Science | Essential Docker commands for container management |
-| `git-essentials` | Computer Science | Essential Git commands for version control |
-| `geepers-data` | Earth & Environment | Fetch data from NASA, Census, climate APIs, arXiv, PubMed |
-| `biodiversity-corridor-calculator` | Earth & Environment | Analyse biodiversity corridors and ecological connectivity |
-| `autonomous-research` | Social Sciences | Multi-step independent research for qualitative or quantitative studies |
-| `limesurvey` | Social Sciences | Automate survey creation and management for data collection |
+**Selection rule**: one best tool per job. Only verified ClawHub skills are listed. If a skill is not on ClawHub, it is not in the list.
 
 ### Community Skills (ClawHub)
 
@@ -100,7 +79,11 @@ AcaClaw does not bundle community skills, but we curate a recommended list on [a
 
 ## Where Skills Live
 
-Skills are **shared between OpenClaw and AcaClaw**. Both use the same storage locations — there is no separate AcaClaw skill directory.
+Skills are stored in the AcaClaw gateway's working directory. The AcaClaw profile uses `~/.openclaw-acaclaw/` as its home, so managed skills (installed from ClawHub) go into:
+
+```
+~/.openclaw-acaclaw/skills/<skill-name>/
+```
 
 ### Storage Locations
 
@@ -110,25 +93,57 @@ The gateway scans these directories in priority order (later overrides earlier):
 |---|---|---|
 | 1 (lowest) | `skills.load.extraDirs` in config | Additional skill folders |
 | 2 | `<openclaw-package>/skills/` | Bundled with OpenClaw (foundation skills) |
-| 3 | **`~/.openclaw/skills/`** | Managed skills — **this is where ClawHub installs go** |
+| 3 | **`~/.openclaw-acaclaw/skills/`** | Managed skills — **this is where ClawHub installs go** |
 | 4 | `~/.agents/skills/` | Personal agent skills |
 | 5 | `<workspace>/.agents/skills/` | Per-project agent skills |
-| 6 (highest) | `<workspace>/skills/` | Workspace skills (e.g. `~/AcaClaw/skills/`) |
+| 6 (highest) | `<workspace>/skills/` | Workspace skills |
 
 ### What This Means for AcaClaw
 
-- **Skills installed via `clawhub install` go to `~/.openclaw/skills/`** (the managed dir)
-- Both vanilla OpenClaw and AcaClaw gateways see the same managed skills
-- You install a skill once; it's available everywhere
-- AcaClaw's `OPENCLAW_HOME` (`~/.openclaw-acaclaw/`) controls **config and plugins**, not skills
+- **Skills installed via the Staff panel or `clawhub install` go to `~/.openclaw-acaclaw/skills/`**
+- Foundation skills (bundled) are never written to disk — they are always loaded from the OpenClaw package
 - To override a skill for AcaClaw only, place it in `~/AcaClaw/skills/<skill>/` (workspace-level override)
 
-### Why Share?
+---
 
-- **"Expand the ecosystem, don't diverge"** — skills belong to the OpenClaw ecosystem
-- No duplication — install once, use from any gateway
-- Switching between AcaClaw and vanilla OpenClaw is seamless
-- The `OPENCLAW_STATE_DIR` env var can override `~/.openclaw` if needed
+## Skills UI
+
+The AcaClaw desktop UI surfaces skills in two places: the **Skills view** and the **Staff panel**.
+
+### Skills View (`#skills`)
+
+| Tab | What it shows |
+|---|---|
+| **Installed** | All installed skills — managed (ClawHub) listed first, then bundled, both alphabetically |
+| **ClawHub** | Live search of [clawhub.ai](https://clawhub.ai) — type to search, click Install to pull a skill |
+
+**Installed tab actions:**
+
+| Action | When shown | What it does |
+|---|---|---|
+| **Disable** | Skill is installed and enabled | Marks the skill inactive; the agent will not use it |
+| **Enable** | Skill is disabled | Re-activates the skill |
+
+The footer shows a live count: `N installed · N bundled · N eligible`.
+
+### Staff Panel (Skills tab)
+
+Opened from the Staff view → click a staff card → Skills tab.
+
+| Section | What it shows |
+|---|---|
+| **Assigned Skills** | Pills for each skill assigned to this staff member; count updates live |
+| **Recommended** | Cross-discipline skills from ClawHub — installed ones show "+ Add", uninstalled show "Install" |
+
+**Add vs Install:**
+
+| Button | Meaning |
+|---|---|
+| **+ Add** | Skill is already installed in the gateway — assign it to this staff member |
+| **Install** | Skill is not yet installed — pulls from ClawHub then assigns to this staff member |
+| **×** (on pill) | Remove this skill from the staff member's assignment list |
+
+The card in the Staff grid always shows the correct count of assigned skills, and the panel header shows how many are currently installed in the gateway.
 
 ---
 
@@ -230,78 +245,52 @@ This ensures no skill ships without a second pair of eyes.
 
 ## Managing Official Skills
 
-Official AcaClaw skills live in [github.com/acaclaw/acaclaw-skills](https://github.com/acaclaw/acaclaw-skills). Here's how the team manages them.
+AcaClaw uses verified skills from ClawHub. The current cross-discipline skill list is maintained in `skills.json` in the main acaclaw repo and `AVAILABLE_SKILLS` in the UI source.
 
-### Repository Structure
+### skills.json
 
-```
-acaclaw-skills/
-├── core/
-│   ├── paper-search/
-│   │   ├── SKILL.md           ← Skill definition (ClawHub format)
-│   │   ├── paper-search.test.ts
-│   │   └── README.md          ← Usage guide, contributor table
-│   ├── citation-manager/
-│   ├── data-analyst/
-│   ├── figure-generator/
-│   └── ...
-├── disciplines/
-│   ├── bio-tools/
-│   ├── chem-tools/
-│   ├── med-tools/
-│   └── physics-tools/
-├── tests/
-│   ├── integration/           ← Cross-skill compatibility tests
-│   └── environment/           ← Conda env resolution tests
-└── scripts/
-    ├── publish.sh             ← Publish to ClawHub
-    └── env-check.sh           ← Verify environment compatibility
+`skills.json` in the root of the acaclaw repo defines which skills are agent-required (always installed and cannot be removed):
+
+```json
+{
+  "agent_required": [
+    { "name": "nano-pdf" },
+    { "name": "xurl" },
+    { "name": "summarize" },
+    { "name": "humanizer" }
+  ]
+}
 ```
 
 ### Testing
 
-| Test type | What it checks | When it runs |
-|---|---|---|
-| **Unit tests** | Individual skill logic | Every PR |
-| **Integration tests** | Skill runs correctly against pinned OpenClaw version | Every PR |
-| **Environment tests** | All skill dependencies resolve cleanly in shared Conda env | Every PR + nightly |
-| **Security tests** | No exfiltration, no dangerous commands, no credential leaks | Every PR |
-| **Compatibility tests** | Works in both Standard and Maximum security modes | Before publishing |
-| **Cross-skill tests** | Skills don't interfere with each other | Before publishing |
+All managed skills are validated with the test suite in `tests/`:
+
+| Test file | What it checks |
+|---|---|
+| `tests/security.test.ts` | Security plugin, restrictive mode, credential isolation |
+| `tests/backup.test.ts` | Backup/restore of workspace data including skills |
 
 ### Maintenance Workflow
 
-1. **OpenClaw releases a new version** → run all tests against new version
-2. **Tests fail** → maintainer files a fix PR; if upstream broke the API, file an issue on OpenClaw
-3. **Conda environment updated** → re-resolve all dependencies, run env tests
-4. **Bug reported** → debugger investigates, files PR with fix and regression test
-5. **New skill proposed** → follow the [contributing workflow](#contributing-new-skills)
-
-### Debugging Skills
-
-When a skill breaks:
-
-1. **Reproduce** — run the failing test locally with `pnpm test -- <skill>.test.ts`
-2. **Isolate** — is it the skill, the environment, or OpenClaw? Run in a clean Conda env
-3. **Check upstream** — did OpenClaw change an API? Check the changelog
-4. **Fix and test** — file a PR with the fix and a regression test that fails before / passes after
-5. **Publish** — merged PR triggers CI publish to ClawHub
+1. **OpenClaw releases a new version** → run `pnpm test` against new version
+2. **A ClawHub skill disappears or renames** → update `AVAILABLE_SKILLS` in `ui/src/views/staff.ts` and `CURATED_SKILLS` in `ui/src/views/skills.ts`
+3. **New skill to add** → verify it exists on ClawHub, add to `AVAILABLE_SKILLS`, test with Playwright
+4. **Skill name mismatch** → update `agent_required` in `skills.json` and `AGENT_REQUIRED_SKILLS` in `skills.ts`
 
 ### Version Pinning
 
-`skills.json` in the main acaclaw repo pins the skill versions that ship with each AcaClaw release:
+AcaClaw always installs the latest ClawHub version of managed skills via:
 
-```json
-{
-  "skills": {
-    "core": [
-      { "name": "paper-search", "source": "clawhub", "version": "1.2.0" }
-    ]
-  }
-}
+```sh
+clawhub --workdir ~/.openclaw-acaclaw --no-input install --force <skill>
 ```
 
-This ensures every AcaClaw user gets the exact tested version — not whatever's latest on ClawHub.
+The `install.sh` script pins the core skills for a fresh install:
+
+```sh
+CORE_SKILLS=("nano-pdf" "xurl" "summarize" "humanizer")
+```
 
 ---
 
