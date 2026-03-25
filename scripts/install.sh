@@ -230,7 +230,7 @@ sys.exit(0 if any(e.endswith('/envs/${ACACLAW_ENV_NAME}') or e.endswith('/${ACAC
 		log "Conda env '${ACACLAW_ENV_NAME}' already exists ✓"
 	elif [[ -f "$ACACLAW_ENV_YML" ]]; then
 		log "Creating base AcaClaw conda environment..."
-		log "This installs Python, NumPy, SciPy, Pandas, R, JupyterLab, and more."
+		log "This installs Python, NumPy, SciPy, Pandas, JupyterLab, and more."
 		log "This may take a few minutes on first install."
 		if conda env create -f "$ACACLAW_ENV_YML"; then
 			log "Conda env '${ACACLAW_ENV_NAME}' created ✓"
