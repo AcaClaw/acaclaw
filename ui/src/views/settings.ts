@@ -448,7 +448,12 @@ export class SettingsView extends LitElement {
       await gateway.call("acaclaw.uninstall", { mode });
       this._uninstallState = "done";
     } catch {
-      this._uninstallState = "failed";
+      // The uninstall script stops the gateway service as its final step,
+      // which disconnects the WebSocket. If we received progress logs
+      // showing file removal, the uninstall likely succeeded.
+      const logText = this._uninstallLog.join(" ");
+      const sawRemoval = logText.includes("Removed") || logText.includes("Removing Gateway Service");
+      this._uninstallState = sawRemoval ? "done" : "failed";
     } finally {
       this._uninstallCleanup?.();
       this._uninstallCleanup = null;
