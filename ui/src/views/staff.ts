@@ -359,6 +359,8 @@ export class StaffView extends LitElement {
   @state() private _gatewaySkillsLoaded = false;
   /** Per-skill install state */
   @state() private _skillInstalling: Record<string, boolean> = {};
+  /** Per-skill uninstall state */
+  @state() private _skillUninstalling: Record<string, boolean> = {};
   /** Skill install log lines */
   @state() private _skillInstallLog: string[] = [];
 
@@ -1419,9 +1421,7 @@ export class StaffView extends LitElement {
       console.log(`[skill-install] calling acaclaw.skill.install slug=${slug}`);
       const res = await gateway.call<{ ok: boolean; slug: string; installed?: boolean; alreadyExists?: boolean }>("acaclaw.skill.install", { slug }, { timeoutMs: 120_000 });
       console.log(`[skill-install] result:`, res);
-      if (res?.alreadyExists) {
-        this._skillInstallLog = [...this._skillInstallLog, `✓ "${slug}" is already installed`];
-      } else if (res?.installed) {
+      if (res?.installed) {
         this._skillInstallLog = [...this._skillInstallLog, `✓ "${slug}" installed successfully`];
       }
       if (res?.installed || res?.alreadyExists) {
@@ -1430,6 +1430,23 @@ export class StaffView extends LitElement {
         this.requestUpdate();
       }
       await this._loadGatewaySkills();
+
+      // If install succeeded but the gateway's skills.status doesn't list the skill yet
+      // (gateway may need restart to rescan), add a synthetic entry so the UI shows it as installed
+      if (res?.installed) {
+        const resolved = this._resolveGatewayName(slug);
+        const found = this._gatewaySkills.some(g => g.name === slug || g.name === resolved);
+        if (!found) {
+          const avail = AVAILABLE_SKILLS.find(a => a.id === slug);
+          this._gatewaySkills = [...this._gatewaySkills, {
+            name: resolved, description: avail?.description ?? slug,
+            source: "clawhub-repo", bundled: false, disabled: false, eligible: true,
+            install: [],
+          }];
+          console.log(`[skill-install] added synthetic gateway entry for "${resolved}"`);
+        }
+      }
+
       // Detect slug→gatewayName mapping by finding new entries
       for (const gw of this._gatewaySkills) {
         if (!namesBefore.has(gw.name) && gw.name !== slug) {
@@ -1459,6 +1476,52 @@ export class StaffView extends LitElement {
       unsub();
       const { [slug]: _, ...rest } = this._skillInstalling;
       this._skillInstalling = rest;
+    }
+  }
+
+  /** Resolve the clawhub slug for a gateway skill name (reverse lookup). */
+  private _resolveSlug(gatewayName: string): string {
+    for (const [slug, gw] of this._slugToGateway) {
+      if (gw === gatewayName) return slug;
+    }
+    for (const a of AVAILABLE_SKILLS) {
+      if (a.gatewayName === gatewayName) return a.id;
+    }
+    return gatewayName;
+  }
+
+  private async _uninstallSkill(skillId: string) {
+    const slug = this._resolveSlug(skillId);
+    this._skillUninstalling = { ...this._skillUninstalling, [skillId]: true };
+    this._skillInstallLog = [`▶ Uninstalling "${slug}"…`];
+
+    const unsub = gateway.onNotification("acaclaw.skill.uninstall.progress", (data: unknown) => {
+      const d = data as { slug?: string; line?: string };
+      if (d?.slug === slug && d?.line) {
+        this._skillInstallLog = [...this._skillInstallLog, d.line];
+      }
+    });
+
+    try {
+      const res = await gateway.call<{ ok: boolean; slug: string; uninstalled?: boolean }>(
+        "acaclaw.skill.uninstall",
+        { slug },
+        { timeoutMs: 60_000 },
+      );
+      if (res?.uninstalled) {
+        this._skillInstallLog = [...this._skillInstallLog, `✓ "${slug}" uninstalled`];
+        // Remove slug→gateway mapping
+        this._slugToGateway.delete(slug);
+        this._saveSlugMap();
+      }
+      await this._loadGatewaySkills();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this._skillInstallLog = [...this._skillInstallLog, `✗ Failed: ${msg}`];
+    } finally {
+      unsub();
+      const { [skillId]: _, ...rest } = this._skillUninstalling;
+      this._skillUninstalling = rest;
     }
   }
 
@@ -2086,6 +2149,7 @@ export class StaffView extends LitElement {
         <div style="margin-top:12px;margin-bottom:6px;font-size:12px;font-weight:600;color:var(--ac-text-muted);text-transform:uppercase;letter-spacing:0.5px">${cat}</div>
         ${byCategory.get(cat)!.map((skill) => {
           const installing = this._skillInstalling[skill.name] ?? false;
+          const uninstalling = this._skillUninstalling[skill.id] ?? false;
           // skill.installed and skill.bundled/eligible are set during the gateway merge above —
           // no need to re-lookup by name (which would fail for slug≠gatewayName cases)
           const isBundledEligible = skill.bundled && skill.eligible;
@@ -2098,7 +2162,14 @@ export class StaffView extends LitElement {
                 <div class="skill-check-desc">${skill.description}</div>
               </div>
               ${isAvailable ? html`
-                <span style="flex-shrink:0;font-size:11px;color:var(--ac-text-muted)">${isBundledEligible ? "Bundled" : "Installed"}</span>
+                <span style="flex-shrink:0;font-size:11px;color:var(--ac-text-muted)">${isBundledEligible ? "Bundled" : ""}</span>
+                ${!isBundledEligible ? html`
+                  <button class="search-result-add" style="flex-shrink:0;font-size:11px;background:transparent;color:var(--ac-danger,#e53935);border-color:var(--ac-danger,#e53935)"
+                    ?disabled=${uninstalling}
+                    @click=${(e: Event) => { e.stopPropagation(); this._uninstallSkill(skill.id); }}>
+                    ${uninstalling ? "Removing\u2026" : "Uninstall"}
+                  </button>
+                ` : ""}
               ` : html`
                 <button class="search-result-add" style="flex-shrink:0;background:var(--ac-primary);color:#fff;border-color:var(--ac-primary)"
                   ?disabled=${installing}

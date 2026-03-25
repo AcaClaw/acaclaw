@@ -510,11 +510,7 @@ const academicEnvPlugin = {
 			// Ensure skills directory exists
 			try { fs.mkdirSync(skillsDir, { recursive: true }); } catch {}
 
-			// Check if already installed
-			if (fs.existsSync(join(skillsDir, slug, "SKILL.md"))) {
-				respond(true, { slug, alreadyExists: true });
-				return;
-			}
+			const alreadyExists = fs.existsSync(join(skillsDir, slug, "SKILL.md"));
 
 			// Find clawhub CLI
 			let clawhubPath = "clawhub";
@@ -527,6 +523,7 @@ const academicEnvPlugin = {
 			}
 
 			// --workdir and --no-input are global flags (before the subcommand)
+			// Always use --force so files are refreshed and the gateway re-registers the skill
 			const args = ["--workdir", homeDir, "--no-input", "install", "--force", slug];
 			context.broadcast("acaclaw.skill.install.progress", { slug, line: `$ clawhub ${args.join(" ")}` });
 
@@ -540,10 +537,57 @@ const academicEnvPlugin = {
 
 			if (result.code === 0) {
 				context.broadcast("acaclaw.skill.install.progress", { slug, line: `✓ Skill "${slug}" installed` });
-				respond(true, { slug, installed: true });
+				respond(true, { slug, installed: true, alreadyExists });
 			} else {
 				context.broadcast("acaclaw.skill.install.progress", { slug, line: `✗ Install failed (exit ${result.code})` });
 				respond(false, undefined, { code: "INSTALL_FAILED", message: `clawhub install failed (exit ${result.code})` });
+			}
+		});
+
+		// --- Gateway: acaclaw.skill.uninstall ---
+		// Uninstall a skill using the clawhub CLI
+		api.registerGatewayMethod("acaclaw.skill.uninstall", async ({ params, respond, context }) => {
+			const slug = typeof params.slug === "string" ? params.slug.trim() : "";
+			if (!slug) {
+				respond(false, undefined, { code: "MISSING_SLUG", message: "Missing skill slug" });
+				return;
+			}
+
+			const homeDir = resolveStateDir();
+			const skillDir = join(homeDir, "skills", slug);
+
+			// Check if the skill directory exists
+			if (!fs.existsSync(skillDir)) {
+				respond(false, undefined, { code: "NOT_INSTALLED", message: `Skill "${slug}" is not installed` });
+				return;
+			}
+
+			// Find clawhub CLI
+			let clawhubPath = "clawhub";
+			try {
+				const resolved = execSync("which clawhub", { encoding: "utf-8" }).trim();
+				if (resolved) clawhubPath = resolved;
+			} catch {
+				respond(false, undefined, { code: "NO_CLAWHUB", message: "clawhub CLI not found. Run: npm i -g clawhub" });
+				return;
+			}
+
+			const args = ["--workdir", homeDir, "--no-input", "uninstall", "--yes", slug];
+			context.broadcast("acaclaw.skill.uninstall.progress", { slug, line: `$ clawhub ${args.join(" ")}` });
+
+			const cleanEnv = { ...process.env };
+			delete cleanEnv.HTTP_PROXY;
+			delete cleanEnv.HTTPS_PROXY;
+			delete cleanEnv.http_proxy;
+			delete cleanEnv.https_proxy;
+			const result = await runWithProgress(clawhubPath, args, context.broadcast, "acaclaw.skill.uninstall.progress", slug, cleanEnv);
+
+			if (result.code === 0) {
+				context.broadcast("acaclaw.skill.uninstall.progress", { slug, line: `✓ Skill "${slug}" uninstalled` });
+				respond(true, { slug, uninstalled: true });
+			} else {
+				context.broadcast("acaclaw.skill.uninstall.progress", { slug, line: `✗ Uninstall failed (exit ${result.code})` });
+				respond(false, undefined, { code: "UNINSTALL_FAILED", message: `clawhub uninstall failed (exit ${result.code})` });
 			}
 		});
 

@@ -48,6 +48,7 @@ export class SkillsView extends LitElement {
   @state() private _installed: Skill[] = [];
   @state() private _searchQuery = "";
   @state() private _installing = "";
+  @state() private _uninstalling = "";
   @state() private _installLog: string[] = [];
   @state() private _searchResults: ClawHubSkill[] | null = null;
   @state() private _searching = false;
@@ -205,6 +206,21 @@ export class SkillsView extends LitElement {
       background: var(--ac-bg-hover);
       border-color: var(--ac-text-secondary);
     }
+    .uninstall-btn {
+      background: var(--ac-bg-surface);
+      border: 1px solid var(--ac-border);
+      color: var(--ac-danger, #e53935);
+      font-size: 11px;
+    }
+    .uninstall-btn:hover {
+      background: var(--ac-danger, #e53935);
+      color: #fff;
+      border-color: var(--ac-danger, #e53935);
+    }
+    .uninstall-btn:disabled {
+      opacity: 0.5;
+      pointer-events: none;
+    }
 
     .install-btn {
       background: var(--ac-primary);
@@ -318,12 +334,26 @@ export class SkillsView extends LitElement {
         { slug: name },
         { timeoutMs: 120_000 },
       );
-      if (res?.alreadyExists) {
-        this._installLog = [...this._installLog, `✓ "${name}" is already installed`];
-      } else if (res?.installed) {
+      if (res?.installed) {
         this._installLog = [...this._installLog, `✓ "${name}" installed successfully`];
       }
       await this._loadSkills();
+
+      // If install succeeded but gateway's skills.status doesn't list it,
+      // add synthetic entry so UI shows it as installed
+      if (res?.installed) {
+        const resolved = this._resolveGatewayName(name);
+        const found = this._installed.some(s => s.name === name || s.name === resolved);
+        if (!found) {
+          const curated = CURATED_SKILLS.find(s => s.name === name);
+          this._installed = [...this._installed, {
+            name: resolved, description: curated?.description ?? name,
+            source: "clawhub-repo", bundled: false, disabled: false, eligible: true,
+            install: [],
+          }];
+        }
+      }
+
       // Detect slug→gatewayName mapping by finding new entries
       for (const s of this._installed) {
         if (!namesBefore.has(s.name) && s.name !== name) {
@@ -345,6 +375,47 @@ export class SkillsView extends LitElement {
       await gateway.call("skills.update", { skillKey, enabled });
       await this._loadSkills();
     } catch { /* ignore */ }
+  }
+
+  /** Resolve the clawhub slug for a gateway skill name (reverse lookup). */
+  private _resolveSlug(gatewayName: string): string {
+    for (const [slug, gw] of this._slugToGateway) {
+      if (gw === gatewayName) return slug;
+    }
+    for (const s of CURATED_SKILLS) {
+      if (s.gatewayName === gatewayName) return s.name;
+    }
+    return gatewayName;
+  }
+
+  private async _uninstallSkill(gatewayName: string) {
+    const slug = this._resolveSlug(gatewayName);
+    this._uninstalling = gatewayName;
+    this._installLog = [`▶ Uninstalling "${slug}"…`];
+
+    const unsub = gateway.onNotification("acaclaw.skill.uninstall.progress", (data: unknown) => {
+      const d = data as { slug?: string; line?: string };
+      if (d?.slug === slug && d?.line) {
+        this._installLog = [...this._installLog, d.line];
+      }
+    });
+
+    try {
+      const res = await gateway.call<{ ok: boolean; slug: string; uninstalled?: boolean }>(
+        "acaclaw.skill.uninstall",
+        { slug },
+        { timeoutMs: 60_000 },
+      );
+      if (res?.uninstalled) {
+        this._installLog = [...this._installLog, `✓ "${slug}" uninstalled`];
+      }
+      await this._loadSkills();
+    } catch (err) {
+      this._installLog = [...this._installLog, `✗ Failed: ${err instanceof Error ? err.message : String(err)}`];
+    } finally {
+      unsub();
+      this._uninstalling = "";
+    }
   }
 
   private _filteredInstalled(): Skill[] {
@@ -485,11 +556,19 @@ export class SkillsView extends LitElement {
                             style="font-size: 11px; color: var(--ac-text-muted)"
                             >Bundled</span
                           >`
-                        : html`<button
+                        : html`
+                          <button
                             class="action-btn disable-btn"
                             @click=${() => this._toggleSkill(s.name, s.disabled)}
                           >
                             ${s.disabled ? "Enable" : "Disable"}
+                          </button>
+                          <button
+                            class="action-btn uninstall-btn"
+                            ?disabled=${this._uninstalling === s.name}
+                            @click=${() => this._uninstallSkill(s.name)}
+                          >
+                            ${this._uninstalling === s.name ? "Removing…" : "Uninstall"}
                           </button>`}
                     </div>
                   </div>
