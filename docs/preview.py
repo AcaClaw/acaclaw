@@ -54,6 +54,8 @@ def render_page(md_path: Path) -> str:
     # Strip any remaining {{ }} and {% %} liquid tags
     content_md = re.sub(r"\{\{[^}]*\}\}", "", content_md)
     content_md = re.sub(r"\{%.*?%\}", "", content_md)
+    # Strip kramdown attribute markers {: #id .class key="val" }
+    content_md = re.sub(r"\s*\{:\s*[^}]+\}", "", content_md)
 
     body_html = markdown.markdown(
         content_md,
