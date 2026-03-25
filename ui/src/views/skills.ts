@@ -25,18 +25,20 @@ interface ClawHubSkill {
   author: string;
   category: string;
   recommended?: boolean;
+  /** Gateway skill name when it differs from the clawhub slug. */
+  gatewayName?: string;
 }
 
 /** AcaClaw curated skills available on ClawHub */
 const CURATED_SKILLS: ClawHubSkill[] = [
-  { name: "ai-humanizer", description: "Detect and remove AI-typical writing patterns", author: "clawhub", category: "Writing", recommended: true },
+  { name: "ai-humanizer", description: "Detect and remove AI-typical writing patterns", author: "clawhub", category: "Writing", recommended: true, gatewayName: "humanizer" },
   { name: "academic-deep-research", description: "Transparent, rigorous research across academic databases with audit trail", author: "clawhub", category: "Research", recommended: true },
   { name: "academic-citation-manager", description: "Format references in APA, Vancouver, Nature, and 9000+ styles", author: "clawhub", category: "Research", recommended: true },
   { name: "data-analyst", description: "Data visualisation, reports, SQL, spreadsheets", author: "clawhub", category: "Data Analysis", recommended: true },
   { name: "mermaid", description: "Generate diagrams (flowcharts, sequence, class) from text", author: "clawhub", category: "Data Analysis" },
   { name: "academic-writing", description: "Expert agent for scholarly papers, literature reviews, methodology", author: "clawhub", category: "Writing" },
   { name: "literature-review", description: "Structured literature reviews with synthesis and gap analysis", author: "clawhub", category: "Research" },
-  { name: "pandoc-convert-openclaw", description: "Convert between Word, PDF, LaTeX, and Markdown via Pandoc", author: "clawhub", category: "Documents" },
+  { name: "pandoc-convert-openclaw", description: "Convert between Word, PDF, LaTeX, and Markdown via Pandoc", author: "clawhub", category: "Documents", gatewayName: "pandoc-convert" },
   { name: "autonomous-research", description: "Multi-step independent research for qualitative or quantitative studies", author: "clawhub", category: "Research" },
 ];
 
@@ -325,12 +327,13 @@ export class SkillsView extends LitElement {
 
   private _filteredClawHub(): ClawHubSkill[] {
     const installedNames = new Set(this._installed.map(s => s.name));
+    const isInstalled = (s: ClawHubSkill) => installedNames.has(s.name) || (s.gatewayName && installedNames.has(s.gatewayName));
     // If we have API search results, show those (excluding already-installed)
     if (this._searchResults !== null) {
-      return this._searchResults.filter(s => !installedNames.has(s.name));
+      return this._searchResults.filter(s => !isInstalled(s));
     }
     // Default: show curated list
-    const available = CURATED_SKILLS.filter(s => !installedNames.has(s.name));
+    const available = CURATED_SKILLS.filter(s => !isInstalled(s));
     if (!this._searchQuery) return available;
     const q = this._searchQuery.toLowerCase();
     return available.filter(

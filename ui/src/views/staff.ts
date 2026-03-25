@@ -143,13 +143,13 @@ export const AVAILABLE_SKILLS: AvailableSkill[] = [
   { id: "mermaid", name: "mermaid", description: "Generate diagrams (flowcharts, sequence, class) from text", category: "Data Analysis", default: false, disciplines: ["cross"] },
 
   // ── Documents ──
-  { id: "pandoc-convert-openclaw", name: "pandoc-convert-openclaw", description: "Convert between Word, PDF, LaTeX, and Markdown via Pandoc", category: "Documents", default: false, disciplines: ["cross"] },
+  { id: "pandoc-convert-openclaw", name: "pandoc-convert-openclaw", description: "Convert between Word, PDF, LaTeX, and Markdown via Pandoc", category: "Documents", default: false, disciplines: ["cross"], gatewayName: "pandoc-convert" },
 
   // ── Research Design ──
   { id: "survey-designer", name: "survey-designer", description: "Design and manage surveys for research data collection", category: "Research", default: false, disciplines: ["cross"] },
 
   // ── Development ──
-  { id: "agentic-coding", name: "agentic-coding", description: "Write and execute code autonomously", category: "Development", default: false, disciplines: ["cross"] },
+  { id: "agentic-coding", name: "agentic-coding", description: "Write and execute code autonomously", category: "Development", default: false, disciplines: ["cross"], gatewayName: "Agentic Coding" },
   { id: "docker-essentials", name: "docker-essentials", description: "Essential Docker commands for container management", category: "Development", default: false, disciplines: ["cross"] },
   { id: "git-essentials", name: "git-essentials", description: "Essential Git commands for version control", category: "Development", default: false, disciplines: ["cross"] },
 ];
