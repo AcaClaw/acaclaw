@@ -154,6 +154,9 @@ export const AVAILABLE_SKILLS: AvailableSkill[] = [
 
 const DEFAULT_SKILLS = AVAILABLE_SKILLS.filter((s) => s.default).map((s) => s.id);
 
+/** Bundled skills that also count as user-installed (same set as skills.ts). */
+const AGENT_REQUIRED_SKILLS = new Set(["nano-pdf", "xurl", "summarize", "humanizer"]);
+
 /** Map StaffMember.discipline display string → SkillDiscipline tag(s) */
 function disciplineTags(staffDiscipline: string): SkillDiscipline[] {
   const key = staffDiscipline.toLowerCase();
@@ -1300,6 +1303,13 @@ export class StaffView extends LitElement {
     } catch { /* gateway not ready */ }
   }
 
+  /** Skills that count as installed — non-bundled + agent-required bundled (same logic as Skills view). */
+  private get _installedGatewaySkills() {
+    return this._gatewaySkills.filter(
+      g => g.source !== "openclaw-bundled" || AGENT_REQUIRED_SKILLS.has(g.name)
+    );
+  }
+
   private async _loadGatewaySkills() {
     try {
       const res = await gateway.call<{ skills: typeof this._gatewaySkills }>("skills.status");
@@ -1733,7 +1743,7 @@ export class StaffView extends LitElement {
         <div class="kv-row">
           <div class="kv-label">Skills</div>
           <div class="kv-value" style="display:flex;align-items:center;gap:6px">
-            <span class="skills-count">${s.skills.length} skill${s.skills.length !== 1 ? 's' : ''}</span>
+            <span class="skills-count">${this._installedGatewaySkills.length} skill${this._installedGatewaySkills.length !== 1 ? 's' : ''}</span>
             <button class="manage-link" @click=${() => this._openPanel(s.id, "skills")}>Manage</button>
           </div>
         </div>
@@ -1944,25 +1954,17 @@ export class StaffView extends LitElement {
       byCategory.get(skill.category)!.push(skill);
     }
 
-    // Count how many assigned skills are available in the gateway
-    const gatewayNames = new Set(this._gatewaySkills.map(g => g.name));
-    const assignedNotInstalled = staff.skills.filter(sk => !gatewayNames.has(sk)).length;
+    // Installed skills = non-bundled + agent-required bundled (same definition as Skills view)
+    const installed = this._installedGatewaySkills;
 
     return html`
-      <div class="panel-section-title">Assigned Skills (${staff.skills.length}${assignedNotInstalled > 0 ? `, ${assignedNotInstalled} not in gateway` : ""})</div>
+      <div class="panel-section-title">Installed Skills (${installed.length})</div>
       <div class="skill-pills" style="margin-bottom:20px">
-        ${staff.skills.map(sk => {
-          const info = allSkills.find(a => a.id === sk);
-          const isInstalled = gatewayNames.has(sk);
-          const isRequired = DEFAULT_SKILLS.includes(sk);
-          return html`
-            <span class="skill-pill ${info?.bundled ? "bundled" : ""} ${isRequired ? "required" : ""} ${!isInstalled ? "not-installed" : ""}" title="${isRequired ? `${sk} — required (cannot remove)` : isInstalled ? (info?.description ?? sk) : `${info?.name ?? sk} — not installed`}">
-              ${info?.name ?? sk}${!isInstalled ? " ⚠" : ""}
-              <span class="lock-icon">🔒</span>
-              <span class="remove-x" @click=${() => this._removeSkillFromStaff(staff.id, sk)}>\u00d7</span>
-            </span>
-          `;
-        })}
+        ${installed.map(gw => html`
+          <span class="skill-pill ${gw.bundled ? "bundled" : ""}" title="${gw.description || gw.name}">
+            ${gw.name}
+          </span>
+        `)}
       </div>
 
       <div class="panel-section-title">Search ClawHub</div>
