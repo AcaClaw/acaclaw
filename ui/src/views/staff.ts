@@ -354,6 +354,7 @@ export class StaffView extends LitElement {
     disabled: boolean; eligible: boolean;
     install: Array<{ id: string; kind: string; label: string }>;
   }> = [];
+  @state() private _gatewaySkillsLoaded = false;
   /** Per-skill install state */
   @state() private _skillInstalling: Record<string, boolean> = {};
   /** Skill install log lines */
@@ -1315,6 +1316,7 @@ export class StaffView extends LitElement {
       const res = await gateway.call<{ skills: typeof this._gatewaySkills }>("skills.status");
       if (res?.skills) {
         this._gatewaySkills = res.skills;
+        this._gatewaySkillsLoaded = true;
         this.requestUpdate();
       }
     } catch { /* gateway not ready */ }
@@ -1743,7 +1745,9 @@ export class StaffView extends LitElement {
         <div class="kv-row">
           <div class="kv-label">Skills</div>
           <div class="kv-value" style="display:flex;align-items:center;gap:6px">
-            <span class="skills-count">${this._installedGatewaySkills.length} skill${this._installedGatewaySkills.length !== 1 ? 's' : ''}</span>
+            ${this._gatewaySkillsLoaded
+              ? html`<span class="skills-count">${this._installedGatewaySkills.length} skill${this._installedGatewaySkills.length !== 1 ? 's' : ''}</span>`
+              : html`<span class="skills-count" style="color:var(--ac-text-muted)">…</span>`}
             <button class="manage-link" @click=${() => this._openPanel(s.id, "skills")}>Manage</button>
           </div>
         </div>
