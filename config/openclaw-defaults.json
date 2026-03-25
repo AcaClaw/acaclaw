@@ -19,6 +19,16 @@
     },
     "list": [
       {
+        "id": "main",
+        "name": "Aca",
+        "default": true,
+        "workspace": "~/AcaClaw",
+        "identity": { "name": "Aca", "emoji": "🎓" },
+        "tools": {
+          "deny": ["gateway", "cron", "mcp_install", "mcp_uninstall", "config_set"]
+        }
+      },
+      {
         "id": "biologist",
         "name": "Dr. Gene",
         "workspace": "~/AcaClaw/agents/biologist",

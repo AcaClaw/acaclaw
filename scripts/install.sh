@@ -541,8 +541,25 @@ To list versions:  \`openclaw acaclaw-backup list <file>\`
 WSREADME
 
 	log "Workspace created ✓"
+fi
+
+# --- Sync agent identity files ---
+# Copy IDENTITY.md + SOUL.md from the repo into the runtime workspace for each agent.
+AGENTS_SOURCE="${SCRIPT_DIR}/../agents"
+if [[ -d "$AGENTS_SOURCE" ]]; then
+	for agent_dir in "${AGENTS_SOURCE}"/*/; do
+		agent_name="$(basename "$agent_dir")"
+		dest="${WORKSPACE_DIR}/agents/${agent_name}"
+		mkdir -p "$dest"
+		for f in IDENTITY.md SOUL.md; do
+			if [[ -f "${agent_dir}${f}" ]]; then
+				cp "${agent_dir}${f}" "${dest}/${f}"
+			fi
+		done
+	done
+	log "Agent identity files synced ✓"
 else
-	log "Workspace already exists at ${WORKSPACE_DIR} ✓"
+	log "Warning: agents source directory not found — skipping identity sync"
 fi
 
 # Save installed mode

@@ -25,6 +25,11 @@
     "notes": "Agent-required skills are installed by install.sh via clawhub install --workdir ~/.openclaw-acaclaw. Additional skills: clawhub install <skill-name> --workdir ~/.openclaw-acaclaw"
   },
   "agents": {
+    "main": {
+      "discipline": "general",
+      "condaEnv": "acaclaw",
+      "skills": ["nano-pdf", "xurl", "coding-agent", "summarize"]
+    },
     "biologist": {
       "discipline": "biology",
       "condaEnv": "acaclaw-bio",

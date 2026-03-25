@@ -41,6 +41,26 @@ interface AgentTab {
 /** Default "general" tab for the main session (no specific agent) */
 const GENERAL_TAB_ID = "general";
 
+/** localStorage key for persisting chat tab state across page reloads */
+const TABS_STORAGE_KEY = "acaclaw-chat-tabs";
+
+/** localStorage key for session titles (keyed by session key) */
+const SESSION_TITLES_KEY = "acaclaw-session-titles";
+
+/** Save a session title for display in Monitor. Stores under UUID portion only. */
+function saveSessionTitle(sessionKey: string, text: string, overwrite = false) {
+  try {
+    const raw = localStorage.getItem(SESSION_TITLES_KEY);
+    const titles: Record<string, string> = raw ? JSON.parse(raw) : {};
+    // Always key by UUID (last segment) so monitor can match gateway keys
+    const parts = sessionKey.split(":");
+    const uuid = parts[parts.length - 1];
+    if (!overwrite && titles[uuid]) return; // already named
+    titles[uuid] = text.slice(0, 60);
+    localStorage.setItem(SESSION_TITLES_KEY, JSON.stringify(titles));
+  } catch { /* ignore */ }
+}
+
 /** Default workspace root — matches config/openclaw-defaults.json */
 const DEFAULT_WORKSPACE = "~/AcaClaw";
 
@@ -64,6 +84,9 @@ export class ChatView extends LitElement {
   @state() private _newProjectName = "";
   @state() private _newProjectCreating = false;
   private _cleanupChat: (() => void) | null = null;
+  private _handleGatewayState: ((e: Event) => void) | null = null;
+  /** Maps title-gen runId → original session UUID for pending LLM title requests. */
+  private _titleGenRuns = new Map<string, string>();
 
   static override styles = css`
     :host {
@@ -809,9 +832,12 @@ export class ChatView extends LitElement {
   override connectedCallback() {
     super.connectedCallback();
 
-    // Initialize with the general tab
+    // Restore tabs from localStorage, or create default general tab
     if (this._tabs.length === 0) {
-      this._tabs = [this._createGeneralTab()];
+      const restored = this._restoreTabs();
+      this._tabs = restored.tabs;
+      this._activeTabId = restored.activeTabId;
+      this._persistTabs();
     }
 
     // Listen for open-agent-chat events from the Agents view
@@ -826,6 +852,15 @@ export class ChatView extends LitElement {
     // Load history for the active tab
     this._loadHistory(this._activeTabId);
 
+    // Reload history when gateway (re)connects — covers the case where
+    // connectedCallback fires before the WebSocket is established.
+    this._handleGatewayState = ((e: CustomEvent) => {
+      if (e.detail?.state === "connected") {
+        this._loadHistory(this._activeTabId);
+      }
+    }) as EventListener;
+    gateway.addEventListener("state-change", this._handleGatewayState);
+
     // Fetch the workdir for the active tab
     this._fetchWorkdir(this._activeTabId);
   }
@@ -833,6 +868,10 @@ export class ChatView extends LitElement {
   override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("open-agent-chat", this._handleOpenAgent as EventListener);
+    if (this._handleGatewayState) {
+      gateway.removeEventListener("state-change", this._handleGatewayState);
+      this._handleGatewayState = null;
+    }
     this._cleanupChat?.();
     this._cleanupChat = null;
   }
@@ -968,6 +1007,7 @@ export class ChatView extends LitElement {
     tab.activeRunId = "";
     tab.input = "";
     this._tabs = [...this._tabs];
+    this._persistTabs();
   }
 
   /** Save the new workdir via the gateway */
@@ -1031,8 +1071,138 @@ export class ChatView extends LitElement {
 
     this._tabs = [...this._tabs, newTab];
     this._activeTabId = agentId;
+    this._persistTabs();
     this._loadHistory(agentId);
     this._fetchWorkdir(agentId);
+  }
+
+  /** Persist lightweight tab metadata so sessions survive full page reloads */
+  private _persistTabs() {
+    try {
+      const data = {
+        tabs: this._tabs.map((t) => ({ agentId: t.agentId, sessionId: t.sessionId })),
+        activeTabId: this._activeTabId,
+      };
+      localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(data));
+    } catch { /* storage full / unavailable */ }
+  }
+
+  /**
+   * Public method to load a specific session by its gateway session key.
+   * Called from Monitor view when clicking "Load" on a session row.
+   */
+  loadSession(sessionKey: string) {
+    let agentId: string;
+    let sessionId: string;
+
+    if (sessionKey.startsWith("agent:")) {
+      // Gateway returns "agent:<agentId>:<sessionId>" (no :web:)
+      // Chat locally creates "agent:<agentId>:web:<sessionId>"
+      const parts = sessionKey.split(":");
+      agentId = parts[1] ?? GENERAL_TAB_ID;
+      if (parts[2] === "web") {
+        sessionId = parts.slice(3).join(":");
+      } else {
+        sessionId = parts.slice(2).join(":");
+      }
+    } else {
+      // General session — the key itself is the sessionId
+      agentId = GENERAL_TAB_ID;
+      sessionId = sessionKey;
+    }
+
+    if (!sessionId) return;
+
+    const existing = this._tabs.find((t) => t.agentId === agentId);
+    if (existing) {
+      // Switch to existing tab and replace its sessionId to load the target session
+      existing.sessionId = sessionId;
+      existing.messages = [];
+      existing.sending = false;
+      existing.activeRunId = "";
+      this._activeTabId = agentId;
+      this._tabs = [...this._tabs];
+    } else if (agentId === GENERAL_TAB_ID) {
+      // Replace the general tab's sessionId
+      const general = this._tabs.find((t) => t.agentId === GENERAL_TAB_ID);
+      if (general) {
+        general.sessionId = sessionId;
+        general.messages = [];
+        general.sending = false;
+        general.activeRunId = "";
+        this._activeTabId = GENERAL_TAB_ID;
+        this._tabs = [...this._tabs];
+      }
+    } else {
+      // Create a new agent tab with the target sessionId
+      const agent = getCustomizedStaff().find((a) => a.id === agentId);
+      if (!agent) return;
+      const newTab: AgentTab = {
+        agentId,
+        agent,
+        messages: [],
+        sending: false,
+        activeRunId: "",
+        input: "",
+        sessionId,
+      };
+      this._tabs = [...this._tabs, newTab];
+      this._activeTabId = agentId;
+    }
+
+    this._persistTabs();
+    this._loadHistory(agentId, sessionKey);
+    this._fetchWorkdir(agentId);
+  }
+
+  /** Restore tab list from localStorage; falls back to a fresh general tab */
+  private _restoreTabs(): { tabs: AgentTab[]; activeTabId: string } {
+    try {
+      const raw = localStorage.getItem(TABS_STORAGE_KEY);
+      if (raw) {
+        const data = JSON.parse(raw) as {
+          tabs?: Array<{ agentId: string; sessionId: string }>;
+          activeTabId?: string;
+        };
+        if (data.tabs?.length) {
+          const staff = getCustomizedStaff();
+          const tabs: AgentTab[] = [];
+          for (const saved of data.tabs) {
+            const agent =
+              saved.agentId === GENERAL_TAB_ID
+                ? staff.find((a) => a.id === "default") ?? {
+                    id: GENERAL_TAB_ID,
+                    icon: "\u{1F464}",
+                    name: "Aca",
+                    role: "General Assistant",
+                    discipline: "All",
+                    condaEnv: "aca",
+                    description: "Your personal research assistant",
+                    skills: [],
+                  }
+                : staff.find((a) => a.id === saved.agentId);
+            if (!agent) continue;
+            tabs.push({
+              agentId: saved.agentId,
+              agent,
+              messages: [],
+              sending: false,
+              activeRunId: "",
+              input: "",
+              sessionId: saved.sessionId,
+            });
+          }
+          if (tabs.length) {
+            const activeTabId =
+              data.activeTabId && tabs.some((t) => t.agentId === data.activeTabId)
+                ? data.activeTabId
+                : tabs[0].agentId;
+            return { tabs, activeTabId };
+          }
+        }
+      }
+    } catch { /* corrupted data — ignore */ }
+    return { tabs: [this._createGeneralTab()], activeTabId: GENERAL_TAB_ID };
   }
 
   private _createGeneralTab(): AgentTab {
@@ -1060,7 +1230,7 @@ export class ChatView extends LitElement {
   private _getSessionKey(agentId: string): string {
     const tab = this._tabs.find((t) => t.agentId === agentId);
     const sid = tab?.sessionId ?? "main";
-    if (agentId === GENERAL_TAB_ID) return sid;
+    if (agentId === GENERAL_TAB_ID) return `agent:main:web:${sid}`;
     return `agent:${agentId}:web:${sid}`;
   }
 
@@ -1076,6 +1246,27 @@ export class ChatView extends LitElement {
       message?: { role?: string; content?: Array<{ type?: string; text?: string }> };
       errorMessage?: string;
     };
+
+    // Handle title-generation run completions
+    if (d.runId && this._titleGenRuns.has(d.runId)) {
+      if (d.state === "final" && d.message) {
+        const title = d.message.content
+          ?.filter((c) => c.type === "text")
+          .map((c) => c.text ?? "")
+          .join("")
+          .trim()
+          .replace(/^["']|["']$/g, "") // strip surrounding quotes
+          .slice(0, 60);
+        if (title) {
+          const uuid = this._titleGenRuns.get(d.runId)!;
+          saveSessionTitle(uuid, title, true);
+        }
+      }
+      if (d.state === "final" || d.state === "error") {
+        this._titleGenRuns.delete(d.runId);
+      }
+      return;
+    }
 
     // Find the tab this event belongs to (by runId match)
     const tab = this._tabs.find((t) => t.activeRunId && t.activeRunId === d.runId);
@@ -1117,6 +1308,15 @@ export class ChatView extends LitElement {
       }
       tab.sending = false;
       tab.activeRunId = "";
+
+      // Generate LLM title after first exchange (1 user + 1 assistant = 2 messages)
+      const userMsgs = tab.messages.filter((m) => m.role === "user");
+      if (userMsgs.length === 1) {
+        const sessionKey = this._getSessionKey(tab.agentId);
+        const parts = sessionKey.split(":");
+        const uuid = parts[parts.length - 1];
+        this._generateTitle(uuid, userMsgs[0].content);
+      }
     } else if (d.state === "error") {
       if (tab.messages.length > 0) {
         const last = tab.messages[tab.messages.length - 1];
@@ -1132,10 +1332,10 @@ export class ChatView extends LitElement {
     this._tabs = [...this._tabs];
   }
 
-  private async _loadHistory(agentId: string) {
+  private async _loadHistory(agentId: string, overrideKey?: string) {
     const tab = this._tabs.find((t) => t.agentId === agentId);
     const snapshotSessionId = tab?.sessionId;
-    const sessionKey = this._getSessionKey(agentId);
+    const sessionKey = overrideKey ?? this._getSessionKey(agentId);
     try {
       const res = await gateway.call<{
         messages?: Array<{
@@ -1184,6 +1384,12 @@ export class ChatView extends LitElement {
     const text = tab.input.trim();
     if (!text || tab.sending) return;
 
+    // Save session title from the first user message
+    const isFirstMessage = !tab.messages.some((m) => m.role === "user");
+    if (isFirstMessage) {
+      saveSessionTitle(this._getSessionKey(tab.agentId), text);
+    }
+
     tab.messages = [
       ...tab.messages,
       { role: "user", content: text, thinking: "", timestamp: new Date().toLocaleTimeString() },
@@ -1216,6 +1422,21 @@ export class ChatView extends LitElement {
     }
   }
 
+  /** Fire off a lightweight LLM call to generate a session title. */
+  private async _generateTitle(sessionUuid: string, userMessage: string) {
+    try {
+      const titleSessionKey = `title-gen:${crypto.randomUUID()}`;
+      const res = await gateway.call<{ runId?: string }>("chat.send", {
+        sessionKey: titleSessionKey,
+        message: `Summarize the following user request as a short title (3-6 words, no quotes, no punctuation at end):\n\n"${userMessage}"`,
+        idempotencyKey: crypto.randomUUID(),
+      });
+      if (res?.runId) {
+        this._titleGenRuns.set(res.runId, sessionUuid);
+      }
+    } catch { /* title generation is best-effort */ }
+  }
+
   private _handleKeyDown(e: KeyboardEvent) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -1234,6 +1455,7 @@ export class ChatView extends LitElement {
   private _switchTab(agentId: string) {
     this._activeTabId = agentId;
     this._tabs = [...this._tabs];
+    this._persistTabs();
     this._fetchWorkdir(agentId);
   }
 
@@ -1244,6 +1466,7 @@ export class ChatView extends LitElement {
       this._activeTabId = this._tabs[0]?.agentId ?? GENERAL_TAB_ID;
     }
     this._tabs = [...this._tabs];
+    this._persistTabs();
   }
 
   private _useSuggestion(text: string) {
