@@ -205,24 +205,46 @@ const _avatarSvg = (bg1: string, bg2: string, icon: string) =>
   `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 56 56"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${bg1}"/><stop offset="100%" stop-color="${bg2}"/></linearGradient></defs><rect width="56" height="56" rx="14" fill="url(#g)"/>${icon}</svg>`)}`;
 
 const AVATAR_ACA = _avatarSvg("#0ea5e9", "#06b6d4",
-  // nice girl with long hair and PhD mortarboard cap
-  `<g fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">` +
-  // mortarboard hat
-  `<polygon points="10,16 28,10 46,16 28,22" fill="#fff" opacity=".85" stroke="none"/>` +
-  `<rect x="25" y="10" width="6" height="3" rx="1" fill="#fff" stroke="none"/>` +
-  `<line x1="28" y1="22" x2="28" y2="16"/>` +
-  // face
-  `<circle cx="28" cy="30" r="8" fill="#fff" opacity=".2"/>` +
-  // long hair flowing down sides
-  `<path d="M20 28c-2 0-4 3-4 8s2 6 2 6" stroke-width="2.5"/>` +
-  `<path d="M36 28c2 0 4 3 4 8s-2 6-2 6" stroke-width="2.5"/>` +
-  // hair on top
-  `<path d="M20 28c0-4 3.5-8 8-8s8 4 8 8" fill="#fff" opacity=".12"/>` +
-  // eyes
-  `<circle cx="24.5" cy="30" r="1.2" fill="#fff"/>` +
-  `<circle cx="31.5" cy="30" r="1.2" fill="#fff"/>` +
-  // smile
-  `<path d="M25 34c1.5 1.5 4.5 1.5 6 0"/>` +
+  // beautiful cartoon girl with PhD mortarboard — multi-color, elegant
+  `<g stroke-linecap="round" stroke-linejoin="round">` +
+  // long flowing hair behind (dark, softer navy-brown)
+  `<path d="M16 23c-1.5 4-2 12-1 19" fill="none" stroke="#2d3a4a" stroke-width="5"/>` +
+  `<path d="M40 23c1.5 4 2 12 1 19" fill="none" stroke="#2d3a4a" stroke-width="5"/>` +
+  // face (warm skin tone)
+  `<ellipse cx="28" cy="32" rx="9" ry="10" fill="#ffe0bd" stroke="#f0c9a0" stroke-width=".6"/>` +
+  // hair bangs (dark, frames forehead)
+  `<path d="M19 26c.8-5.5 3.8-9.5 9-9.5s8.2 4 9 9.5" fill="#2d3a4a" stroke="none"/>` +
+  // side hair — thinner, more elegant
+  `<path d="M19 26c-.8 3-1 6.5-.5 10" fill="none" stroke="#2d3a4a" stroke-width="2.5"/>` +
+  `<path d="M37 26c.8 3 1 6.5.5 10" fill="none" stroke="#2d3a4a" stroke-width="2.5"/>` +
+  // eyes — left (anime-style: white sclera + blue iris + dark pupil + highlight)
+  `<ellipse cx="24" cy="32" rx="2.8" ry="3" fill="#fff" stroke="none"/>` +
+  `<ellipse cx="24" cy="32.5" rx="2" ry="2.2" fill="#3b82f6" stroke="none"/>` +
+  `<circle cx="24" cy="32.3" r=".9" fill="#1e3a8a" stroke="none"/>` +
+  `<circle cx="23.2" cy="31.3" r=".9" fill="#fff" stroke="none"/>` +
+  // eyes — right
+  `<ellipse cx="32" cy="32" rx="2.8" ry="3" fill="#fff" stroke="none"/>` +
+  `<ellipse cx="32" cy="32.5" rx="2" ry="2.2" fill="#3b82f6" stroke="none"/>` +
+  `<circle cx="32" cy="32.3" r=".9" fill="#1e3a8a" stroke="none"/>` +
+  `<circle cx="31.2" cy="31.3" r=".9" fill="#fff" stroke="none"/>` +
+  // eyebrows (thin, elegant arcs)
+  `<path d="M21.5 29q1.2-.8 3-.3" fill="none" stroke="#4a3728" stroke-width=".8"/>` +
+  `<path d="M29.5 29q1.2-.8 3-.3" fill="none" stroke="#4a3728" stroke-width=".8"/>` +
+  // blush (subtle, smaller)
+  `<circle cx="21.5" cy="35" r="1.6" fill="#ffb3b3" opacity=".35" stroke="none"/>` +
+  `<circle cx="34.5" cy="35" r="1.6" fill="#ffb3b3" opacity=".35" stroke="none"/>` +
+  // nose
+  `<path d="M27.5 34.2c.4.4.7.4 1 0" fill="none" stroke="#d4a574" stroke-width=".7"/>` +
+  // smile (rose pink lips)
+  `<path d="M25.5 37c1 1.3 4 1.3 5 0" fill="none" stroke="#e75480" stroke-width="1.2"/>` +
+  // mortarboard cap (white, clear)
+  `<polygon points="8,17 28,9.5 48,17 28,24" fill="#fff" stroke="none"/>` +
+  `<rect x="24.5" y="9" width="7" height="3" rx="1.5" fill="#2d3a4a" stroke="none"/>` +
+  // tassel (golden)
+  `<path d="M8 17L5 25.5" fill="none" stroke="#fbbf24" stroke-width="1.8"/>` +
+  `<circle cx="5" cy="27" r="1.8" fill="#fbbf24" stroke="none"/>` +
+  // collar/top (white blouse)
+  `<path d="M19 45c0-3.5 3.5-5.5 9-5.5s9 2 9 5.5" fill="#fff" stroke="none"/>` +
   `</g>`);
 
 const AVATAR_GENE = _avatarSvg("#10b981", "#34d399",
