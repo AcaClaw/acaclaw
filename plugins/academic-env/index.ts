@@ -779,8 +779,34 @@ const academicEnvPlugin = {
 			api.registerGatewayMethod("acaclaw.system.stats", async ({ respond }) => {
 				try {
 					const totalMem = totalmem();
-					const freeMem = freemem();
-					const usedMem = totalMem - freeMem;
+					let usedMem: number;
+					let freeMem: number;
+
+					// macOS os.freemem() only reports truly free pages, ignoring
+					// inactive/purgeable/speculative memory that is reclaimable.
+					// Use vm_stat to compute actual app memory (active + wired).
+					if (process.platform === "darwin") {
+						try {
+							const vmRaw = execSync("vm_stat", { encoding: "utf8", timeout: 3000 });
+							const pageMatch = vmRaw.match(/page size of (\d+) bytes/);
+							const pageSize = pageMatch ? Number(pageMatch[1]) : 16384;
+							const grab = (label: string) => {
+								const m = vmRaw.match(new RegExp(label + ":\\s+(\\d+)"));
+								return m ? Number(m[1]) * pageSize : 0;
+							};
+							const active = grab("Pages active");
+							const wired = grab("Pages wired down");
+							const compressed = grab("Pages occupied by compressor");
+							usedMem = active + wired + compressed;
+							freeMem = totalMem - usedMem;
+						} catch {
+							freeMem = freemem();
+							usedMem = totalMem - freeMem;
+						}
+					} else {
+						freeMem = freemem();
+						usedMem = totalMem - freeMem;
+					}
 					let disk = { total: 0, free: 0, used: 0 };
 					try {
 						const st = await statfs(homedir());
