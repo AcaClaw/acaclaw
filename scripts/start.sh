@@ -53,6 +53,12 @@ _try_bootstrap() {
     fi
     command -v openclaw &>/dev/null && return 0
 
+    # fnm via Homebrew (fnm is on PATH after brew shellenv but fnm env not yet loaded)
+    if command -v fnm &>/dev/null; then
+        eval "$(fnm env 2>/dev/null)" 2>/dev/null || true
+    fi
+    command -v openclaw &>/dev/null && return 0
+
     # Common additional paths
     for d in "${HOME}/.npm-global/bin" "${HOME}/.cargo/bin" "${HOME}/.acaclaw/miniforge3/bin"; do
         [[ -d "$d" ]] && export PATH="${d}:${PATH}"

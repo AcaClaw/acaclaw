@@ -346,7 +346,12 @@ describe("start.sh", () => {
 				ui_index="${uiDir}/index.html"
 				token="test-token-abc123"
 				if ! grep -q 'name="oc-token"' "$ui_index"; then
-					sed -i "s|</head>|  <meta name=\\"oc-token\\" content=\\"\${token}\\" />\\n  </head>|" "$ui_index"
+					if [[ "$OSTYPE" == "darwin"* ]]; then
+						sed -i '' "s|</head>|  <meta name=\\"oc-token\\" content=\\"\${token}\\" />\\
+  </head>|" "$ui_index"
+					else
+						sed -i "s|</head>|  <meta name=\\"oc-token\\" content=\\"\${token}\\" />\\n  </head>|" "$ui_index"
+					fi
 				fi
 			`);
 			expect(code).toBe(0);

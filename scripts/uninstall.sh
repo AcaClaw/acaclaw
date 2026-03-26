@@ -92,7 +92,8 @@ echo ""
 
 if [[ "$AUTO_YES" == "false" ]]; then
 	read -rp "Continue? [y/N]: " confirm
-	if [[ "${confirm,,}" != "y" && "${confirm,,}" != "yes" ]]; then
+	confirm_lower=$(echo "$confirm" | tr '[:upper:]' '[:lower:]')
+	if [[ "$confirm_lower" != "y" && "$confirm_lower" != "yes" ]]; then
 		log "Uninstall cancelled."
 		exit 0
 	fi

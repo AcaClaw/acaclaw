@@ -196,23 +196,70 @@ else
 		bash "$INSTALLER_PATH" -b -p "$MINIFORGE_DIR"
 		rm -f "$INSTALLER_PATH"
 		log "Miniforge installed ✓"
-
-		# Configure conda-forge mirrors for faster package downloads
-		CONDARC="${MINIFORGE_DIR}/.condarc"
-		if [[ ! -f "$CONDARC" ]]; then
-			cat > "$CONDARC" <<'CONDARC_EOF'
-channels:
-  - conda-forge
-show_channel_urls: true
-channel_alias: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
-custom_channels:
-  conda-forge: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
-CONDARC_EOF
-			log "Conda mirror configured (Tsinghua TUNA) ✓"
-		fi
 	fi
 
 	export PATH="${MINIFORGE_DIR}/bin:$PATH"
+
+	# Determine the conda channel source.
+	# Conda reads configs from multiple locations (~/miniconda3/.condarc, ~/.condarc, etc.)
+	# and a broken user ~/.condarc can cause SSL failures. We temporarily set aside any
+	# user .condarc during install, write our own tested config, and restore it afterward.
+	# Mirror test uses conda's own Python SSL stack (not curl) to match conda's behavior.
+	_CONDARC_BAK=""
+	if [[ -f "$HOME/.condarc" ]]; then
+		_CONDARC_BAK="$HOME/.condarc.acaclaw-bak.$$"
+		cp "$HOME/.condarc" "$_CONDARC_BAK"
+		rm -f "$HOME/.condarc"
+	fi
+	# Restore user .condarc on exit (normal or error)
+	_restore_condarc() {
+		if [[ -n "$_CONDARC_BAK" && -f "$_CONDARC_BAK" ]]; then
+			mv "$_CONDARC_BAK" "$HOME/.condarc"
+			_CONDARC_BAK=""
+		fi
+	}
+	trap '_restore_condarc' EXIT
+
+	MIRROR_URLS=(
+		"https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud"
+		"https://mirrors.bfsu.edu.cn/anaconda/cloud"
+	)
+	MIRROR_SET="false"
+	for mirror_url in "${MIRROR_URLS[@]}"; do
+		# Test using conda's own Python + ssl module to match what conda will use
+		TEST_URL="${mirror_url}/conda-forge/noarch/repodata.json.zst"
+		if "${MINIFORGE_DIR}/bin/python3" -c "
+import urllib.request, ssl, sys
+try:
+    req = urllib.request.urlopen('${TEST_URL}', timeout=8)
+    req.read(1024); req.close(); sys.exit(0)
+except Exception: sys.exit(1)
+" 2>/dev/null; then
+			# Write working mirror config to Miniforge's .condarc
+			cat > "${MINIFORGE_DIR}/.condarc" <<CONDARC_EOF
+channels:
+  - conda-forge
+show_channel_urls: true
+channel_alias: ${mirror_url}
+custom_channels:
+  conda-forge: ${mirror_url}
+CONDARC_EOF
+			log "Conda mirror configured (${mirror_url}) ✓"
+			MIRROR_SET="true"
+			break
+		else
+			warn "Mirror SSL test failed: ${mirror_url}, trying next..."
+		fi
+	done
+	if [[ "$MIRROR_SET" == "false" ]]; then
+		# Write official conda-forge config (no mirror)
+		cat > "${MINIFORGE_DIR}/.condarc" <<'CONDARC_EOF'
+channels:
+  - conda-forge
+show_channel_urls: true
+CONDARC_EOF
+		log "Using official conda-forge channel (no working mirror found) ✓"
+	fi
 
 	# Create the base AcaClaw conda environment with scientific packages.
 	# All skills and tools depend on this env existing (conda run -n acaclaw).
@@ -235,7 +282,22 @@ sys.exit(0 if any(e.endswith('/envs/${ACACLAW_ENV_NAME}') or e.endswith('/${ACAC
 		if conda env create -f "$ACACLAW_ENV_YML"; then
 			log "Conda env '${ACACLAW_ENV_NAME}' created ✓"
 		else
-			warn "Failed to create conda env '${ACACLAW_ENV_NAME}'. You can create it later from the Environment tab."
+			# If we were using a mirror, retry with official conda-forge
+			if [[ "$MIRROR_SET" == "true" ]]; then
+				warn "Conda env creation failed with mirror. Retrying with official conda-forge..."
+				cat > "${MINIFORGE_DIR}/.condarc" <<'CONDARC_EOF'
+channels:
+  - conda-forge
+show_channel_urls: true
+CONDARC_EOF
+				if conda env create -f "$ACACLAW_ENV_YML"; then
+					log "Conda env '${ACACLAW_ENV_NAME}' created (official channel) ✓"
+				else
+					warn "Failed to create conda env '${ACACLAW_ENV_NAME}'. You can create it later from the Environment tab."
+				fi
+			else
+				warn "Failed to create conda env '${ACACLAW_ENV_NAME}'. You can create it later from the Environment tab."
+			fi
 		fi
 	else
 		warn "Environment YAML not found at ${ACACLAW_ENV_YML} — skipping env creation"
@@ -514,10 +576,13 @@ t = c.get('gateway', {}).get('auth', {}).get('token', '')
 print(t)
 " 2>/dev/null)
 	if [[ -n "$GATEWAY_TOKEN" ]]; then
+		# Remove any existing oc-token meta tag before injecting the correct one
 		if [[ "$OS" == "macos" ]]; then
+			sed -i '' '/<meta name="oc-token"/d' "$ACAC_UI_INDEX"
 			sed -i '' "s|</head>|<meta name=\"oc-token\" content=\"${GATEWAY_TOKEN}\" />\\
   </head>|" "$ACAC_UI_INDEX"
 		else
+			sed -i '/<meta name="oc-token"/d' "$ACAC_UI_INDEX"
 			sed -i "s|</head>|<meta name=\"oc-token\" content=\"${GATEWAY_TOKEN}\" />\n  </head>|" "$ACAC_UI_INDEX"
 		fi
 		log "Gateway token injected into UI ✓"

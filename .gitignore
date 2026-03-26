@@ -252,3 +252,5 @@ backup/
 # Build artifacts
 dist/
 *.tsbuildinfo
+
+.clinerules

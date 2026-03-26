@@ -324,10 +324,11 @@ export class AcaClawApp extends LitElement {
       flex-direction: column;
     }
     .statusbar-mini {
-      padding: 16px 24px;
+      padding: 10px 24px;
       display: flex;
-      flex-direction: column;
-      gap: 12px;
+      flex-direction: row;
+      align-items: center;
+      gap: 16px;
       font-size: 13px;
       font-weight: 500;
       color: var(--ac-text-secondary);
@@ -335,7 +336,8 @@ export class AcaClawApp extends LitElement {
     .statusbar-mini .item {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 6px;
+      white-space: nowrap;
     }
     .statusbar-mini .status-dot {
       width: 8px;
@@ -376,8 +378,10 @@ export class AcaClawApp extends LitElement {
       display: none;
     }
     .sidebar.collapsed .statusbar-mini {
-      padding: 16px 0;
+      padding: 10px 0;
+      flex-direction: column;
       align-items: center;
+      gap: 8px;
     }
 
     @media (max-width: 768px) {
