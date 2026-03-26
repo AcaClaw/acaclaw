@@ -715,6 +715,101 @@ const academicEnvPlugin = {
 			respond(true, { packages });
 		});
 
+		// --- Gateway: acaclaw.env.cuda.list ---
+		// Detect GPU hardware, CUDA toolkit, cuDNN, and ML framework GPU support.
+		api.registerGatewayMethod("acaclaw.env.cuda.list", async ({ params, respond }) => {
+			const rawEnv = typeof params.env === "string" ? params.env : "";
+			const condaName = UI_TO_CONDA[rawEnv] ?? rawEnv;
+			const conda = findConda();
+
+			const packages: Array<{ name: string; version: string; source: string; description: string }> = [];
+
+			// 1. Detect GPU hardware via lspci
+			try {
+				const lspci = execSync("lspci 2>/dev/null", { stdio: "pipe", encoding: "utf-8", timeout: 3000 });
+				const gpuLines = lspci.split("\n").filter(l => /VGA|3D|Display/i.test(l));
+				for (const line of gpuLines) {
+					const m = line.match(/:\s+(.+)/);
+					if (m) packages.push({ name: "GPU", version: m[1].trim(), source: "hardware", description: "Detected GPU device" });
+				}
+			} catch { /* no lspci */ }
+
+			// 2. NVIDIA driver + CUDA version via nvidia-smi
+			try {
+				const nvsmi = execSync("nvidia-smi --query-gpu=driver_version,name --format=csv,noheader,nounits", {
+					stdio: "pipe", encoding: "utf-8", timeout: 5000,
+				}).trim();
+				const [driver, gpuName] = nvsmi.split(", ");
+				if (driver) packages.push({ name: "NVIDIA Driver", version: driver, source: "nvidia", description: gpuName ?? "NVIDIA GPU" });
+
+				const cudaVer = execSync("nvidia-smi --query-gpu=cuda_version --format=csv,noheader", {
+					stdio: "pipe", encoding: "utf-8", timeout: 3000,
+				}).trim();
+				if (cudaVer) packages.push({ name: "CUDA (driver)", version: cudaVer, source: "nvidia", description: "CUDA version supported by driver" });
+			} catch { /* no nvidia-smi */ }
+
+			// 3. CUDA toolkit (nvcc)
+			try {
+				const nvccOut = execSync("nvcc --version 2>/dev/null", { stdio: "pipe", encoding: "utf-8", timeout: 3000 });
+				const m = nvccOut.match(/release (\S+),/);
+				if (m) packages.push({ name: "CUDA Toolkit", version: m[1], source: "system", description: "CUDA compiler and runtime" });
+			} catch { /* no nvcc */ }
+
+			// 4. cuDNN (check in conda env or system)
+			if (conda.available && conda.path) {
+				try {
+					const cudnnVer = execSync(`"${conda.path}" run -n ${condaName} python -c "import ctypes; lib = ctypes.cdll.LoadLibrary('libcudnn.so'); print('available')" 2>/dev/null`, {
+						stdio: "pipe", encoding: "utf-8", timeout: 10000,
+					}).trim();
+					if (cudnnVer.includes("available")) {
+						packages.push({ name: "cuDNN", version: "detected", source: "conda", description: "Deep neural network library" });
+					}
+				} catch { /* no cuDNN */ }
+			}
+
+			// 5. PyTorch CUDA support
+			if (conda.available && conda.path) {
+				try {
+					const pytorchOut = execSync(
+						`"${conda.path}" run -n ${condaName} python -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.version.cuda or 'none')"`,
+						{ stdio: "pipe", encoding: "utf-8", timeout: 15000 },
+					).trim();
+					const parts = pytorchOut.split(" ");
+					if (parts.length >= 3) {
+						const cudaAvail = parts[1] === "True";
+						packages.push({
+							name: "PyTorch",
+							version: `${parts[0]} (CUDA: ${cudaAvail ? parts[2] : "not available"})`,
+							source: "conda",
+							description: cudaAvail ? "GPU-accelerated ML framework" : "CPU-only (no CUDA)",
+						});
+					}
+				} catch { /* no PyTorch */ }
+			}
+
+			// 6. TensorFlow GPU support
+			if (conda.available && conda.path) {
+				try {
+					const tfOut = execSync(
+						`"${conda.path}" run -n ${condaName} python -c "import tensorflow as tf; gpus = tf.config.list_physical_devices('GPU'); print(tf.__version__, len(gpus))"`,
+						{ stdio: "pipe", encoding: "utf-8", timeout: 15000 },
+					).trim();
+					const parts = tfOut.split(" ");
+					if (parts.length >= 2) {
+						const gpuCount = parseInt(parts[1], 10);
+						packages.push({
+							name: "TensorFlow",
+							version: `${parts[0]} (${gpuCount} GPU${gpuCount !== 1 ? "s" : ""})`,
+							source: "conda",
+							description: gpuCount > 0 ? "GPU-accelerated ML framework" : "CPU-only (no GPU detected)",
+						});
+					}
+				} catch { /* no TensorFlow */ }
+			}
+
+			respond(true, { packages });
+		});
+
 		// --- Gateway: acaclaw.skill.install ---
 		// Install a skill from ClawHub into the gateway's skills directory
 		api.registerGatewayMethod("acaclaw.skill.install", async ({ params, respond, context }) => {

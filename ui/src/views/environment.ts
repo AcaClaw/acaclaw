@@ -449,6 +449,15 @@ export class EnvironmentView extends LitElement {
       }
     } catch { /* keep cached data */ }
 
+    // Load CUDA/GPU info
+    try {
+      const res = await gateway.call<{ packages: Array<{ name: string; version: string; source: string; description?: string }> }>("acaclaw.env.cuda.list", { env: this._selectedEnv });
+      if (res?.packages) {
+        const key = `${this._selectedEnv}:cuda`;
+        this._packages = { ...this._packages, [key]: res.packages };
+      }
+    } catch { /* keep cached data */ }
+
     this._loadingPkgs = false;
   }
 
