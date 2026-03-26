@@ -366,12 +366,17 @@ const academicEnvPlugin = {
 				active: boolean; installed: boolean;
 			}> = [];
 
-			for (const [uiId, condaName] of Object.entries(UI_TO_CONDA)) {
-				const envExists = envPaths.some((e: string) => e.endsWith(`/envs/${condaName}`) || e.endsWith(`/${condaName}`));
+			// Determine which conda env is the active one (from discipline config)
+			const activeCondaName = DISCIPLINE_ENVS[discipline] ?? "acaclaw";
 
-				// Only fetch python/R version for installed envs
+			for (const [uiId, condaName] of Object.entries(UI_TO_CONDA)) {
+				const envPath = envPaths.find((e: string) => e.endsWith(`/envs/${condaName}`) || e.endsWith(`/${condaName}`));
+				const envExists = !!envPath;
+
+				// Only fetch python/R version and size for installed envs
 				let python = "—";
 				let rVersion = "not installed";
+				let sizeGB = 0;
 				if (envExists) {
 					try {
 						const ver = execSync(`"${conda.path}" run -n ${condaName} python --version`, { stdio: "pipe", encoding: "utf-8" }).trim();
@@ -382,6 +387,11 @@ const academicEnvPlugin = {
 						const m = rOut.match(/R version (\S+)/);
 						if (m) rVersion = m[1];
 					} catch { /* not available */ }
+					try {
+						const duOut = execSync(`du -sk "${envPath}"`, { stdio: "pipe", encoding: "utf-8" }).trim();
+						const kb = parseInt(duOut, 10);
+						if (kb > 0) sizeGB = kb / 1048576;
+					} catch { /* keep 0 */ }
 				}
 
 				environments.push({
@@ -390,8 +400,8 @@ const academicEnvPlugin = {
 					rVersion,
 					condaVersion,
 					path: `~/.acaclaw/miniforge3/envs/${condaName}`,
-					sizeGB: 0,
-					active: false,
+					sizeGB,
+					active: condaName === activeCondaName,
 					installed: envExists,
 				});
 			}
