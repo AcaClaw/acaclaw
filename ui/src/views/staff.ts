@@ -203,7 +203,7 @@ const PREBUILT_TEMPLATES: Omit<StaffMember, "skills" | "envInstalled">[] = [
 export const STAFF_MEMBERS: StaffMember[] = [
   {
     id: "default",
-    icon: "\u{1F464}",
+    icon: "\u{1F469}\u{200D}\u{1F52C}",
     name: "Aca",
     role: "General Assistant",
     discipline: "General",
@@ -1642,7 +1642,7 @@ export class StaffView extends LitElement {
     if (this._staff.find((s) => s.id === id)) { this._showNewPicker = false; return; }
     const newMember: StaffMember = template
       ? { ...template, skills: [...DEFAULT_SKILLS], envInstalled: false }
-      : { id, icon: "\u{1F464}", name: "New Assistant", role: "Research Assistant", discipline: "General", condaEnv: "aca", description: "Custom research assistant", skills: [...DEFAULT_SKILLS], envInstalled: false };
+      : { id, icon: "\u{1F469}\u{200D}\u{1F52C}", name: "New Assistant", role: "Research Assistant", discipline: "General", condaEnv: "aca", description: "Custom research assistant", skills: [...DEFAULT_SKILLS], envInstalled: false };
     this._staff = [...this._staff, newMember];
     this._showNewPicker = false;
     this._persistStaff();

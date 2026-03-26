@@ -1206,7 +1206,7 @@ export class ChatView extends LitElement {
               saved.agentId === GENERAL_TAB_ID
                 ? staff.find((a) => a.id === "default") ?? {
                     id: GENERAL_TAB_ID,
-                    icon: "\u{1F464}",
+                    icon: "\u{1F469}\u{200D}\u{1F52C}",
                     name: "Aca",
                     role: "General Assistant",
                     discipline: "All",
@@ -1242,7 +1242,7 @@ export class ChatView extends LitElement {
   private _createGeneralTab(): AgentTab {
     const defaultAgent = getCustomizedStaff().find((a) => a.id === "default") ?? {
       id: GENERAL_TAB_ID,
-      icon: "\u{1F464}",
+      icon: "\u{1F469}\u{200D}\u{1F52C}",
       name: "Aca",
       role: "General Assistant",
       discipline: "All",
