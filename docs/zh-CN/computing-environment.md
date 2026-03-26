@@ -91,13 +91,31 @@ conda create -n acaclaw -c conda-forge python=3.12 numpy scipy pandas ...
 
 #### R 支持
 
-R **默认不安装**。用户选择任一学科时，会询问：
+R **默认不安装在 conda 环境中**。AcaClaw 采用混合策略：自动检测系统已有的 R 安装，同时提供一键安装 conda R 的选项。
 
-```
-Include R language support? [y/N]
-```
+**R 检测工作方式：**
 
-若选是，会向环境加入：
+1. 环境标签页先检查活跃 conda 环境中的 R 包
+2. 若无 conda R，则检查系统 R（`/usr/bin/R` 或 PATH 中的 `R`）
+3. 若检测到系统 R，会显示带 **"Using system R"** 横幅的包列表
+
+**系统 R 与 Conda R 对比：**
+
+| 方面 | 系统 R | Conda R |
+|---|---|---|
+| 包与操作系统共享 | 是 | 否（隔离） |
+| 安装方式 | 系统包管理器 + `install.packages()` | `conda install` |
+| AcaClaw 管理 | 否（只读视图） | 是 |
+| 在环境标签页显示 | 是（带系统 R 横幅） | 是 |
+
+**将 R 安装到 conda 环境：**
+
+用户可随时将 R 安装到活跃 conda 环境 — 通过 UI 或命令行：
+
+- **UI**：在环境标签页点击「Install R into conda env」（显示在系统 R 横幅或「R Not Installed」卡片中）
+- **命令行**：`conda install -n acaclaw -y -c conda-forge r-base r-irkernel r-essentials`
+
+安装的 R 组件：
 
 | R 组件 | 用途 |
 |---|---|
@@ -105,7 +123,7 @@ Include R language support? [y/N]
 | `r-irkernel` (>=1.3) | JupyterLab 的 R 内核 |
 | `r-essentials` (>=4.3) | 核心 R 包（tidyverse、ggplot2、dplyr、tidyr 等） |
 
-以及学科相关 R 包（例如生物学的 `r-biocmanager`、医学的 `r-survival`）。
+用户选择包含 R 的学科（生物学、医学）时，还会添加学科相关 R 包（例如生物学的 `r-biocmanager`、医学的 `r-survival`）。
 
 #### 单一学科
 
@@ -395,9 +413,10 @@ openclaw acaclaw-env list-envs
 |---|---|
 | R 生态约 ~1.5GB | 对只需 Python 的用户过大 |
 | 并非所有学科都需要 R | 化学/物理很少用 R |
-| 后续易添加 | `openclaw acaclaw-env install r-base r-irkernel r-essentials` |
+| 系统 R 通常已存在 | 使用 R 的科研人员通常已在系统层面安装 |
+| 后续易添加 | 在 UI 点击「Install R into conda env」，或 `conda install -n acaclaw r-base r-irkernel r-essentials` |
 
-R 在选学科时可选，或之后按需安装。
+R 为可选项：环境标签页自动检测系统 R，并在需要隔离时提供一键安装到 conda 环境的选项。
 
 ### 为何用级联解析？
 

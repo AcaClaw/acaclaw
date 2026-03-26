@@ -91,13 +91,31 @@ After base install, users choose one or more disciplines. Each discipline adds a
 
 #### R Support
 
-R is **not installed by default**. When a user selects any discipline, they are asked:
+R is **not installed in the conda environment by default**. AcaClaw uses a hybrid approach that detects and leverages existing system R installations while offering an optional conda R install.
 
-```
-Include R language support? [y/N]
-```
+**How R detection works:**
 
-If yes, the following are added to the environment:
+1. The Environment tab checks for R packages from the active conda environment first
+2. If no conda R is found, it checks for a system R installation (`/usr/bin/R` or `R` on PATH)
+3. If system R is found, its packages are displayed with a **"Using system R"** banner
+
+**System R vs Conda R:**
+
+| Aspect | System R | Conda R |
+|---|---|---|
+| Packages shared with OS | Yes | No (isolated) |
+| Install method | OS package manager + `install.packages()` | `conda install` |
+| Managed by AcaClaw | No (read-only view) | Yes |
+| Displayed in Environment tab | Yes (with system R banner) | Yes |
+
+**Installing R into the conda environment:**
+
+Users can install R into the active conda environment at any time — either from the UI or CLI:
+
+- **UI**: Click "Install R into conda env" in the Environment tab (shown in the system R banner or the "R Not Installed" card)
+- **CLI**: `conda install -n acaclaw -y -c conda-forge r-base r-irkernel r-essentials`
+
+The following R packages are installed:
 
 | R Component | Purpose |
 |---|---|
@@ -105,7 +123,7 @@ If yes, the following are added to the environment:
 | `r-irkernel` (>=1.3) | R kernel for JupyterLab |
 | `r-essentials` (>=4.3) | Core R packages (tidyverse, ggplot2, dplyr, tidyr, etc.) |
 
-Plus any discipline-specific R packages (e.g., `r-biocmanager` for biology, `r-survival` for medicine).
+When a user selects a discipline that includes R (Biology, Medicine), discipline-specific R packages are also added (e.g., `r-biocmanager` for biology, `r-survival` for medicine).
 
 #### Single Discipline
 
@@ -395,9 +413,10 @@ New design: one primary env, discipline packages merged in. Aux envs only on con
 |---|---|
 | R ecosystem is ~1.5GB | Too large for users who only need Python |
 | Not all disciplines need R | Chemistry/Physics rarely use R |
-| Easy to add later | `openclaw acaclaw-env install r-base r-irkernel r-essentials` |
+| System R often already exists | Scientists who use R typically have it installed system-wide |
+| Easy to add later | Click "Install R into conda env" in the UI, or `conda install -n acaclaw r-base r-irkernel r-essentials` |
 
-R is opt-in at discipline selection or on-demand later.
+R is opt-in: the Environment tab detects system R automatically and offers a one-click install into the conda environment when isolation is preferred.
 
 ### Why Cascade Resolution?
 

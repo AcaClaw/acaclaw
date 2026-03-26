@@ -299,8 +299,16 @@ AcaClaw's plugins register custom WebSocket methods that both UIs can call (thou
 | Method | What it does |
 |---|---|
 | `acaclaw.env.install` | Install discipline packages (runs `conda env create` in background) |
-| `acaclaw.env.list` | List Conda environments and installed packages |
+| `acaclaw.env.list` | List conda environments with size, active status, Python/R versions |
 | `acaclaw.env.activate` | Switch active environment |
+| `acaclaw.env.pip.list` | List Python packages in active env (`pip list`) |
+| `acaclaw.env.pip.install` | Install a Python package via pip |
+| `acaclaw.env.pip.uninstall` | Uninstall a Python package |
+| `acaclaw.env.r.list` | List R packages (from conda env or system R) |
+| `acaclaw.env.r.install` | Install R into conda env (`r-base`, `r-irkernel`, `r-essentials`) |
+| `acaclaw.env.sys.list` | List system tools in the conda environment |
+| `acaclaw.env.node.list` | List global Node.js packages |
+| `acaclaw.env.cuda.list` | Detect GPU hardware and CUDA software stack |
 | `acaclaw.backup.list` | List file backups with versions |
 | `acaclaw.backup.restore` | Restore a file to a previous version |
 | `acaclaw.workspace.info` | Get workspace metadata (discipline, size, file count) |
@@ -333,7 +341,7 @@ AcaClaw's plugins register custom WebSocket methods that both UIs can call (thou
 │              │                                            │
 │  🔬 Environ. │                                            │
 │  Python, R,  │                                            │
-│  packages    │                                            │
+│  CUDA, tools │                                            │
 │              │                                            │
 │  💾 Backup   │                                            │
 │  File        │                                            │
@@ -356,7 +364,7 @@ AcaClaw's plugins register custom WebSocket methods that both UIs can call (thou
 | **Chat** | Send messages, view conversation, session history | `send`, `agent`, `sessions.preview` |
 | **Usage** | Token/cost tracking, daily charts, per-model breakdown, CSV export | `usage.cost` |
 | **Skills** | Browse installed, install from ClawHub, update, enable/disable | `skills.status`, `skills.install`, `skills.update` |
-| **Environment** | Conda envs, installed packages, discipline selection, R install | `acaclaw.env.list`, `acaclaw.env.install`, `acaclaw.env.activate` |
+| **Environment** | Conda envs, Python/R/Tools/CUDA/Node.js packages, R install, GPU detection | `acaclaw.env.list`, `acaclaw.env.pip.list`, `acaclaw.env.r.list`, `acaclaw.env.cuda.list`, `acaclaw.env.node.list` |
 | **Backup** | File backups, restore with diff, retention settings, trash | `acaclaw.backup.list`, `acaclaw.backup.restore` |
 | **Settings** | Security tier, API keys, gateway config, workspace path, audit log | `config.set`, `config.get`, `acaclaw.audit.query` |
 
@@ -586,39 +594,76 @@ Browse installed skills, install new ones from ClawHub, and view the computing e
 
 ### Environment Tab
 
+The Environment tab provides a detailed view of the active conda environment with five sub-tabs for different package categories.
+
+#### Environment Info Bar
+
+At the top of the tab, an info bar shows:
+
+| Field | Example | Source |
+|---|---|---|
+| Active environment | `aca ● active` | `acaclaw.env.list` — active env from discipline detection |
+| Python version | `Python 3.12.8` | `acaclaw.env.list` |
+| R version | `R 4.5.2` | `acaclaw.env.r.list` |
+| Environment size | `1.8 GB` | `acaclaw.env.list` — computed via `du -sk` on env path |
+| Active badge | `Active` (green badge) | Shown when the displayed env is the currently active one |
+
+#### Sub-tabs
+
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  [Installed]  [ClawHub]  [Environment]                   │
 │                                                          │
-│  ── Active Environment ──────────────────────────────── │
+│  ── aca ● active ─── Python 3.12.8 · R 4.5.2 · 1.8 GB  │
 │                                                          │
-│  Name: acaclaw-bio                                       │
-│  Python: 3.12.8                                          │
-│  R: not installed                    [Install R]         │
-│  Conda: Miniforge 24.11                                  │
-│  Path: ~/.acaclaw/miniforge3/envs/acaclaw-bio            │
-│  Size: 1.8 GB                                            │
-│                                                          │
-│  ── Installed Packages (142) ────────────────────────── │
+│  [Python (132)] [Tools (11)] [R (457)] [CUDA (1)] [Node.js (6)] │
 │                                                          │
 │  Search: [________________________] [🔍]                  │
 │                                                          │
-│  │ Package        │ Version │ Channel     │ Required by │ │
+│  │ Package        │ Version │ Source       │ Description │ │
 │  │────────────────│─────────│─────────────│─────────────│ │
-│  │ numpy          │ 1.26.4  │ conda-forge │ (base)      │ │
-│  │ scipy          │ 1.14.1  │ conda-forge │ (base)      │ │
-│  │ pandas         │ 2.2.3   │ conda-forge │ (base)      │ │
-│  │ biopython      │ 1.84    │ conda-forge │ bio-tools   │ │
-│  │ matplotlib     │ 3.9.3   │ conda-forge │ (base)      │ │
+│  │ numpy          │ 1.26.4  │ pip         │             │ │
+│  │ scipy          │ 1.14.1  │ pip         │             │ │
+│  │ pandas         │ 2.2.3   │ pip         │             │ │
+│  │ matplotlib     │ 3.9.3   │ pip         │             │ │
 │  │ ...            │         │             │             │ │
 │                                                          │
 │  ── Other Environments ──────────────────────────────── │
 │                                                          │
-│  acaclaw (base)       1.4 GB   ✓ Active                  │
-│  acaclaw-bio          1.8 GB   ← Current                 │
-│  acaclaw-chem         1.6 GB   ✓ Available               │
+│  aca (base)             1.8 GB   ● Active                │
+│  aca-bio                2.4 GB   ○ Available             │
+│  aca-med                2.1 GB   ○ Available             │
 └─────────────────────────────────────────────────────────┘
 ```
+
+**Python** — Lists pip packages in the active conda environment (`pip list --format json`). Shows package name, version, and source. This intentionally uses `pip list` (not `conda list`) to display the Python-specific view.
+
+**Tools** — System-level tools available in the conda environment (e.g., `conda`, `mamba`, `jupyter`, `git`, `curl`). Each tool shows its version and a brief description.
+
+**R** — R packages from the active environment. AcaClaw detects R from two sources:
+
+| Source | Display |
+|---|---|
+| System R (`/usr/bin/R`) | Orange banner: "Using **system R** (packages shared with the OS). [Install R into conda env]" |
+| Conda R | Standard package list, no banner |
+| R not installed | Card with "Install R into conda env" button |
+
+Clicking "Install R into conda env" runs `conda install -n <env> -y -c conda-forge r-base r-irkernel r-essentials` via the `acaclaw.env.r.install` gateway method (up to 10 minutes).
+
+**CUDA** — GPU and CUDA toolkit detection. Shows hardware and software components:
+
+| Detection step | What it finds | Source |
+|---|---|---|
+| GPU hardware | GPU model (NVIDIA, Intel, AMD) | `lspci` |
+| NVIDIA driver | Driver version, CUDA version | `nvidia-smi` |
+| CUDA toolkit | nvcc version | `nvcc --version` |
+| cuDNN | cuDNN version | Python ctypes probe in conda env |
+| PyTorch CUDA | PyTorch CUDA availability | `torch.cuda.is_available()` |
+| TensorFlow GPU | TensorFlow GPU devices | `tf.config.list_physical_devices('GPU')` |
+
+On systems without NVIDIA GPUs, the tab still shows detected hardware (e.g., Intel integrated graphics).
+
+**Node.js** — Node.js packages installed globally or in the environment. Shows packages available via `npm ls -g --json` (e.g., `openclaw`, `claude-code`, `npm`).
 
 ### Skill Actions
 
@@ -630,10 +675,11 @@ All actions are performed through the browser GUI. No terminal needed.
 | Update skill | "Update" button (shown when update available) | Gateway method `skills.update` |
 | Disable skill | "Disable" toggle | Remove from active skill list (not uninstalled) |
 | View skill details | Click skill name | Show SKILL.md content, contributors, changelog |
-| Install R | "Install R" button | Plugin method `acaclaw.env.install` — runs `conda install r-base r-irkernel` in background |
-| Add discipline packages | "Add Discipline" button in Environment tab | Plugin method `acaclaw.env.install` — creates/extends Conda env with discipline packages |
-| Search packages | Search box in Environment tab | Filter installed packages |
-| Switch environment | Click environment name | Set active env for AI context |
+| Install R into conda env | "Install R into conda env" button | Plugin method `acaclaw.env.r.install` — runs `conda install r-base r-irkernel r-essentials` in background |
+| Add discipline packages | "Add Discipline" button in Environment tab | Plugin method `acaclaw.env.install` — creates/extends conda env with discipline packages |
+| Search packages | Search box in Environment sub-tabs | Filter installed packages by name |
+| Switch environment | Environment dropdown | Set active env for AI context |
+| View GPU/CUDA info | CUDA sub-tab | Plugin method `acaclaw.env.cuda.list` — detects GPU hardware and CUDA software |
 
 ### How package installation works without the terminal
 
