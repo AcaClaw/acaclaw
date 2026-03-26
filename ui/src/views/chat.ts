@@ -1,9 +1,28 @@
-import { LitElement, html, css, svg } from "lit";
+import { LitElement, html, css, svg, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { gateway } from "../controllers/gateway.js";
 import { STAFF_MEMBERS, getCustomizedStaff } from "./staff.js";
 import type { StaffMember } from "./staff.js";
 import { t, LocaleController } from "../i18n.js";
+
+/* ── Lucide-style SVG icons for quick-actions & UI (14×14) ── */
+const qiBarChart = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg>`;
+const qiSearch = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>`;
+const qiPen = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>`;
+const qiTrendUp = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`;
+const qiDna = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 15c6.667-6 13.333 0 20-6"/><path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/><path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/><path d="m17 6-2.5-2.5"/><path d="m14 8-1-1"/><path d="m7 18 2.5 2.5"/><path d="m3.5 14.5.5.5"/><path d="m20 9 .5.5"/><path d="m6.5 12.5 1 1"/><path d="m16.5 10.5 1 1"/><path d="m10 16 1.5 1.5"/></svg>`;
+const qiMicroscope = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18h8"/><path d="M3 22h18"/><path d="M14 22a7 7 0 1 0 0-14h-1"/><path d="M9 14h2"/><path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z"/><path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3"/></svg>`;
+const qiTree = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-7l-2-2"/><path d="M17 8v.8A6 6 0 0 1 13.8 20H10A6.5 6.5 0 0 1 7 8h0a5 5 0 0 1 10 0Z"/><path d="m14 14-2 2"/></svg>`;
+const qiHospital = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v4"/><path d="M14 14h-4"/><path d="M14 18h-4"/><path d="M14 8h-4"/><path d="M18 12h2a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2h2"/><path d="M18 22V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v18"/></svg>`;
+const qiBrain = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M19.938 10.5a4 4 0 0 1 .585.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M19.967 17.484A4 4 0 0 1 18 18"/></svg>`;
+const qiWrench = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z"/></svg>`;
+const qiCode = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`;
+const qiAbacus = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="22" y1="5" y2="5"/><line x1="2" x2="22" y1="10" y2="10"/><line x1="2" x2="22" y1="15" y2="15"/><line x1="2" x2="22" y1="20" y2="20"/><circle cx="6" cy="5" r="1.5" fill="currentColor"/><circle cx="14" cy="5" r="1.5" fill="currentColor"/><circle cx="10" cy="10" r="1.5" fill="currentColor"/><circle cx="18" cy="10" r="1.5" fill="currentColor"/><circle cx="8" cy="15" r="1.5" fill="currentColor"/><circle cx="16" cy="15" r="1.5" fill="currentColor"/><circle cx="6" cy="20" r="1.5" fill="currentColor"/><circle cx="14" cy="20" r="1.5" fill="currentColor"/></svg>`;
+const qiFlask = html`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/><path d="M7 16.5h10"/></svg>`;
+const qiPencilLine = html`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/></svg>`;
+const qiFolderPlus = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>`;
+const qiMsgPlus = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v8"/><path d="M8 12h8"/><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+const qiUser = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
 
 /** macOS-style folder icon (inline SVG) */
 const folderIcon = (size = 16) => svg`
@@ -140,8 +159,9 @@ export class ChatView extends LitElement {
       color: var(--ac-text-secondary);
     }
     .workdir-badge:hover .workdir-edit-icon {
+      display: inline-flex;
+      align-items: center;
       flex-shrink: 0;
-      font-size: 11px;
       opacity: 0;
       transition: opacity 0.2s ease;
       color: var(--ac-primary);
@@ -694,6 +714,9 @@ export class ChatView extends LitElement {
       margin-top: 16px;
     }
     .suggestion {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       padding: 12px 20px;
       background: var(--ac-bg-surface);
       border: 1px solid var(--ac-border);
@@ -704,6 +727,9 @@ export class ChatView extends LitElement {
       font-weight: 500;
       transition: all 0.2s ease;
       box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    }
+    .suggestion svg {
+      flex-shrink: 0;
     }
     .suggestion:hover {
       border-color: var(--ac-primary);
@@ -794,8 +820,14 @@ export class ChatView extends LitElement {
       color: var(--ac-text-muted);
     }
     .no-tabs-icon {
-      font-size: 64px;
+      display: flex;
+      justify-content: center;
       opacity: 0.4;
+      color: var(--ac-text-muted);
+    }
+    .no-tabs-icon svg {
+      width: 48px;
+      height: 48px;
     }
     .no-tabs-text {
       font-size: 18px;
@@ -1571,44 +1603,44 @@ export class ChatView extends LitElement {
     `;
   }
 
-  private _getSuggestions(agentId: string): Array<{ icon: string; label: string; text: string }> {
+  private _getSuggestions(agentId: string): Array<{ icon: TemplateResult; label: string; text: string }> {
     switch (agentId) {
       case "biologist":
         return [
-          { icon: "\u{1F9EC}", label: t("chat.quick.analyzeSeq"), text: t("chat.quick.analyzeSeq.text") },
-          { icon: "\u{1F52C}", label: t("chat.quick.rnaSeq"), text: t("chat.quick.rnaSeq.text") },
-          { icon: "\u{1F333}", label: t("chat.quick.phylogenetics"), text: t("chat.quick.phylogenetics.text") },
+          { icon: qiDna, label: t("chat.quick.analyzeSeq"), text: t("chat.quick.analyzeSeq.text") },
+          { icon: qiMicroscope, label: t("chat.quick.rnaSeq"), text: t("chat.quick.rnaSeq.text") },
+          { icon: qiTree, label: t("chat.quick.phylogenetics"), text: t("chat.quick.phylogenetics.text") },
         ];
       case "medscientist":
         return [
-          { icon: "\u{1F4C8}", label: t("chat.quick.survival"), text: t("chat.quick.survival.text") },
-          { icon: "\u{1F3E5}", label: t("chat.quick.clinicalTrial"), text: t("chat.quick.clinicalTrial.text") },
-          { icon: "\u{1F4CA}", label: t("chat.quick.metaAnalysis"), text: t("chat.quick.metaAnalysis.text") },
+          { icon: qiTrendUp, label: t("chat.quick.survival"), text: t("chat.quick.survival.text") },
+          { icon: qiHospital, label: t("chat.quick.clinicalTrial"), text: t("chat.quick.clinicalTrial.text") },
+          { icon: qiBarChart, label: t("chat.quick.metaAnalysis"), text: t("chat.quick.metaAnalysis.text") },
         ];
       case "ai-researcher":
         return [
-          { icon: "\u{1F4DD}", label: t("chat.quick.searchArxiv"), text: t("chat.quick.searchArxiv.text") },
-          { icon: "\u{1F916}", label: t("chat.quick.trainModel"), text: t("chat.quick.trainModel.text") },
-          { icon: "\u{1F4CA}", label: t("chat.quick.benchmark"), text: t("chat.quick.benchmark.text") },
+          { icon: qiPen, label: t("chat.quick.searchArxiv"), text: t("chat.quick.searchArxiv.text") },
+          { icon: qiBrain, label: t("chat.quick.trainModel"), text: t("chat.quick.trainModel.text") },
+          { icon: qiBarChart, label: t("chat.quick.benchmark"), text: t("chat.quick.benchmark.text") },
         ];
       case "data-analyst":
         return [
-          { icon: "\u{1F4CA}", label: t("chat.quick.eda"), text: t("chat.quick.eda.text") },
-          { icon: "\u{1F4C8}", label: t("chat.quick.visualize"), text: t("chat.quick.visualize.text") },
-          { icon: "\u{1F9EE}", label: t("chat.quick.statistics"), text: t("chat.quick.statistics.text") },
+          { icon: qiBarChart, label: t("chat.quick.eda"), text: t("chat.quick.eda.text") },
+          { icon: qiTrendUp, label: t("chat.quick.visualize"), text: t("chat.quick.visualize.text") },
+          { icon: qiAbacus, label: t("chat.quick.statistics"), text: t("chat.quick.statistics.text") },
         ];
       case "cs-scientist":
         return [
-          { icon: "\u{1F4BB}", label: t("chat.quick.algorithm"), text: t("chat.quick.algorithm.text") },
-          { icon: "\u{1F50D}", label: t("chat.quick.codeReview"), text: t("chat.quick.codeReview.text") },
-          { icon: "\u{1F6E0}\u{FE0F}", label: t("chat.quick.architecture"), text: t("chat.quick.architecture.text") },
+          { icon: qiCode, label: t("chat.quick.algorithm"), text: t("chat.quick.algorithm.text") },
+          { icon: qiSearch, label: t("chat.quick.codeReview"), text: t("chat.quick.codeReview.text") },
+          { icon: qiWrench, label: t("chat.quick.architecture"), text: t("chat.quick.architecture.text") },
         ];
       default:
         return [
-          { icon: "\u{1F4CA}", label: t("chat.quick.analyzeData"), text: t("chat.quick.analyzeData.text") },
-          { icon: "\u{1F50D}", label: t("chat.quick.searchPapers"), text: t("chat.quick.searchPapers.text") },
-          { icon: "\u{1F4DD}", label: t("chat.quick.writeMethods"), text: t("chat.quick.writeMethods.text") },
-          { icon: "\u{1F4C8}", label: t("chat.quick.createFigure"), text: t("chat.quick.createFigure.text") },
+          { icon: qiBarChart, label: t("chat.quick.analyzeData"), text: t("chat.quick.analyzeData.text") },
+          { icon: qiSearch, label: t("chat.quick.searchPapers"), text: t("chat.quick.searchPapers.text") },
+          { icon: qiPen, label: t("chat.quick.writeMethods"), text: t("chat.quick.writeMethods.text") },
+          { icon: qiTrendUp, label: t("chat.quick.createFigure"), text: t("chat.quick.createFigure.text") },
         ];
     }
   }
@@ -1619,7 +1651,7 @@ export class ChatView extends LitElement {
     if (this._tabs.length === 0) {
       return html`
         <div class="no-tabs-state">
-          <span class="no-tabs-icon">\u{1F9EA}</span>
+          <span class="no-tabs-icon">${qiFlask}</span>
           <span class="no-tabs-text">${t("chat.noAgents")}</span>
           <span class="no-tabs-sub">
             ${t("chat.noAgents.desc")}
@@ -1638,13 +1670,13 @@ export class ChatView extends LitElement {
           <div class="workdir-badge" @click=${this._openWorkdirDialog} title=${t("chat.workdir.tooltip", this._workdir)}>
             <span class="workdir-icon">${folderIcon(14)}</span>
             <span class="workdir-path">${this._shortenPath(this._workdir)}</span>
-            <span class="workdir-edit-icon">\u270E</span>
+            <span class="workdir-edit-icon">${qiPencilLine}</span>
           </div>
           <button class="new-project-btn" @click=${() => { this._showNewProject = !this._showNewProject; this._newProjectName = ""; }}>
-            ${t("chat.project")}
+            ${qiFolderPlus} ${t("chat.project")}
           </button>
           <button class="new-project-btn" @click=${this._newChat} title=${t("chat.newChat.title")}>
-            ${t("chat.newChat")}
+            ${qiMsgPlus} ${t("chat.newChat")}
           </button>
           ${this._showNewProject ? html`
             <div class="new-project-popover">

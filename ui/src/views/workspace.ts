@@ -1,8 +1,25 @@
-import { LitElement, html, css, nothing } from "lit";
+import { LitElement, html, css, nothing, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { gateway } from "../controllers/gateway.js";
 import { t, LocaleController } from "../i18n.js";
+
+/* ── Modern SVG file/folder icons ── */
+const _svg = (body: string, size = 16) =>
+  html`<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${unsafeHTML(body)}</svg>`;
+
+const wsIconFolder = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>`;
+const wsIconFolderOpen = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>`;
+const wsIconFile = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>`;
+const wsIconFileText = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/></svg>`;
+const wsIconCode = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`;
+const wsIconImage = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>`;
+const wsIconChart = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg>`;
+const wsIconSettings = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const wsIconTerminal = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>`;
+const wsIconBook = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>`;
+const wsIconGlobe = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>`;
+const wsIconArrowUp = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>`;
 
 interface FileEntry {
   name: string;
@@ -122,7 +139,7 @@ export class WorkspaceView extends LitElement {
     }
     .file-row:last-child { border-bottom: none; }
     .file-row:hover { background: var(--ac-bg-hover); }
-    .file-icon { font-size: 16px; width: 24px; text-align: center; flex-shrink: 0; }
+    .file-icon { display: inline-flex; align-items: center; width: 24px; justify-content: center; flex-shrink: 0; color: var(--ac-text-secondary); }
     .file-name { flex: 1; font-weight: 500; color: var(--ac-text); }
     .file-name.dir { color: var(--ac-primary); }
     .file-meta { font-size: 12px; color: var(--ac-text-muted); }
@@ -134,7 +151,8 @@ export class WorkspaceView extends LitElement {
       padding: 48px 24px; text-align: center;
       color: var(--ac-text-muted); font-size: 13px;
     }
-    .empty-icon { font-size: 32px; margin-bottom: 12px; }
+    .empty-icon { display: flex; justify-content: center; margin-bottom: 12px; color: var(--ac-text-tertiary); }
+    .empty-icon svg { width: 32px; height: 32px; }
 
     /* Dialog overlay */
     .overlay {
@@ -332,7 +350,8 @@ export class WorkspaceView extends LitElement {
       text-align: center; padding: 40px 20px;
       color: var(--ac-text-muted); font-size: 13px;
     }
-    .preview-unsupported .big-icon { font-size: 40px; margin-bottom: 12px; }
+    .preview-unsupported .big-icon { display: flex; justify-content: center; margin-bottom: 12px; color: var(--ac-text-tertiary); }
+    .preview-unsupported .big-icon svg { width: 40px; height: 40px; }
     .preview-loading {
       text-align: center; padding: 60px 20px;
       color: var(--ac-text-muted); font-size: 13px;
@@ -538,15 +557,21 @@ export class WorkspaceView extends LitElement {
     return (bytes / (1024 * 1024)).toFixed(1) + " MB";
   }
 
-  private _fileIcon(name: string): string {
+  private _fileIcon(name: string): TemplateResult {
     const ext = name.split(".").pop()?.toLowerCase() ?? "";
-    const icons: Record<string, string> = {
-      md: "📝", txt: "📄", py: "🐍", r: "📊", csv: "📊",
-      json: "📋", yml: "⚙️", yaml: "⚙️", sh: "⚡",
-      pdf: "📕", png: "🖼️", jpg: "🖼️", svg: "🎨",
-      ipynb: "📓", html: "🌐", ts: "💠", js: "💛",
-    };
-    return icons[ext] ?? "📄";
+    switch (ext) {
+      case "md": case "txt": return wsIconFileText;
+      case "py": case "r": return wsIconCode;
+      case "csv": case "tsv": return wsIconChart;
+      case "json": case "yml": case "yaml": return wsIconSettings;
+      case "sh": return wsIconTerminal;
+      case "pdf": return wsIconBook;
+      case "png": case "jpg": case "jpeg": case "gif": case "webp": case "svg": return wsIconImage;
+      case "ipynb": return wsIconBook;
+      case "html": return wsIconGlobe;
+      case "ts": case "js": case "tsx": case "jsx": return wsIconCode;
+      default: return wsIconFile;
+    }
   }
 
   /** Whether the user is currently inside the Projects/ directory */
@@ -597,21 +622,21 @@ export class WorkspaceView extends LitElement {
     const sorted = [...dirs, ...files];
 
     if (sorted.length === 0 && !this._loading) {
-      return html`<div class="empty-state"><div class="empty-icon">📂</div>${t("workspace.emptyFolder")}</div>`;
+      return html`<div class="empty-state"><div class="empty-icon">${wsIconFolderOpen}</div>${t("workspace.emptyFolder")}</div>`;
     }
 
     return html`
       <div class="file-list">
         ${this._currentPath.length > 0 ? html`
           <div class="file-row" @click=${() => this._navigateTo(this._currentPath.length - 1)}>
-            <span class="file-icon">⬆️</span>
+            <span class="file-icon">${wsIconArrowUp}</span>
             <span class="file-name">..</span>
           </div>
         ` : nothing}
         ${sorted.map(entry => html`
           <div class="file-row"
                @click=${() => entry.type === "dir" ? this._navigateDir(entry.name) : this._openPreview(entry)}>
-            <span class="file-icon">${entry.type === "dir" ? "📁" : this._fileIcon(entry.name)}</span>
+            <span class="file-icon">${entry.type === "dir" ? wsIconFolder : this._fileIcon(entry.name)}</span>
             <span class="file-name ${entry.type === "dir" ? "dir" : ""}">${entry.name}</span>
             <span class="file-meta file-size">${entry.size ? this._formatSize(entry.size) : ""}</span>
             <span class="file-meta file-modified">${entry.modified ?? ""}</span>
@@ -745,7 +770,7 @@ export class WorkspaceView extends LitElement {
                      style="transform: scale(${this._zoom / 100}); max-width: ${this._zoom <= 100 ? '100%' : 'none'};">`
               : p.type === "image" && p.truncated
                 ? html`<div class="preview-unsupported">
-                    <div class="big-icon">🖼️</div>
+                    <div class="big-icon">${wsIconImage}</div>
                     Image too large to preview (${this._formatSize(p.size)})
                   </div>`
               : p.type === "text" && p.content !== undefined && MD_EXTS.has(p.ext)
@@ -753,7 +778,7 @@ export class WorkspaceView extends LitElement {
               : p.type === "text" && p.content !== undefined
                 ? html`<pre class="preview-code">${p.content}</pre>`
               : html`<div class="preview-unsupported">
-                  <div class="big-icon">📄</div>
+                  <div class="big-icon">${wsIconFile}</div>
                   Preview not available for .${p.ext} files
                 </div>`
             }
