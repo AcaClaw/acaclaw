@@ -202,31 +202,81 @@ const PREBUILT_TEMPLATES: Omit<StaffMember, "skills" | "envInstalled">[] = [
 
 /* ── Polished SVG avatar data URIs (Apple-style gradient + white icon) ── */
 const _avatarSvg = (bg1: string, bg2: string, icon: string) =>
-  `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 56 56"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${bg1}"/><stop offset="100%" stop-color="${bg2}"/></linearGradient></defs><rect width="56" height="56" rx="14" fill="url(#g)"/><g transform="translate(14,14)" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icon}</g></svg>`)}`;
+  `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 56 56"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${bg1}"/><stop offset="100%" stop-color="${bg2}"/></linearGradient></defs><rect width="56" height="56" rx="14" fill="url(#g)"/>${icon}</svg>`)}`;
 
 const AVATAR_ACA = _avatarSvg("#0ea5e9", "#06b6d4",
-  // woman scientist — flask + person
-  `<circle cx="14" cy="8" r="4"/><path d="M7 26v-2a7 7 0 0 1 14 0v2"/><path d="M20 4l2 8h-3l1 4"/>`);
+  // nice girl with long hair and PhD mortarboard cap
+  `<g fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">` +
+  // mortarboard hat
+  `<polygon points="10,16 28,10 46,16 28,22" fill="#fff" opacity=".85" stroke="none"/>` +
+  `<rect x="25" y="10" width="6" height="3" rx="1" fill="#fff" stroke="none"/>` +
+  `<line x1="28" y1="22" x2="28" y2="16"/>` +
+  // face
+  `<circle cx="28" cy="30" r="8" fill="#fff" opacity=".2"/>` +
+  // long hair flowing down sides
+  `<path d="M20 28c-2 0-4 3-4 8s2 6 2 6" stroke-width="2.5"/>` +
+  `<path d="M36 28c2 0 4 3 4 8s-2 6-2 6" stroke-width="2.5"/>` +
+  // hair on top
+  `<path d="M20 28c0-4 3.5-8 8-8s8 4 8 8" fill="#fff" opacity=".12"/>` +
+  // eyes
+  `<circle cx="24.5" cy="30" r="1.2" fill="#fff"/>` +
+  `<circle cx="31.5" cy="30" r="1.2" fill="#fff"/>` +
+  // smile
+  `<path d="M25 34c1.5 1.5 4.5 1.5 6 0"/>` +
+  `</g>`);
 
 const AVATAR_GENE = _avatarSvg("#10b981", "#34d399",
-  // DNA double helix
-  `<path d="M4 4c5 4 15 4 20 0"/><path d="M4 12c5 4 15 4 20 0"/><path d="M4 20c5 4 15 4 20 0"/><path d="M4 4v20"/><path d="M24 4v20"/>`);
+  // polished DNA double helix — elegant intertwined strands with rungs
+  `<g fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">` +
+  `<path d="M16 4c0 8 24 10 24 22s-24 14-24 22"/>` +
+  `<path d="M40 4c0 8-24 10-24 22s24 14 24 22"/>` +
+  `<line x1="19" y1="14" x2="37" y2="14" stroke-width="1.8" opacity=".6"/>` +
+  `<line x1="16" y1="26" x2="40" y2="26" stroke-width="1.8" opacity=".6"/>` +
+  `<line x1="19" y1="38" x2="37" y2="38" stroke-width="1.8" opacity=".6"/>` +
+  `</g>`);
 
 const AVATAR_CURIE = _avatarSvg("#f43f5e", "#fb7185",
-  // stethoscope / medical cross
-  `<path d="M14 2v8"/><path d="M10 6h8"/><circle cx="14" cy="18" r="6"/><path d="M14 14v4"/><path d="M12 18h4"/>`);
+  // medical cross — bold plus sign in subtle circle
+  `<g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
+  `<circle cx="28" cy="28" r="18" fill="#fff" opacity=".12"/>` +
+  `<rect x="22" y="13" width="12" height="30" rx="2.5" fill="#fff" stroke="none"/>` +
+  `<rect x="13" y="22" width="30" height="12" rx="2.5" fill="#fff" stroke="none"/>` +
+  `</g>`);
 
 const AVATAR_TURING = _avatarSvg("#8b5cf6", "#a78bfa",
-  // brain / neural network
-  `<circle cx="7" cy="7" r="2.5" fill="none"/><circle cx="21" cy="7" r="2.5" fill="none"/><circle cx="14" cy="14" r="3" fill="none"/><circle cx="7" cy="21" r="2.5" fill="none"/><circle cx="21" cy="21" r="2.5" fill="none"/><line x1="9" y1="8.5" x2="12" y2="12"/><line x1="19" y1="8.5" x2="16" y2="12"/><line x1="9" y1="19.5" x2="12" y2="16"/><line x1="19" y1="19.5" x2="16" y2="16"/>`);
+  // robot agent — cute robot face with antenna and ear dots
+  `<g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
+  // antenna
+  `<line x1="28" y1="12" x2="28" y2="6"/>` +
+  `<circle cx="28" cy="5" r="2.5" fill="#fff"/>` +
+  // head
+  `<rect x="14" y="14" width="28" height="24" rx="6" fill="#fff" opacity=".15"/>` +
+  // eyes
+  `<circle cx="22" cy="26" r="3" fill="#fff"/>` +
+  `<circle cx="34" cy="26" r="3" fill="#fff"/>` +
+  // mouth
+  `<line x1="22" y1="33" x2="34" y2="33" stroke-width="2.5"/>` +
+  // ear nodes
+  `<circle cx="10" cy="26" r="2" fill="#fff"/>` +
+  `<circle cx="46" cy="26" r="2" fill="#fff"/>` +
+  `</g>`);
 
 const AVATAR_BAYES = _avatarSvg("#f59e0b", "#fbbf24",
-  // bar chart / statistics
-  `<rect x="2" y="14" width="4" height="12" rx="1" fill="#fff" opacity=".7"/><rect x="9" y="8" width="4" height="18" rx="1" fill="#fff" opacity=".85"/><rect x="16" y="4" width="4" height="22" rx="1" fill="#fff"/><rect x="23" y="11" width="4" height="15" rx="1" fill="#fff" opacity=".7"/>`);
+  // bar chart / statistics — four bars
+  `<g fill="#fff" stroke="none">` +
+  `<rect x="8" y="28" width="7" height="18" rx="2" opacity=".7"/>` +
+  `<rect x="18" y="18" width="7" height="28" rx="2" opacity=".85"/>` +
+  `<rect x="28" y="10" width="7" height="36" rx="2"/>` +
+  `<rect x="38" y="22" width="7" height="24" rx="2" opacity=".7"/>` +
+  `</g>`);
 
 const AVATAR_KNUTH = _avatarSvg("#3b82f6", "#60a5fa",
   // code brackets < / >
-  `<polyline points="8 8 2 14 8 20"/><polyline points="20 8 26 14 20 20"/><line x1="16" y1="4" x2="12" y2="24"/>`);
+  `<g fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">` +
+  `<polyline points="18,16 8,28 18,40"/>` +
+  `<polyline points="38,16 48,28 38,40"/>` +
+  `<line x1="32" y1="10" x2="24" y2="46"/>` +
+  `</g>`);
 
 export const STAFF_MEMBERS: StaffMember[] = [
   {
