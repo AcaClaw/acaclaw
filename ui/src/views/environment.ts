@@ -128,6 +128,7 @@ export class EnvironmentView extends LitElement {
   @state() private _removingEnv = "";
   @state() private _installingEnv = "";
   @state() private _installingR = false;
+  @state() private _rSource: "system" | "conda" | "" = "";
   @state() private _activeTab: EcoTab = "python";
   @state() private _selectedEnv = "";
 
@@ -421,10 +422,12 @@ export class EnvironmentView extends LitElement {
       if (res?.packages) {
         const key = `${this._selectedEnv}:r`;
         this._packages = { ...this._packages, [key]: res.packages };
+        this._rSource = res.packages[0]?.source === "conda" ? "conda" : "system";
       }
       if (res && !res.installed) {
         const key = `${this._selectedEnv}:r`;
         this._packages = { ...this._packages, [key]: [{ name: "__r_not_installed__", version: "", source: "" }] };
+        this._rSource = "";
       }
     } catch { /* keep cached data */ }
 
@@ -490,7 +493,7 @@ export class EnvironmentView extends LitElement {
     this._installingR = true;
     try {
       const conda = this._selectedEnv;
-      await gateway.call("acaclaw.env.pip.install", { packages: ["r-base"], env: conda }, { timeoutMs: 600_000 });
+      await gateway.call("acaclaw.env.r.install", { env: conda }, { timeoutMs: 600_000 });
       await this._loadPackages();
     } catch { /* handle error */ }
     this._installingR = false;
@@ -636,17 +639,30 @@ export class EnvironmentView extends LitElement {
 
       ${isInstalled ? html`
       ${rNotInstalled ? html`
-      <!-- R not installed -->
+      <!-- R not installed anywhere -->
       <div class="card">
         <h2>📊 R Not Installed</h2>
-        <p class="empty-msg">R is not installed in the <strong>${this._selectedEnv}</strong> environment.</p>
+        <p class="empty-msg">R is not available on this system. Install R into the <strong>${this._selectedEnv}</strong> conda environment?</p>
         <button class="install-btn" style="margin-top:12px"
           ?disabled=${this._installingR}
           @click=${this._installR}>
-          ${this._installingR ? "Installing R…" : "Install R"}
+          ${this._installingR ? "Installing R (this may take a while)…" : "Install R into conda env"}
         </button>
       </div>
       ` : html`
+      ${this._activeTab === "r" && this._rSource === "system" ? html`
+      <!-- Using system R banner -->
+      <div class="card" style="background:var(--ac-bg-secondary, #f8f8fa); border-left:3px solid var(--ac-accent, #FF6B3D)">
+        <p style="margin:0; font-size:14px">
+          📊 Using <strong>system R</strong> (packages shared with the OS).
+          <button class="install-btn" style="margin-left:12px; font-size:13px; padding:4px 14px"
+            ?disabled=${this._installingR}
+            @click=${this._installR}>
+            ${this._installingR ? "Installing…" : "Install R into conda env"}
+          </button>
+        </p>
+      </div>
+      ` : nothing}
       <!-- Install package -->
       <div class="card">
         <h2>${meta.icon} ${t("env.installPkg", meta.label)}</h2>

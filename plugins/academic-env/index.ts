@@ -588,6 +588,29 @@ const academicEnvPlugin = {
 			}
 		});
 
+		// --- Gateway: acaclaw.env.r.install ---
+		// Install R (r-base, r-irkernel, r-essentials) into a conda environment.
+		api.registerGatewayMethod("acaclaw.env.r.install", async ({ params, respond }) => {
+			const rawEnv = typeof params.env === "string" ? params.env : "";
+			const condaName = UI_TO_CONDA[rawEnv] ?? rawEnv;
+			const conda = findConda();
+			if (!conda.available || !conda.path) {
+				respond(false, { error: "Conda not available" });
+				return;
+			}
+			try {
+				execSync(
+					`"${conda.path}" install -n ${condaName} -y -c conda-forge r-base r-irkernel r-essentials`,
+					{ stdio: "pipe", encoding: "utf-8", timeout: 600_000 },
+				);
+				invalidateEnvListCache();
+				respond(true, { ok: true });
+			} catch (e: unknown) {
+				const msg = e instanceof Error ? e.message : String(e);
+				respond(false, { error: msg });
+			}
+		});
+
 		// --- Gateway: acaclaw.env.sys.list ---
 		// List installed system tools available in the conda environment or system PATH.
 		api.registerGatewayMethod("acaclaw.env.sys.list", async ({ params, respond }) => {
