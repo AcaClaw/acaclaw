@@ -5,6 +5,25 @@ import { gateway } from "../controllers/gateway.js";
 import { STAFF_MEMBERS } from "./staff.js";
 import { t, LocaleController } from "../i18n.js";
 
+/* ── Modern SVG icons (Lucide-style, 16×16) ── */
+const svgIcon = (d: string, size = 16) =>
+  html`<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+
+// Use unsafeHTML-free template path approach
+const iconCpu = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>`;
+const iconMemory = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 19v-3"/><path d="M10 19v-3"/><path d="M14 19v-3"/><path d="M18 19v-3"/><path d="M8 11V9"/><path d="M16 11V9"/><path d="M12 11V9"/><rect x="2" y="11" width="20" height="5" rx="1"/></svg>`;
+const iconDisk = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>`;
+const iconGpu = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h.01"/><path d="M10 12h.01"/><path d="M14 12h.01"/><path d="M18 12h.01"/><path d="M6 2v4"/><path d="M18 2v4"/></svg>`;
+const iconLocation = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>`;
+const iconClock = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+const iconServer = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>`;
+const iconChip = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M20 15h2"/><path d="M9 2v2"/><path d="M9 20v2"/><path d="M2 9h2"/><path d="M20 9h2"/></svg>`;
+const iconPython = html`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C6.5 2 6 4 6 5v3h6v1H4c-2 0-4 1.5-4 5s1 5 3 5h2v-3c0-2 1-4 4-4h6c2 0 3-1 3-3V5c0-2-1.5-3-6-3Z"/><path d="M12 22c5.5 0 6-2 6-3v-3h-6v-1h8c2 0 4-1.5 4-5s-1-5-3-5h-2v3c0 2-1 4-4 4h-6c-2 0-3 1-3 3v4c0 2 1.5 3 6 3Z"/><circle cx="9" cy="5.5" r=".5" fill="currentColor"/><circle cx="15" cy="18.5" r=".5" fill="currentColor"/></svg>`;
+const iconZap = html`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`;
+const iconPackage = html`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>`;
+const iconFolderOpen = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>`;
+const iconFolder = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>`;
+
 /** Read session titles saved by chat view. */
 function getSessionTitles(): Record<string, string> {
   try {
@@ -340,7 +359,11 @@ export class MonitorView extends LitElement {
       margin-bottom: 12px;
     }
 
-    .resource-label .icon { font-size: 16px; }
+    .resource-label .icon {
+      display: inline-flex;
+      align-items: center;
+      color: var(--ac-text-secondary);
+    }
 
     .resource-value {
       font-size: 32px;
@@ -389,6 +412,14 @@ export class MonitorView extends LitElement {
       font-size: 13px;
       color: var(--ac-text-tertiary);
     }
+    .sys-info-row span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .sys-info-row svg {
+      flex-shrink: 0;
+    }
 
     /* ── Workspace Overview ── */
     .ws-grid {
@@ -408,7 +439,6 @@ export class MonitorView extends LitElement {
     }
 
     .ws-icon {
-      font-size: 28px;
       width: 48px;
       height: 48px;
       display: flex;
@@ -417,6 +447,7 @@ export class MonitorView extends LitElement {
       background: var(--ac-border-subtle);
       border-radius: var(--ac-radius-md, 8px);
       flex-shrink: 0;
+      color: var(--ac-text-secondary);
     }
 
     .ws-info-label {
@@ -762,8 +793,10 @@ export class MonitorView extends LitElement {
     }
 
     .project-icon {
-      font-size: 20px;
+      display: inline-flex;
+      align-items: center;
       flex-shrink: 0;
+      color: var(--ac-text-secondary);
     }
 
     .project-name {
@@ -1103,7 +1136,7 @@ export class MonitorView extends LitElement {
         <div class="card-subtitle">${t("monitor.resources.desc")}</div>
         <div class="resource-grid">
           <div class="resource-item">
-            <div class="resource-label"><span class="icon">🖥️</span>${t("monitor.cpu")}</div>
+            <div class="resource-label"><span class="icon">${iconCpu}</span>${t("monitor.cpu")}</div>
             <div class="resource-value">${this._cpuPercent.toFixed(1)}%</div>
             <div class="resource-bar-track">
               <div class="resource-bar-fill ${this._barColor(this._cpuPercent)}" style="width:${this._cpuPercent}%"></div>
@@ -1111,7 +1144,7 @@ export class MonitorView extends LitElement {
             <div class="resource-sub">${t("monitor.cores", this._cpuCores)} · ${t("monitor.load")} ${this._loadAvg.map(l => l.toFixed(2)).join(", ")}</div>
           </div>
           <div class="resource-item">
-            <div class="resource-label"><span class="icon">🧠</span>${t("monitor.memory")}</div>
+            <div class="resource-label"><span class="icon">${iconMemory}</span>${t("monitor.memory")}</div>
             <div class="resource-value">${this._memPercent.toFixed(1)}%</div>
             <div class="resource-bar-track">
               <div class="resource-bar-fill ${this._barColor(this._memPercent)}" style="width:${this._memPercent}%"></div>
@@ -1119,7 +1152,7 @@ export class MonitorView extends LitElement {
             <div class="resource-sub">${this._fmtSize(this._memUsed)} / ${this._fmtSize(this._memTotal)}</div>
           </div>
           <div class="resource-item">
-            <div class="resource-label"><span class="icon">💾</span>${t("monitor.disk")}</div>
+            <div class="resource-label"><span class="icon">${iconDisk}</span>${t("monitor.disk")}</div>
             <div class="resource-value">${this._diskPercent.toFixed(1)}%</div>
             <div class="resource-bar-track">
               <div class="resource-bar-fill ${this._barColor(this._diskPercent)}" style="width:${this._diskPercent}%"></div>
@@ -1128,7 +1161,7 @@ export class MonitorView extends LitElement {
           </div>
           ${this._gpuAvailable ? html`
           <div class="resource-item">
-            <div class="resource-label"><span class="icon">🎮</span>${t("monitor.gpu")}</div>
+            <div class="resource-label"><span class="icon">${iconGpu}</span>${t("monitor.gpu")}</div>
             <div class="resource-value">${this._gpuUsagePercent.toFixed(1)}%</div>
             <div class="resource-bar-track">
               <div class="resource-bar-fill ${this._barColor(this._gpuUsagePercent)}" style="width:${this._gpuUsagePercent}%"></div>
@@ -1142,10 +1175,10 @@ export class MonitorView extends LitElement {
           ` : nothing}
         </div>
         <div class="sys-info-row">
-          <span>📍 ${this._sysHostname}</span>
-          <span>⏱️ ${t("monitor.uptime", this._fmtUptime(this._sysUptime))}</span>
-          <span>🖥️ ${this._sysPlatform}</span>
-          <span>💻 ${this._cpuModel}</span>
+          <span>${iconLocation} ${this._sysHostname}</span>
+          <span>${iconClock} ${t("monitor.uptime", this._fmtUptime(this._sysUptime))}</span>
+          <span>${iconServer} ${this._sysPlatform}</span>
+          <span>${iconChip} ${this._cpuModel}</span>
         </div>
       </div>
     `;
@@ -1160,7 +1193,7 @@ export class MonitorView extends LitElement {
         <div class="card-subtitle">${t("monitor.workspace.desc")}</div>
         <div class="ws-grid">
           <div class="ws-item">
-            <div class="ws-icon">🐍</div>
+            <div class="ws-icon">${iconPython}</div>
             <div>
               <div class="ws-info-label">${t("monitor.envs")}</div>
               <div class="ws-info-value">${this._envCount}</div>
@@ -1168,7 +1201,7 @@ export class MonitorView extends LitElement {
             </div>
           </div>
           <div class="ws-item">
-            <div class="ws-icon">⚡</div>
+            <div class="ws-icon">${iconZap}</div>
             <div>
               <div class="ws-info-label">${t("monitor.skills")}</div>
               <div class="ws-info-value">${this._skillCount}</div>
@@ -1176,7 +1209,7 @@ export class MonitorView extends LitElement {
             </div>
           </div>
           <div class="ws-item">
-            <div class="ws-icon">📦</div>
+            <div class="ws-icon">${iconPackage}</div>
             <div>
               <div class="ws-info-label">${t("monitor.backups")}</div>
               <div class="ws-info-value">${this._backupCount}</div>
@@ -1396,7 +1429,7 @@ export class MonitorView extends LitElement {
         <div class="project-list">
           ${this._projects.map((p) => html`
             <div class="project-item ${p.active ? "active" : ""}">
-              <span class="project-icon">${p.active ? "📂" : "📁"}</span>
+              <span class="project-icon">${p.active ? iconFolderOpen : iconFolder}</span>
               <span class="project-name">${p.name}</span>
               ${p.active ? html`<span class="project-badge">${t("monitor.active")}</span>` : nothing}
             </div>
