@@ -226,7 +226,7 @@ export const STAFF_MEMBERS: StaffMember[] = [
   },
   {
     id: "medscientist",
-    icon: "\u{1F3E5}",
+    icon: "\u{1F469}\u{200D}\u{2695}\u{FE0F}",
     name: "Dr. Curie",
     role: "Medical Scientist",
     discipline: "Medicine",
@@ -237,7 +237,7 @@ export const STAFF_MEMBERS: StaffMember[] = [
   },
   {
     id: "ai-researcher",
-    icon: "\u{1F916}",
+    icon: "\u{1F469}\u{200D}\u{1F4BB}",
     name: "Dr. Turing",
     role: "AI Researcher",
     discipline: "AI / Machine Learning",
@@ -259,7 +259,7 @@ export const STAFF_MEMBERS: StaffMember[] = [
   },
   {
     id: "cs-scientist",
-    icon: "\u{1F4BB}",
+    icon: "\u{1F9D1}\u{200D}\u{1F4BB}",
     name: "Dr. Knuth",
     role: "Computer Scientist",
     discipline: "Computer Science",
