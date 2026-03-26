@@ -200,10 +200,39 @@ const PREBUILT_TEMPLATES: Omit<StaffMember, "skills" | "envInstalled">[] = [
   { id: "linguist", icon: "\u{1F4DA}", name: "Dr. Chomsky", role: "Computational Linguist", discipline: "Linguistics", condaEnv: "aca", description: "NLP, corpus analysis, translation, text mining" },
 ];
 
+/* ── Polished SVG avatar data URIs (Apple-style gradient + white icon) ── */
+const _avatarSvg = (bg1: string, bg2: string, icon: string) =>
+  `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 56 56"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${bg1}"/><stop offset="100%" stop-color="${bg2}"/></linearGradient></defs><rect width="56" height="56" rx="14" fill="url(#g)"/><g transform="translate(14,14)" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icon}</g></svg>`)}`;
+
+const AVATAR_ACA = _avatarSvg("#0ea5e9", "#06b6d4",
+  // woman scientist — flask + person
+  `<circle cx="14" cy="8" r="4"/><path d="M7 26v-2a7 7 0 0 1 14 0v2"/><path d="M20 4l2 8h-3l1 4"/>`);
+
+const AVATAR_GENE = _avatarSvg("#10b981", "#34d399",
+  // DNA double helix
+  `<path d="M4 4c5 4 15 4 20 0"/><path d="M4 12c5 4 15 4 20 0"/><path d="M4 20c5 4 15 4 20 0"/><path d="M4 4v20"/><path d="M24 4v20"/>`);
+
+const AVATAR_CURIE = _avatarSvg("#f43f5e", "#fb7185",
+  // stethoscope / medical cross
+  `<path d="M14 2v8"/><path d="M10 6h8"/><circle cx="14" cy="18" r="6"/><path d="M14 14v4"/><path d="M12 18h4"/>`);
+
+const AVATAR_TURING = _avatarSvg("#8b5cf6", "#a78bfa",
+  // brain / neural network
+  `<circle cx="7" cy="7" r="2.5" fill="none"/><circle cx="21" cy="7" r="2.5" fill="none"/><circle cx="14" cy="14" r="3" fill="none"/><circle cx="7" cy="21" r="2.5" fill="none"/><circle cx="21" cy="21" r="2.5" fill="none"/><line x1="9" y1="8.5" x2="12" y2="12"/><line x1="19" y1="8.5" x2="16" y2="12"/><line x1="9" y1="19.5" x2="12" y2="16"/><line x1="19" y1="19.5" x2="16" y2="16"/>`);
+
+const AVATAR_BAYES = _avatarSvg("#f59e0b", "#fbbf24",
+  // bar chart / statistics
+  `<rect x="2" y="14" width="4" height="12" rx="1" fill="#fff" opacity=".7"/><rect x="9" y="8" width="4" height="18" rx="1" fill="#fff" opacity=".85"/><rect x="16" y="4" width="4" height="22" rx="1" fill="#fff"/><rect x="23" y="11" width="4" height="15" rx="1" fill="#fff" opacity=".7"/>`);
+
+const AVATAR_KNUTH = _avatarSvg("#3b82f6", "#60a5fa",
+  // code brackets < / >
+  `<polyline points="8 8 2 14 8 20"/><polyline points="20 8 26 14 20 20"/><line x1="16" y1="4" x2="12" y2="24"/>`);
+
 export const STAFF_MEMBERS: StaffMember[] = [
   {
     id: "default",
     icon: "\u{1F469}\u{200D}\u{1F52C}",
+    photoUrl: AVATAR_ACA,
     name: "Aca",
     role: "General Assistant",
     discipline: "General",
@@ -216,6 +245,7 @@ export const STAFF_MEMBERS: StaffMember[] = [
   {
     id: "biologist",
     icon: "\u{1F9EC}",
+    photoUrl: AVATAR_GENE,
     name: "Dr. Gene",
     role: "Computational Biologist",
     discipline: "Biology",
@@ -227,6 +257,7 @@ export const STAFF_MEMBERS: StaffMember[] = [
   {
     id: "medscientist",
     icon: "\u{1FA7A}",
+    photoUrl: AVATAR_CURIE,
     name: "Dr. Curie",
     role: "Medical Scientist",
     discipline: "Medicine",
@@ -238,6 +269,7 @@ export const STAFF_MEMBERS: StaffMember[] = [
   {
     id: "ai-researcher",
     icon: "\u{1F9E0}",
+    photoUrl: AVATAR_TURING,
     name: "Dr. Turing",
     role: "AI Researcher",
     discipline: "AI / Machine Learning",
@@ -249,6 +281,7 @@ export const STAFF_MEMBERS: StaffMember[] = [
   {
     id: "data-analyst",
     icon: "\u{1F4CA}",
+    photoUrl: AVATAR_BAYES,
     name: "Dr. Bayes",
     role: "Data Analyst",
     discipline: "Statistics",
@@ -260,6 +293,7 @@ export const STAFF_MEMBERS: StaffMember[] = [
   {
     id: "cs-scientist",
     icon: "\u2328\uFE0F",
+    photoUrl: AVATAR_KNUTH,
     name: "Dr. Knuth",
     role: "Computer Scientist",
     discipline: "Computer Science",

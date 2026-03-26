@@ -1711,7 +1711,7 @@ export class ChatView extends LitElement {
               class="tab ${this._activeTabId === tab.agentId ? "active" : ""}"
               @click=${() => this._switchTab(tab.agentId)}
             >
-              <span class="tab-icon">${tab.agent.icon}</span>
+              <span class="tab-icon">${tab.agent.photoUrl ? html`<img src="${tab.agent.photoUrl}" style="width:18px;height:18px;border-radius:4px" />` : tab.agent.icon}</span>
               <span class="tab-name">${tab.agent.name}</span>
               ${tab.sending ? html`<span class="tab-sending"></span>` : ""}
               ${tab.agentId !== GENERAL_TAB_ID
@@ -1736,7 +1736,7 @@ export class ChatView extends LitElement {
                 ${activeTab.messages.length === 0
                   ? html`
                       <div class="empty-state">
-                        <span class="empty-icon">${activeTab.agent.icon}</span>
+                        <span class="empty-icon">${activeTab.agent.photoUrl ? html`<img src="${activeTab.agent.photoUrl}" style="width:48px;height:48px;border-radius:12px" />` : activeTab.agent.icon}</span>
                         <span class="empty-text">
                           ${t("chat.chatWith", activeTab.agent.name)}
                         </span>
@@ -1788,7 +1788,7 @@ export class ChatView extends LitElement {
 
               <div class="input-area">
                 <div class="input-agent-badge">
-                  ${activeTab.agent.icon} ${activeTab.agent.name}
+                  ${activeTab.agent.photoUrl ? html`<img src="${activeTab.agent.photoUrl}" style="width:18px;height:18px;border-radius:4px" />` : activeTab.agent.icon} ${activeTab.agent.name}
                 </div>
                 <textarea
                   placeholder=${t("chat.askAnything", activeTab.agent.name)}
