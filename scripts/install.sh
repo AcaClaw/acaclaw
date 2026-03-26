@@ -17,7 +17,7 @@ set -euo pipefail
 ACACLAW_VERSION="0.1.0"
 ACACLAW_DIR="${ACACLAW_DIR:-$HOME/.acaclaw}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OPENCLAW_MIN_VERSION="2026.3.7"
+OPENCLAW_MIN_VERSION="2026.3.24"
 NODE_MIN_VERSION="22"
 
 # AcaClaw runs as an OpenClaw profile — fully isolated state dir

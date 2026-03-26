@@ -6,7 +6,7 @@
     "properties": {
       "minOpenClawVersion": {
         "type": "string",
-        "default": "2026.3.7",
+        "default": "2026.3.24",
         "description": "Minimum supported OpenClaw version"
       },
       "checkOnStartup": {

@@ -127,6 +127,7 @@ export class EnvironmentView extends LitElement {
   @state() private _showCreateForm = false;
   @state() private _removingEnv = "";
   @state() private _installingEnv = "";
+  @state() private _installingR = false;
   @state() private _activeTab: EcoTab = "python";
   @state() private _selectedEnv = "";
 
@@ -413,6 +414,38 @@ export class EnvironmentView extends LitElement {
         this._packages = { ...this._packages, [key]: res.packages };
       }
     } catch { /* keep cached data */ }
+
+    // Load R packages
+    try {
+      const res = await gateway.call<{ packages: Array<{ name: string; version: string; source: string }>; installed: boolean }>("acaclaw.env.r.list", { env: this._selectedEnv });
+      if (res?.packages) {
+        const key = `${this._selectedEnv}:r`;
+        this._packages = { ...this._packages, [key]: res.packages };
+      }
+      if (res && !res.installed) {
+        const key = `${this._selectedEnv}:r`;
+        this._packages = { ...this._packages, [key]: [{ name: "__r_not_installed__", version: "", source: "" }] };
+      }
+    } catch { /* keep cached data */ }
+
+    // Load system tools
+    try {
+      const res = await gateway.call<{ packages: Array<{ name: string; version: string; source: string; description?: string }> }>("acaclaw.env.sys.list", { env: this._selectedEnv });
+      if (res?.packages) {
+        const key = `${this._selectedEnv}:system`;
+        this._packages = { ...this._packages, [key]: res.packages };
+      }
+    } catch { /* keep cached data */ }
+
+    // Load Node.js packages
+    try {
+      const res = await gateway.call<{ packages: Array<{ name: string; version: string; source: string; description?: string }> }>("acaclaw.env.node.list", {});
+      if (res?.packages) {
+        const key = `${this._selectedEnv}:nodejs`;
+        this._packages = { ...this._packages, [key]: res.packages };
+      }
+    } catch { /* keep cached data */ }
+
     this._loadingPkgs = false;
   }
 
@@ -421,7 +454,7 @@ export class EnvironmentView extends LitElement {
   }
 
   private _currentPkgs(): Pkg[] {
-    const pkgs = this._packages[this._pkgKey()] ?? [];
+    const pkgs = (this._packages[this._pkgKey()] ?? []).filter(p => !p.name.startsWith("__"));
     if (!this._searchQuery) return pkgs;
     const q = this._searchQuery.toLowerCase();
     return pkgs.filter(p =>
@@ -451,6 +484,16 @@ export class EnvironmentView extends LitElement {
       await this._loadEnvironments();
     } catch { /* handle error */ }
     this._installingEnv = "";
+  }
+
+  private async _installR() {
+    this._installingR = true;
+    try {
+      const conda = this._selectedEnv;
+      await gateway.call("acaclaw.env.pip.install", { packages: ["r-base"], env: conda }, { timeoutMs: 600_000 });
+      await this._loadPackages();
+    } catch { /* handle error */ }
+    this._installingR = false;
   }
 
   private async _installPackage() {
@@ -515,8 +558,10 @@ export class EnvironmentView extends LitElement {
     const env = this._selectedEnvObj();
     const isActive = this._isActiveEnv();
     const isInstalled = this._isInstalledEnv();
-    const pkgs = isInstalled ? this._currentPkgs() : [];
-    const allPkgs = isInstalled ? (this._packages[this._pkgKey()] ?? []) : [];
+    const rawPkgs = isInstalled ? (this._packages[this._pkgKey()] ?? []) : [];
+    const rNotInstalled = this._activeTab === "r" && rawPkgs.length === 1 && rawPkgs[0]?.name === "__r_not_installed__";
+    const allPkgs = rNotInstalled ? [] : rawPkgs;
+    const pkgs = isInstalled && !rNotInstalled ? this._currentPkgs() : [];
 
     return html`
       <h1>${t("env.title")}</h1>
@@ -590,6 +635,18 @@ export class EnvironmentView extends LitElement {
       ` : nothing}
 
       ${isInstalled ? html`
+      ${rNotInstalled ? html`
+      <!-- R not installed -->
+      <div class="card">
+        <h2>📊 R Not Installed</h2>
+        <p class="empty-msg">R is not installed in the <strong>${this._selectedEnv}</strong> environment.</p>
+        <button class="install-btn" style="margin-top:12px"
+          ?disabled=${this._installingR}
+          @click=${this._installR}>
+          ${this._installingR ? "Installing R…" : "Install R"}
+        </button>
+      </div>
+      ` : html`
       <!-- Install package -->
       <div class="card">
         <h2>${meta.icon} ${t("env.installPkg", meta.label)}</h2>
@@ -653,6 +710,7 @@ export class EnvironmentView extends LitElement {
             </table>
           `}
       </div>
+      `}
       ` : html`
       <div class="card">
         <p class="empty-msg">${t("env.envNotInstalled", this._selectedEnv)}</p>

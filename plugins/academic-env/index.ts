@@ -507,6 +507,181 @@ const academicEnvPlugin = {
 			}
 		});
 
+		// --- Gateway: acaclaw.env.r.list ---
+		// List installed R packages (conda env first, then system R).
+		api.registerGatewayMethod("acaclaw.env.r.list", async ({ params, respond }) => {
+			const rawEnv = typeof params.env === "string" ? params.env : "";
+			const condaName = UI_TO_CONDA[rawEnv] ?? rawEnv;
+			const conda = findConda();
+
+			// Find Rscript binary: conda env → system PATH
+			let rscriptBin = "";
+			let rSource = "system";
+
+			if (conda.available && conda.path) {
+				try {
+					const envInfo = execSync(`"${conda.path}" env list --json`, {
+						stdio: "pipe", encoding: "utf-8", timeout: 10_000,
+					});
+					const envs = (JSON.parse(envInfo) as { envs: string[] }).envs ?? [];
+					const envPrefix = envs.find(p => p.endsWith(`/${condaName}`) || p.endsWith(`/envs/${condaName}`)) ?? "";
+					if (envPrefix) {
+						const condaRscript = join(envPrefix, "bin", "Rscript");
+						if (fs.existsSync(condaRscript)) {
+							rscriptBin = condaRscript;
+							rSource = "conda";
+						}
+					}
+				} catch { /* can't resolve env prefix */ }
+			}
+
+			// Fall back to system Rscript
+			if (!rscriptBin) {
+				try {
+					rscriptBin = execSync("which Rscript", { stdio: "pipe", encoding: "utf-8", timeout: 3_000 }).trim();
+				} catch { /* Rscript not on PATH */ }
+			}
+
+			if (!rscriptBin) {
+				respond(true, { packages: [], installed: false });
+				return;
+			}
+
+			try {
+				const output = execSync(
+					`"${rscriptBin}" -e "pkgs <- installed.packages(); cat(jsonlite::toJSON(data.frame(name=pkgs[,'Package'], version=pkgs[,'Version'], stringsAsFactors=FALSE)))"`,
+					{ stdio: "pipe", encoding: "utf-8", timeout: 30_000 },
+				);
+				const rPkgs = JSON.parse(output) as Array<{ name: string; version: string }>;
+				const packages = rPkgs.map(p => ({
+					name: p.name,
+					version: p.version,
+					source: rSource,
+				}));
+				respond(true, { packages, installed: true });
+			} catch {
+				// jsonlite may not be installed; fall back to CSV
+				try {
+					const output = execSync(
+						`"${rscriptBin}" -e "pkgs <- installed.packages(); write.csv(data.frame(name=pkgs[,'Package'], version=pkgs[,'Version']), stdout(), row.names=FALSE)"`,
+						{ stdio: "pipe", encoding: "utf-8", timeout: 30_000 },
+					);
+					const lines = output.trim().split("\n").slice(1);
+					const packages = lines.map(line => {
+						const m = line.match(/"([^"]+)","([^"]+)"/);
+						return m ? { name: m[1], version: m[2], source: rSource } : null;
+					}).filter((p): p is { name: string; version: string; source: string } => p !== null);
+					respond(true, { packages, installed: true });
+				} catch {
+					respond(true, { packages: [], installed: true });
+				}
+			}
+		});
+
+		// --- Gateway: acaclaw.env.sys.list ---
+		// List installed system tools available in the conda environment or system PATH.
+		api.registerGatewayMethod("acaclaw.env.sys.list", async ({ params, respond }) => {
+			const rawEnv = typeof params.env === "string" ? params.env : "";
+			const condaName = UI_TO_CONDA[rawEnv] ?? rawEnv;
+			const conda = findConda();
+
+			// Tool-specific version flags (some tools don't support --version)
+			const TOOLS: Array<{ cmd: string; name: string; description: string; versionArgs: string[] }> = [
+				{ cmd: "pdftk", name: "pdftk", description: "PDF toolkit (merge, split, stamp)", versionArgs: ["--version"] },
+				{ cmd: "pandoc", name: "pandoc", description: "Document format converter", versionArgs: ["--version"] },
+				{ cmd: "pdftotext", name: "poppler-utils", description: "PDF rendering (pdftotext, pdfinfo)", versionArgs: ["-v"] },
+				{ cmd: "ffmpeg", name: "ffmpeg", description: "Audio/video processing", versionArgs: ["-version"] },
+				{ cmd: "dot", name: "graphviz", description: "Graph visualization (dot)", versionArgs: ["-V"] },
+				{ cmd: "convert", name: "imagemagick", description: "Image conversion & editing", versionArgs: ["--version"] },
+				{ cmd: "gs", name: "ghostscript", description: "PostScript/PDF interpreter", versionArgs: ["--version"] },
+				{ cmd: "latex", name: "texlive", description: "LaTeX typesetting", versionArgs: ["--version"] },
+				{ cmd: "git", name: "git", description: "Version control", versionArgs: ["--version"] },
+				{ cmd: "curl", name: "curl", description: "URL transfer tool", versionArgs: ["--version"] },
+				{ cmd: "wget", name: "wget", description: "Network downloader", versionArgs: ["--version"] },
+				{ cmd: "jq", name: "jq", description: "JSON processor", versionArgs: ["--version"] },
+				{ cmd: "tree", name: "tree", description: "Directory listing", versionArgs: ["--version"] },
+			];
+
+			// Resolve conda env prefix for fast bin-dir lookup (avoids slow per-tool `conda run`)
+			let condaBinDir = "";
+			if (conda.available && conda.path) {
+				try {
+					const envInfo = execSync(`"${conda.path}" env list --json`, {
+						stdio: "pipe", encoding: "utf-8", timeout: 10_000,
+					});
+					const envs = (JSON.parse(envInfo) as { envs: string[] }).envs ?? [];
+					const match = envs.find(p => p.endsWith(`/${condaName}`) || p.endsWith(`/envs/${condaName}`));
+					if (match) condaBinDir = join(match, "bin");
+				} catch { /* can't resolve env prefix */ }
+			}
+
+			const packages: Array<{ name: string; version: string; source: string; description: string }> = [];
+
+			for (const tool of TOOLS) {
+				let version = "";
+				let source = "";
+				const versionFlag = tool.versionArgs[0];
+
+				// Fast check: look for binary in conda env bin directory
+				if (condaBinDir) {
+					const binPath = join(condaBinDir, tool.cmd);
+					if (fs.existsSync(binPath)) {
+						try {
+							const out = execSync(`"${binPath}" ${versionFlag} 2>&1`, {
+								stdio: "pipe", encoding: "utf-8", timeout: 5_000,
+							}).trim();
+							const ver = out.match(/(\d+\.\d+[\w.-]*)/);
+							if (ver) { version = ver[1]; source = "conda"; }
+						} catch { /* binary exists but version check failed */ }
+					}
+				}
+
+				// Fallback: system PATH
+				if (!version) {
+					try {
+						const out = execSync(`${tool.cmd} ${versionFlag} 2>&1`, {
+							stdio: "pipe", encoding: "utf-8", timeout: 5_000,
+						}).trim();
+						const ver = out.match(/(\d+\.\d+[\w.-]*)/);
+						if (ver) { version = ver[1]; source = "system"; }
+					} catch { /* not installed */ }
+				}
+
+				if (version) {
+					packages.push({ name: tool.name, version, source, description: tool.description });
+				}
+			}
+
+			respond(true, { packages });
+		});
+
+		// --- Gateway: acaclaw.env.node.list ---
+		// List Node.js version and globally installed npm packages.
+		api.registerGatewayMethod("acaclaw.env.node.list", async ({ respond }) => {
+			const packages: Array<{ name: string; version: string; source: string; description?: string }> = [];
+
+			// Node.js version
+			try {
+				const nodeVer = execSync("node --version", { stdio: "pipe", encoding: "utf-8", timeout: 5_000 }).trim();
+				packages.push({ name: "node", version: nodeVer.replace(/^v/, ""), source: "system", description: "JavaScript runtime" });
+			} catch { /* not installed */ }
+
+			// npm version + global packages
+			try {
+				const output = execSync("npm list -g --json --depth=0", {
+					stdio: "pipe", encoding: "utf-8", timeout: 10_000,
+				});
+				const parsed = JSON.parse(output) as { dependencies?: Record<string, { version: string }> };
+				if (parsed.dependencies) {
+					for (const [name, info] of Object.entries(parsed.dependencies)) {
+						packages.push({ name, version: info.version, source: "npm" });
+					}
+				}
+			} catch { /* no npm or failed */ }
+
+			respond(true, { packages });
+		});
+
 		// --- Gateway: acaclaw.skill.install ---
 		// Install a skill from ClawHub into the gateway's skills directory
 		api.registerGatewayMethod("acaclaw.skill.install", async ({ params, respond, context }) => {
