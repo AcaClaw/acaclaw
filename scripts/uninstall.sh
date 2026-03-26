@@ -99,11 +99,45 @@ if [[ "$AUTO_YES" == "false" ]]; then
 	fi
 fi
 
+# --- Stop gateway FIRST (before removing files it serves) ---
+
+header "Stopping Gateway"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SERVICE_SCRIPT="${SCRIPT_DIR}/acaclaw-service.sh"
+if [[ -f "$SERVICE_SCRIPT" ]]; then
+	bash "$SERVICE_SCRIPT" remove 2>/dev/null || true
+else
+	SYSTEMD_UNIT="${HOME}/.config/systemd/user/acaclaw-gateway.service"
+	if [[ -f "$SYSTEMD_UNIT" ]] && command -v systemctl &>/dev/null; then
+		systemctl --user stop acaclaw-gateway.service 2>/dev/null || true
+		systemctl --user disable acaclaw-gateway.service 2>/dev/null || true
+		rm -f "$SYSTEMD_UNIT"
+		systemctl --user daemon-reload 2>/dev/null || true
+		log "systemd service removed ✓"
+	fi
+fi
+bash "${SCRIPT_DIR}/stop.sh" 2>/dev/null || true
+
+# Clean up stale PID file
+ACACLAW_PID_FILE="${ACACLAW_DIR}/gateway.pid"
+rm -f "$ACACLAW_PID_FILE" 2>/dev/null || true
+log "Gateway stopped ✓"
+
 # --- Remove desktop shortcut ---
 
-DESKTOP_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/install-desktop.sh"
+DESKTOP_SCRIPT="${SCRIPT_DIR}/install-desktop.sh"
 if [[ -f "$DESKTOP_SCRIPT" ]]; then
 	bash "$DESKTOP_SCRIPT" --remove 2>/dev/null || true
+fi
+
+# --- Remove deployed UI assets (prevents stale UI on reinstall) ---
+
+header "Removing Deployed UI"
+
+if [[ -d "${ACACLAW_STATE_DIR}/ui" ]]; then
+	rm -rf "${ACACLAW_STATE_DIR}/ui"
+	log "Removed deployed UI ✓"
 fi
 
 # --- Remove AcaClaw profile (plugins, skills, config, sessions) ---
@@ -192,28 +226,6 @@ if [[ -d "$ACACLAW_DIR" ]]; then
 		log "Kept ${ACACLAW_DIR}/ (contains remaining files)"
 	fi
 fi
-
-# --- Stop and remove auto-restart service (last — kills the gateway process) ---
-
-header "Removing Gateway Service"
-
-SERVICE_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/acaclaw-service.sh"
-if [[ -f "$SERVICE_SCRIPT" ]]; then
-	bash "$SERVICE_SCRIPT" remove 2>/dev/null || true
-else
-	# Manual cleanup fallback
-	SYSTEMD_UNIT="${HOME}/.config/systemd/user/acaclaw-gateway.service"
-	if [[ -f "$SYSTEMD_UNIT" ]] && command -v systemctl &>/dev/null; then
-		systemctl --user stop acaclaw-gateway.service 2>/dev/null || true
-		systemctl --user disable acaclaw-gateway.service 2>/dev/null || true
-		rm -f "$SYSTEMD_UNIT"
-		systemctl --user daemon-reload 2>/dev/null || true
-		log "systemd service removed ✓"
-	fi
-fi
-
-# Stop any running gateway process
-bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/stop.sh" 2>/dev/null || true
 
 # --- Summary ---
 

@@ -374,12 +374,18 @@ fi
 log "Installing @acaclaw/ui..."
 ACAC_UI_SRC="${SCRIPT_DIR}/../ui"
 ACAC_UI_DEST="${ACACLAW_STATE_DIR}/ui"
-if [[ -d "${ACAC_UI_SRC}/dist" ]]; then
-	mkdir -p "${ACAC_UI_DEST}"
-	cp -r "${ACAC_UI_SRC}/dist/"* "${ACAC_UI_DEST}/"
-	log "@acaclaw/ui installed ✓"
-elif [[ -d "${ACAC_UI_SRC}/src" ]] && check_command npm; then
-	log "Building AcaClaw UI..."
+
+# Rebuild if src/ is newer than dist/ (prevents deploying stale builds)
+_ui_needs_rebuild() {
+	[[ ! -d "${ACAC_UI_SRC}/dist" ]] && return 0
+	[[ ! -d "${ACAC_UI_SRC}/src" ]] && return 1
+	local newest_src newest_dist
+	newest_src="$(find "${ACAC_UI_SRC}/src" -type f -newer "${ACAC_UI_SRC}/dist" -print -quit 2>/dev/null)"
+	[[ -n "$newest_src" ]]
+}
+
+if _ui_needs_rebuild && [[ -d "${ACAC_UI_SRC}/src" ]] && check_command npm; then
+	log "Building AcaClaw UI (source is newer than dist)..."
 	(cd "${ACAC_UI_SRC}" && npm install --no-audit --no-fund 2>/dev/null && npm run build 2>/dev/null)
 	if [[ -d "${ACAC_UI_SRC}/dist" ]]; then
 		mkdir -p "${ACAC_UI_DEST}"
@@ -388,8 +394,12 @@ elif [[ -d "${ACAC_UI_SRC}/src" ]] && check_command npm; then
 	else
 		warn "@acaclaw/ui: build failed"
 	fi
+elif [[ -d "${ACAC_UI_SRC}/dist" ]]; then
+	mkdir -p "${ACAC_UI_DEST}"
+	cp -r "${ACAC_UI_SRC}/dist/"* "${ACAC_UI_DEST}/"
+	log "@acaclaw/ui installed ✓"
 else
-	warn "@acaclaw/ui: dist not found"
+	warn "@acaclaw/ui: dist not found and no source to build"
 fi
 
 # --- Install essential skills from ClawHub ---
