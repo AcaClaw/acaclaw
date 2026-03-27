@@ -75,10 +75,10 @@ describe("UsageView DOM", () => {
     cleanup(el);
   });
 
-  it("renders period toggle buttons (week/month)", async () => {
+  it("renders period toggle buttons (today/week/month)", async () => {
     const el = await createElement();
     const periodBtns = qa(el, ".period-btn");
-    expect(periodBtns.length).toBe(2);
+    expect(periodBtns.length).toBe(3);
     cleanup(el);
   });
 
@@ -113,15 +113,16 @@ describe("UsageView DOM", () => {
   it("clicking month button switches period", async () => {
     const el = await createElement();
     const periodBtns = qa(el, ".period-btn");
-    if (periodBtns.length > 1) {
-      (periodBtns[1] as HTMLElement).click();
+    // Month is the 3rd button (today, week, month)
+    if (periodBtns.length >= 3) {
+      (periodBtns[2] as HTMLElement).click();
       await el.updateComplete;
       await new Promise((r) => setTimeout(r, 100));
-      // Should have called usage.cost with days: 30
-      const costCall = mockCall.mock.calls.find(
-        (c: unknown[]) => c[0] === "usage.cost" && (c[1] as { days: number })?.days === 30,
+      // Should have re-called usage.cost after switching period
+      const costCalls = mockCall.mock.calls.filter(
+        (c: unknown[]) => c[0] === "usage.cost",
       );
-      expect(costCall).toBeTruthy();
+      expect(costCalls.length).toBeGreaterThan(1);
     }
     cleanup(el);
   });

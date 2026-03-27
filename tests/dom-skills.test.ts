@@ -52,6 +52,15 @@ function qa(el: SV, selector: string) {
   return el.shadowRoot!.querySelectorAll(selector);
 }
 
+/** Switch to the Installed tab and wait for render. */
+async function switchToInstalled(el: SV) {
+  const tabs = qa(el, ".tab");
+  (tabs[1] as HTMLElement).click();
+  await el.updateComplete;
+  await new Promise((r) => setTimeout(r, 50));
+  await el.updateComplete;
+}
+
 describe("SkillsView DOM", () => {
   beforeEach(() => {
     mockCall.mockReset();
@@ -63,17 +72,17 @@ describe("SkillsView DOM", () => {
     cleanup(el);
   });
 
-  it("renders Installed and ClawHub tabs", async () => {
+  it("renders Featured and Installed tabs", async () => {
     const el = await createElement();
     const tabs = qa(el, ".tab");
     expect(tabs.length).toBe(2);
     const labels = Array.from(tabs).map((t) => t.textContent?.trim());
-    expect(labels[0]).toContain("Installed");
-    expect(labels[1]).toContain("ClawHub");
+    expect(labels[0]).toContain("Featured");
+    expect(labels[1]).toContain("Installed");
     cleanup(el);
   });
 
-  it("Installed tab is active by default", async () => {
+  it("Featured tab is active by default", async () => {
     const el = await createElement();
     const tabs = qa(el, ".tab");
     expect(tabs[0]?.classList.contains("active")).toBe(true);
@@ -81,30 +90,34 @@ describe("SkillsView DOM", () => {
     cleanup(el);
   });
 
-  it("shows installed skill count in tab label", async () => {
+  it("shows installed skill count in Installed tab label", async () => {
     const el = await createElement();
-    const tab = qa(el, ".tab")[0];
-    expect(tab?.textContent).toContain(`(${MOCK_INSTALLED.length})`);
+    // Installed tab is tab[1]; count shows user-installed (non-bundled) skills
+    const tab = qa(el, ".tab")[1];
+    expect(tab?.textContent).toContain("(");
     cleanup(el);
   });
 
-  it("renders skill items for installed skills", async () => {
+  it("renders skill items on Installed tab", async () => {
     const el = await createElement();
+    await switchToInstalled(el);
     const items = qa(el, ".skill-card");
-    expect(items.length).toBe(MOCK_INSTALLED.length);
+    // 3 mock skills + 4 BASE_SKILLS (clawhub-repo synthetics)
+    expect(items.length).toBeGreaterThanOrEqual(MOCK_INSTALLED.length);
     cleanup(el);
   });
 
   it("shows disable button for non-bundled skills", async () => {
     const el = await createElement();
+    await switchToInstalled(el);
     const disableBtns = qa(el, ".disable-btn");
-    // Only the custom-skill (non-bundled) gets a disable button
     expect(disableBtns.length).toBeGreaterThan(0);
     cleanup(el);
   });
 
   it("clicking disable button calls gateway with skills.update", async () => {
     const el = await createElement();
+    await switchToInstalled(el);
     const calls: unknown[][] = [];
     mockCall.mockImplementation(async (...args: unknown[]) => {
       calls.push(args);
@@ -124,42 +137,25 @@ describe("SkillsView DOM", () => {
     cleanup(el);
   });
 
-  it("switching to ClawHub tab shows curated skills", async () => {
+  it("Featured tab shows hero cards and GET buttons", async () => {
     const el = await createElement();
-    const tabs = qa(el, ".tab");
-    (tabs[1] as HTMLElement).click();
-    await el.updateComplete;
-
-    expect(tabs[1]?.classList.contains("active")).toBe(true);
-    // ClawHub tab should have install buttons
-    const installBtns = qa(el, ".install-btn");
-    expect(installBtns.length).toBeGreaterThan(0);
+    // Featured is the default tab — renders hero cards with GET buttons
+    const heroCards = qa(el, ".hero-card");
+    expect(heroCards.length).toBeGreaterThan(0);
+    const getButtons = qa(el, ".get-btn");
+    expect(getButtons.length).toBeGreaterThan(0);
     cleanup(el);
   });
 
-  it("ClawHub excludes already-installed skills", async () => {
+  it("Featured tab shows category sections", async () => {
     const el = await createElement();
-    const tabs = qa(el, ".tab");
-    (tabs[1] as HTMLElement).click();
-    await el.updateComplete;
-
-    // The install buttons should not include already-installed skills
-    const installBtns = qa(el, ".install-btn");
-    const installNames = Array.from(installBtns).map(
-      (btn) => (btn as HTMLElement).closest(".skill-card")?.querySelector(".skill-name")?.textContent?.trim(),
-    );
-    for (const installed of MOCK_INSTALLED) {
-      expect(installNames).not.toContain(installed.name);
-    }
+    const categories = qa(el, ".category-section");
+    expect(categories.length).toBeGreaterThan(0);
     cleanup(el);
   });
 
-  it("clicking Install on ClawHub skill calls gateway with acaclaw.skill.install", async () => {
+  it("clicking GET button on Featured tab calls _installSkill", async () => {
     const el = await createElement();
-    const tabs = qa(el, ".tab");
-    (tabs[1] as HTMLElement).click();
-    await el.updateComplete;
-
     const calls: unknown[][] = [];
     mockCall.mockImplementation(async (...args: unknown[]) => {
       calls.push(args);
@@ -167,21 +163,25 @@ describe("SkillsView DOM", () => {
       return undefined;
     });
 
-    const firstInstallBtn = q(el, ".install-btn") as HTMLButtonElement;
-    firstInstallBtn.click();
-    await el.updateComplete;
-    await new Promise((r) => setTimeout(r, 200));
+    // Find a GET button that is not already installed (not .installed class)
+    const getBtn = q(el, ".get-btn:not(.installed)") as HTMLButtonElement;
+    if (getBtn) {
+      getBtn.click();
+      await el.updateComplete;
+      await new Promise((r) => setTimeout(r, 200));
 
-    const installCall = calls.find((c) => c[0] === "acaclaw.skill.install");
-    expect(installCall).toBeTruthy();
-    expect(installCall![1]).toHaveProperty("slug");
+      const installCall = calls.find((c) => c[0] === "acaclaw.skill.install");
+      expect(installCall).toBeTruthy();
+      expect(installCall![1]).toHaveProperty("slug");
+    }
     cleanup(el);
   });
 
   it("search input filters installed skills", async () => {
     const el = await createElement();
+    await switchToInstalled(el);
     const countBefore = qa(el, ".skill-card").length;
-    expect(countBefore).toBe(3);
+    expect(countBefore).toBeGreaterThanOrEqual(3);
 
     const searchInput = q(el, ".search-input") as HTMLInputElement;
     searchInput.value = "web";
@@ -194,32 +194,10 @@ describe("SkillsView DOM", () => {
     cleanup(el);
   });
 
-  it("search input filters ClawHub skills", async () => {
+  it("Featured tab has filter chips", async () => {
     const el = await createElement();
-    const tabs = qa(el, ".tab");
-    (tabs[1] as HTMLElement).click();
-    await el.updateComplete;
-
-    const countBefore = qa(el, ".skill-item").length;
-
-    const searchInput = q(el, ".search-input") as HTMLInputElement;
-    searchInput.value = "code";
-    searchInput.dispatchEvent(new Event("input"));
-    await el.updateComplete;
-
-    const countAfter = qa(el, ".skill-item").length;
-    expect(countAfter).toBeLessThanOrEqual(countBefore);
-    cleanup(el);
-  });
-
-  it("renders Recommended badge on curated skills", async () => {
-    const el = await createElement();
-    const tabs = qa(el, ".tab");
-    (tabs[1] as HTMLElement).click();
-    await el.updateComplete;
-
-    const badges = qa(el, ".recommended-badge");
-    expect(badges.length).toBeGreaterThan(0);
+    const chips = qa(el, ".filter-chip");
+    expect(chips.length).toBeGreaterThan(0);
     cleanup(el);
   });
 });

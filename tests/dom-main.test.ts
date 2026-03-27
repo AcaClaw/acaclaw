@@ -133,19 +133,19 @@ describe("AcaClawApp DOM", () => {
 
   // ── Sidebar collapse ──
 
-  it("sidebar collapse button exists", async () => {
+  it("sidebar toggle button exists", async () => {
     const el = await createElement();
-    const collapseBtn = q(el, ".collapse-btn");
-    expect(collapseBtn).toBeTruthy();
+    const toggleBtn = q(el, ".sidebar-toggle");
+    expect(toggleBtn).toBeTruthy();
     cleanup(el);
   });
 
-  it("clicking collapse button toggles sidebar", async () => {
+  it("clicking sidebar toggle button toggles sidebar", async () => {
     const el = await createElement();
-    const collapseBtn = q(el, ".collapse-btn") as HTMLElement;
+    const toggleBtn = q(el, ".sidebar-toggle") as HTMLElement;
     const sidebar = q(el, ".sidebar");
     expect(sidebar?.classList.contains("collapsed")).toBe(false);
-    collapseBtn.click();
+    toggleBtn.click();
     await el.updateComplete;
     expect(sidebar?.classList.contains("collapsed")).toBe(true);
     cleanup(el);
