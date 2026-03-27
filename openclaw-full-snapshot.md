@@ -1,0 +1,204 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e9]:
+        - generic [ref=e10]: OpenClaw
+        - generic [ref=e11]: ›
+        - generic [ref=e12]: Chat
+      - generic [ref=e13]:
+        - button "Open command palette" [ref=e14] [cursor=pointer]:
+          - generic [ref=e15]: Search
+          - generic [ref=e16]: ⌘K
+        - group "Color mode" [ref=e18]:
+          - 'button "Color mode: System" [pressed] [ref=e19] [cursor=pointer]':
+            - img [ref=e20]
+          - 'button "Color mode: Light" [ref=e22] [cursor=pointer]':
+            - img [ref=e23]
+          - 'button "Color mode: Dark" [ref=e29] [cursor=pointer]':
+            - img [ref=e30]
+  - complementary [ref=e33]:
+    - generic [ref=e34]:
+      - generic [ref=e35]:
+        - generic [ref=e36]:
+          - img "OpenClaw" [ref=e37]
+          - generic [ref=e38]:
+            - generic [ref=e39]: Control
+            - generic [ref=e40]: OpenClaw
+        - button "Collapse sidebar" [ref=e41] [cursor=pointer]:
+          - img [ref=e43]
+      - navigation [ref=e47]:
+        - generic [ref=e48]:
+          - button "Chat" [expanded] [ref=e49] [cursor=pointer]:
+            - generic [ref=e50]: Chat
+            - img [ref=e52]
+          - link "Chat" [ref=e55] [cursor=pointer]:
+            - /url: /chat
+            - img [ref=e57]
+            - generic [ref=e59]: Chat
+        - generic [ref=e60]:
+          - button "Control" [expanded] [ref=e61] [cursor=pointer]:
+            - generic [ref=e62]: Control
+            - img [ref=e64]
+          - generic [ref=e66]:
+            - link "Overview" [ref=e67] [cursor=pointer]:
+              - /url: /overview
+              - img [ref=e69]
+              - generic [ref=e70]: Overview
+            - link "Channels" [ref=e71] [cursor=pointer]:
+              - /url: /channels
+              - img [ref=e73]
+              - generic [ref=e76]: Channels
+            - link "Instances" [ref=e77] [cursor=pointer]:
+              - /url: /instances
+              - img [ref=e79]
+              - generic [ref=e82]: Instances
+            - link "Sessions" [ref=e83] [cursor=pointer]:
+              - /url: /sessions
+              - img [ref=e85]
+              - generic [ref=e88]: Sessions
+            - link "Usage" [ref=e89] [cursor=pointer]:
+              - /url: /usage
+              - img [ref=e91]
+              - generic [ref=e92]: Usage
+            - link "Cron Jobs" [ref=e93] [cursor=pointer]:
+              - /url: /cron
+              - img [ref=e95]
+              - generic [ref=e100]: Cron Jobs
+        - generic [ref=e101]:
+          - button "Agent" [expanded] [ref=e102] [cursor=pointer]:
+            - generic [ref=e103]: Agent
+            - img [ref=e105]
+          - generic [ref=e107]:
+            - link "Agents" [ref=e108] [cursor=pointer]:
+              - /url: /agents
+              - img [ref=e110]
+              - generic [ref=e112]: Agents
+            - link "Skills" [ref=e113] [cursor=pointer]:
+              - /url: /skills
+              - img [ref=e115]
+              - generic [ref=e117]: Skills
+            - link "Nodes" [ref=e118] [cursor=pointer]:
+              - /url: /nodes
+              - img [ref=e120]
+              - generic [ref=e122]: Nodes
+        - generic [ref=e123]:
+          - button "Settings" [expanded] [ref=e124] [cursor=pointer]:
+            - generic [ref=e125]: Settings
+            - img [ref=e127]
+          - generic [ref=e129]:
+            - link "Config" [ref=e130] [cursor=pointer]:
+              - /url: /config
+              - img [ref=e132]
+              - generic [ref=e135]: Config
+            - link "Communications" [ref=e136] [cursor=pointer]:
+              - /url: /communications
+              - img [ref=e138]
+              - generic [ref=e141]: Communications
+            - link "Appearance" [ref=e142] [cursor=pointer]:
+              - /url: /appearance
+              - img [ref=e144]
+              - generic [ref=e146]: Appearance
+            - link "Automation" [ref=e147] [cursor=pointer]:
+              - /url: /automation
+              - img [ref=e149]
+              - generic [ref=e151]: Automation
+            - link "Infrastructure" [ref=e152] [cursor=pointer]:
+              - /url: /infrastructure
+              - img [ref=e154]
+              - generic [ref=e157]: Infrastructure
+            - link "AI & Agents" [ref=e158] [cursor=pointer]:
+              - /url: /ai-agents
+              - img [ref=e160]
+              - generic [ref=e170]: AI & Agents
+            - link "Debug" [ref=e171] [cursor=pointer]:
+              - /url: /debug
+              - img [ref=e173]
+              - generic [ref=e182]: Debug
+            - link "Logs" [ref=e183] [cursor=pointer]:
+              - /url: /logs
+              - img [ref=e185]
+              - generic [ref=e188]: Logs
+      - generic [ref=e190]:
+        - link "Docs" [ref=e191] [cursor=pointer]:
+          - /url: https://docs.openclaw.ai
+          - img [ref=e193]
+          - generic [ref=e195]: Docs
+          - img [ref=e197]
+        - generic "v2026.3.24" [ref=e200]:
+          - generic [ref=e201]: Version
+          - generic [ref=e202]: v2026.3.24
+          - 'img "Gateway status: Online" [ref=e203]'
+  - main [ref=e204]:
+    - generic [ref=e205]:
+      - generic [ref=e207]:
+        - combobox [ref=e209] [cursor=pointer]:
+          - option "main" [selected]
+        - combobox "Chat model" [ref=e211] [cursor=pointer]:
+          - option "Default (kimi-k2.5 · moonshot)"
+          - option "kimi-k2.5 · moonshot" [selected]
+      - generic [ref=e213]:
+        - button "Refresh chat data" [ref=e214] [cursor=pointer]:
+          - img [ref=e215]
+        - generic [ref=e218]: "|"
+        - button "Toggle assistant thinking/working output" [pressed] [ref=e219] [cursor=pointer]:
+          - img [ref=e220]
+        - button "Toggle tool calls and tool results" [pressed] [ref=e230] [cursor=pointer]:
+          - img [ref=e231]
+        - button "Toggle focus mode (hide sidebar + page header)" [ref=e233] [cursor=pointer]:
+          - img [ref=e234]
+        - button "Show cron sessions" [pressed] [ref=e240] [cursor=pointer]:
+          - img [ref=e242]
+    - generic [ref=e245]:
+      - log [ref=e248]:
+        - generic [ref=e249]:
+          - generic [ref=e250]:
+            - img [ref=e252]
+            - generic [ref=e255]:
+              - paragraph [ref=e258]: whoa re you
+              - generic [ref=e259]:
+                - generic [ref=e260]: openclaw-control-ui
+                - generic [ref=e261]: 12:00 AM
+                - generic [ref=e262]:
+                  - button "Delete message":
+                    - img
+          - generic [ref=e263]:
+            - img [ref=e265]
+            - generic [ref=e267]:
+              - generic [ref=e268]:
+                - generic:
+                  - button "Open in canvas":
+                    - generic:
+                      - img
+                  - button "Copy as markdown":
+                    - generic:
+                      - generic:
+                        - img
+                      - generic:
+                        - img
+                - generic [ref=e269]:
+                  - paragraph [ref=e270]: Hey! I just came online. Who am I? Who are you?
+                  - paragraph [ref=e271]: I'm an AI assistant running in OpenClaw. I don't have a name yet — still figuring that out. What should you call me? And what should I call you?
+              - generic [ref=e272]:
+                - generic [ref=e273]: Assistant
+                - generic [ref=e274]: 12:00 AM
+                - generic [ref=e276]: kimi-k2.5
+                - button "Read aloud":
+                  - img
+                - generic [ref=e277]:
+                  - button "Delete message":
+                    - img
+      - generic [ref=e278]:
+        - textbox "Message Assistant (Enter to send)" [ref=e279]
+        - generic [ref=e280]:
+          - generic [ref=e281]:
+            - button "Attach file" [ref=e282] [cursor=pointer]:
+              - img [ref=e283]
+            - button "Voice input" [ref=e285] [cursor=pointer]:
+              - img [ref=e286]
+          - generic [ref=e289]:
+            - button "New session" [ref=e290] [cursor=pointer]:
+              - img [ref=e291]
+            - button "Export chat" [ref=e292] [cursor=pointer]:
+              - img [ref=e293]
+            - button "Send message" [ref=e296] [cursor=pointer]:
+              - img [ref=e297]
