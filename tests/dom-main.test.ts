@@ -38,6 +38,9 @@ vi.mock("../ui/src/views/backup.js", () => ({}));
 vi.mock("../ui/src/views/settings.js", () => ({}));
 vi.mock("../ui/src/views/api-keys.js", () => ({}));
 vi.mock("../ui/src/views/onboarding.js", () => ({}));
+vi.mock("../ui/src/views/sessions.js", () => ({}));
+vi.mock("../ui/src/views/logs.js", () => ({}));
+vi.mock("../ui/src/views/debug.js", () => ({}));
 vi.mock("../ui/src/views/staff.js", () => ({
   getCustomizedStaff: () => [
     { id: "default", name: "Main", role: "General Assistant", icon: "🤖", systemPrompt: "" },

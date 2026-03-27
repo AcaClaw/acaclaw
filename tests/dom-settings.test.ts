@@ -61,15 +61,18 @@ describe("SettingsView DOM", () => {
     cleanup(el);
   });
 
-  it("renders 5 tabs including Uninstall", async () => {
+  it("renders 8 tabs including Debug and Logs", async () => {
     const el = await createElement();
     const tabs = qa(el, ".tab");
-    expect(tabs.length).toBe(5);
+    expect(tabs.length).toBe(8);
     const labels = Array.from(tabs).map((t) => t.textContent?.trim());
     expect(labels).toContain("Appearance");
     expect(labels).toContain("Security");
     expect(labels).toContain("Connection");
+    expect(labels).toContain("Advanced");
     expect(labels).toContain("OpenClaw");
+    expect(labels).toContain("Debug");
+    expect(labels).toContain("Logs");
     expect(labels).toContain("Uninstall");
     cleanup(el);
   });

@@ -302,6 +302,123 @@ describe("ChatView DOM", () => {
     cleanup(el);
   });
 
+  it("toolbar has thinking, focus, and search buttons (no tool calls)", async () => {
+    const el = await createElement();
+    const toolbarBtns = qa(el, ".toolbar-btn");
+    expect(toolbarBtns.length).toBe(3);
+    cleanup(el);
+  });
+
+  it("thinking toggle button starts active and toggles off on click", async () => {
+    const el = await createElement();
+    const thinkingBtn = qa(el, ".toolbar-btn")[0] as HTMLButtonElement;
+    expect(thinkingBtn.classList.contains("active")).toBe(true);
+
+    thinkingBtn.click();
+    await el.updateComplete;
+    expect(thinkingBtn.classList.contains("active")).toBe(false);
+
+    thinkingBtn.click();
+    await el.updateComplete;
+    expect(thinkingBtn.classList.contains("active")).toBe(true);
+    cleanup(el);
+  });
+
+  it("search toggle shows and hides search bar", async () => {
+    const el = await createElement();
+    // Search is the last toolbar button
+    const toolbarBtns = qa(el, ".toolbar-btn");
+    const searchBtn = toolbarBtns[toolbarBtns.length - 1] as HTMLButtonElement;
+    expect(q(el, ".search-bar")).toBeNull();
+
+    searchBtn.click();
+    await el.updateComplete;
+    expect(q(el, ".search-bar")).toBeTruthy();
+
+    searchBtn.click();
+    await el.updateComplete;
+    expect(q(el, ".search-bar")).toBeNull();
+    cleanup(el);
+  });
+
+  it("search dims non-matching messages", async () => {
+    const el = await createElement();
+    mockCall.mockImplementation(async (method: string) => {
+      if (method === "chat.send") return { runId: "run-s" };
+      if (method === "chat.history") return {
+        messages: [
+          { role: "user", content: "Hello world" },
+          { role: "assistant", content: [{ type: "text", text: "Hi there!" }] },
+          { role: "user", content: "Tell me about DNA" },
+          { role: "assistant", content: [{ type: "text", text: "DNA is the molecule of life." }] },
+        ],
+      };
+      return undefined;
+    });
+    // Reload history
+    await (el as unknown as { _loadHistory: (id: string) => Promise<void> })._loadHistory("general");
+    await el.updateComplete;
+
+    // Open search
+    const toolbarBtns = qa(el, ".toolbar-btn");
+    const searchBtn = toolbarBtns[toolbarBtns.length - 1] as HTMLButtonElement;
+    searchBtn.click();
+    await el.updateComplete;
+
+    // Type search query
+    const searchInput = q(el, ".search-bar input") as HTMLInputElement;
+    searchInput.value = "DNA";
+    searchInput.dispatchEvent(new Event("input"));
+    await el.updateComplete;
+
+    // Non-matching messages should be dimmed
+    const dimmed = qa(el, ".message.search-dim");
+    expect(dimmed.length).toBeGreaterThan(0);
+
+    // Matching messages should NOT be dimmed
+    const allMessages = qa(el, ".message");
+    expect(allMessages.length).toBeGreaterThan(dimmed.length);
+    cleanup(el);
+  });
+
+  it("thinking toggle hides thinking blocks in messages", async () => {
+    const el = await createElement();
+    mockCall.mockImplementation(async (method: string) => {
+      if (method === "chat.history") return {
+        messages: [
+          { role: "user", content: "Explain something" },
+          { role: "assistant", content: [
+            { type: "thinking", text: "Let me think about this..." },
+            { type: "text", text: "Here is the answer." },
+          ] },
+        ],
+      };
+      return undefined;
+    });
+    await (el as unknown as { _loadHistory: (id: string) => Promise<void> })._loadHistory("general");
+    await el.updateComplete;
+
+    // Thinking block should be visible by default
+    let thinkingBlock = q(el, ".msg-thinking");
+    expect(thinkingBlock).toBeTruthy();
+
+    // Click thinking toggle
+    const thinkingBtn = qa(el, ".toolbar-btn")[0] as HTMLButtonElement;
+    thinkingBtn.click();
+    await el.updateComplete;
+
+    // Thinking block should be hidden
+    thinkingBlock = q(el, ".msg-thinking");
+    expect(thinkingBlock).toBeNull();
+
+    // Toggle back on
+    thinkingBtn.click();
+    await el.updateComplete;
+    thinkingBlock = q(el, ".msg-thinking");
+    expect(thinkingBlock).toBeTruthy();
+    cleanup(el);
+  });
+
   it("+ Chat clears messages and rotates session", async () => {
     const el = await createElement();
     mockCall.mockImplementation(async (method: string) => {
