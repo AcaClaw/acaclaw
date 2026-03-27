@@ -1,9 +1,13 @@
 import { LitElement, html, css, svg, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { gateway } from "../controllers/gateway.js";
 import { STAFF_MEMBERS, getCustomizedStaff } from "./staff.js";
 import type { StaffMember } from "./staff.js";
 import { t, LocaleController } from "../i18n.js";
+import { toMarkdownHtml } from "../chat/markdown.js";
+import { isSttSupported, startStt, stopStt, isSttActive, speakText, stopTts, isTtsSpeaking } from "../chat/speech.js";
+import { exportChatMarkdown } from "../chat/export.js";
 
 /* ── Lucide-style SVG icons for quick-actions & UI (14×14) ── */
 const qiBarChart = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg>`;
@@ -40,11 +44,18 @@ const folderOpenIcon = (size = 16) => svg`
   </svg>
 `;
 
+interface ChatAttachment {
+  id: string;
+  dataUrl: string;
+  mimeType: string;
+}
+
 interface Message {
   role: "user" | "assistant";
   content: string;
   thinking: string;
   timestamp: string;
+  attachments?: ChatAttachment[];
 }
 
 interface AgentTab {
@@ -96,6 +107,14 @@ export class ChatView extends LitElement {
   @state() private _tabs: AgentTab[] = [];
   @state() private _activeTabId = GENERAL_TAB_ID;
   @state() private _workdir = "";
+
+  @state() private _availableModels: Array<{id: string; label: string}> = [];
+  @state() private _selectedModel = "";
+  @state() private _defaultModelName = "";
+  @state() private _attachments: ChatAttachment[] = [];
+  @state() private _isRecording = false;
+  @state() private _interimTranscript = "";
+  @state() private _isSpeaking = false;
   @state() private _showWorkdirDialog = false;
   @state() private _workdirInput = "";
   @state() private _dirBrowserPath: string[] = [];
@@ -108,6 +127,7 @@ export class ChatView extends LitElement {
   private _handleGatewayState: ((e: Event) => void) | null = null;
   /** Maps title-gen runId → original session UUID for pending LLM title requests. */
   private _titleGenRuns = new Map<string, string>();
+  
 
   static override styles = css`
     :host {
@@ -134,6 +154,201 @@ export class ChatView extends LitElement {
       align-items: center;
       gap: 6px;
     }
+
+    /* ── Markdown content ── */
+    .msg-content :first-child { margin-top: 0; }
+    .msg-content :last-child { margin-bottom: 0; }
+    .msg-content p { margin: 0.5em 0; line-height: 1.65; }
+    .msg-content h1, .msg-content h2, .msg-content h3, .msg-content h4 {
+      margin: 1em 0 0.4em; font-weight: 700; line-height: 1.3;
+    }
+    .msg-content h1 { font-size: 1.3em; }
+    .msg-content h2 { font-size: 1.15em; }
+    .msg-content h3 { font-size: 1.05em; }
+    .msg-content ul, .msg-content ol { margin: 0.4em 0; padding-left: 1.5em; }
+    .msg-content li { margin: 0.2em 0; }
+    .msg-content blockquote {
+      margin: 0.5em 0; padding: 4px 12px;
+      border-left: 3px solid var(--ac-border); color: var(--ac-text-secondary);
+    }
+    .msg-content hr { border: none; border-top: 1px solid var(--ac-border-subtle); margin: 1em 0; }
+    .msg-content table { border-collapse: collapse; margin: 0.5em 0; font-size: 13px; }
+    .msg-content th, .msg-content td {
+      border: 1px solid var(--ac-border-subtle); padding: 6px 10px; text-align: left;
+    }
+    .msg-content th { background: var(--ac-bg-hover); font-weight: 600; }
+    .msg-content a { color: var(--ac-primary); text-decoration: none; }
+    .msg-content a:hover { text-decoration: underline; }
+    .msg-content code {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.88em; padding: 2px 5px;
+      background: var(--ac-bg-hover); border-radius: 4px;
+    }
+    .msg-content pre { margin: 0; }
+    .msg-content pre code {
+      display: block; padding: 12px 16px; overflow-x: auto;
+      background: none; border-radius: 0;
+    }
+    .msg-content .code-wrapper {
+      border-radius: 10px; overflow: hidden;
+      background: #1e293b; color: #e2e8f0;
+      margin: 0.5em 0;
+      border: 1px solid var(--ac-border-subtle);
+    }
+    .msg-content .code-wrapper pre code {
+      color: #e2e8f0;
+    }
+    .msg-content .code-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 6px 12px; background: rgba(0,0,0,0.15);
+      font-size: 11px; color: #94a3b8;
+    }
+    .msg-content .code-copy {
+      background: none; border: 1px solid var(--ac-border-subtle);
+      border-radius: 4px; padding: 2px 8px; font-size: 11px;
+      color: var(--ac-text-muted); cursor: pointer; font-family: inherit;
+    }
+    .msg-content .code-copy:hover { color: var(--ac-text); background: var(--ac-bg-hover); }
+    .msg-content .copy-done { display: none; }
+    .msg-content .code-copy.copied .copy-idle { display: none; }
+    .msg-content .code-copy.copied .copy-done { display: inline; }
+    .msg-content .md-inline-image { max-width: 300px; border-radius: 8px; margin: 4px 0; }
+
+    /* ── Attachment preview ── */
+    .attachment-row {
+      display: flex; gap: 8px; padding: 8px 0; flex-wrap: wrap;
+    }
+    .attachment-thumb {
+      position: relative; width: 64px; height: 64px; border-radius: 8px;
+      overflow: hidden; border: 1px solid var(--ac-border-subtle);
+    }
+    .attachment-thumb img {
+      width: 100%; height: 100%; object-fit: cover;
+    }
+    .attachment-remove {
+      position: absolute; top: -4px; right: -4px;
+      width: 18px; height: 18px; border-radius: 50%;
+      background: var(--ac-error, #ef4444); color: #fff;
+      border: none; cursor: pointer; font-size: 11px;
+      display: flex; align-items: center; justify-content: center;
+      line-height: 1;
+    }
+    .msg-attachments {
+      display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px;
+    }
+    .msg-attachments img {
+      max-width: 200px; max-height: 150px; border-radius: 8px;
+      border: 1px solid var(--ac-border-subtle);
+    }
+
+    /* ── Input toolbar actions ── */
+    .input-actions {
+      display: flex; align-items: center; gap: 4px;
+    }
+    .input-actions button {
+      display: flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px; border-radius: 8px;
+      background: transparent; border: none;
+      color: var(--ac-text-muted); cursor: pointer;
+      transition: all 0.15s;
+    }
+    .input-actions button:hover { background: var(--ac-bg-hover); color: var(--ac-text); }
+    .input-actions button.active { color: var(--ac-error, #ef4444); }
+    .input-actions button svg { pointer-events: none; }
+    .input-actions .separator {
+      width: 1px; height: 18px; background: var(--ac-border-subtle); margin: 0 2px;
+    }
+    .interim-text {
+      font-size: 12px; color: var(--ac-text-muted); font-style: italic;
+      padding: 4px 0; max-height: 20px; overflow: hidden;
+    }
+
+    /* ── Chat header actions ── */
+    .chat-actions {
+      display: flex; align-items: center; gap: 4px;
+    }
+    .chat-actions button {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 12px; border-radius: 8px;
+      background: transparent; border: 1px solid var(--ac-border-subtle);
+      color: var(--ac-text-secondary); cursor: pointer;
+      font-size: 12px; font-weight: 500; font-family: inherit;
+      transition: all 0.15s;
+    }
+    .chat-actions button:hover {
+      background: var(--ac-bg-hover); color: var(--ac-text); border-color: var(--ac-border);
+    }
+    .chat-actions button svg { pointer-events: none; }
+    .stop-btn {
+      background: var(--ac-error, #ef4444) !important;
+      color: #fff !important; border-color: transparent !important;
+    }
+    .stop-btn:hover { opacity: 0.9; }
+
+    /* ── Reading/Thinking indicator dots ── */
+    .reading-indicator {
+      display: inline-flex; align-items: center; gap: 4px; height: 14px;
+      padding: 4px 0;
+    }
+    .reading-indicator > span {
+      display: inline-block; width: 6px; height: 6px;
+      border-radius: 50%; background: var(--ac-text-muted, #94a3b8);
+      opacity: 0.4; transform: translateY(0);
+      animation: readingDot 1.2s ease-in-out infinite;
+      will-change: transform, opacity;
+    }
+    .reading-indicator > span:nth-child(2) { animation-delay: 0.15s; }
+    .reading-indicator > span:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes readingDot {
+      0%, 80%, 100% { opacity: 0.4; transform: translateY(0); }
+      40% { opacity: 1; transform: translateY(-3px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .reading-indicator > span { animation: none; opacity: 0.6; }
+    }
+
+    /* Streaming pulse on assistant bubble border */
+    .message.assistant.streaming .msg-bubble {
+      animation: streamPulse 1.5s ease-in-out infinite;
+    }
+    @keyframes streamPulse {
+      0%, 100% { border-color: var(--ac-border-subtle, rgba(255,255,255,0.08)); }
+      50% { border-color: var(--ac-primary, #8b5cf6); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .message.assistant.streaming .msg-bubble {
+        animation: none; border-color: var(--ac-primary, #8b5cf6);
+      }
+    }
+
+    .new-session-inline {
+      display: flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; border-radius: 10px;
+      background: var(--ac-bg-hover); border: 1px solid var(--ac-border-subtle);
+      color: var(--ac-text-secondary); cursor: pointer;
+      transition: all 0.15s; flex-shrink: 0;
+    }
+    .new-session-inline:hover {
+      background: var(--ac-primary); color: #fff;
+      border-color: var(--ac-primary);
+      transform: translateY(-1px);
+    }
+    .new-session-inline svg { pointer-events: none; }
+
+    /* ── Message action buttons (speak/copy) ── */
+    .msg-actions {
+      display: flex; gap: 2px; margin-top: 4px; opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .message:hover .msg-actions { opacity: 1; }
+    .msg-action-btn {
+      display: flex; align-items: center; justify-content: center;
+      width: 26px; height: 26px; border-radius: 6px;
+      background: transparent; border: none;
+      color: var(--ac-text-muted); cursor: pointer; font-size: 0;
+    }
+    .msg-action-btn:hover { background: var(--ac-bg-hover); color: var(--ac-text); }
+    .msg-action-btn svg { pointer-events: none; }
 
     /* ── Workdir Badge ── */
     .workdir-badge {
@@ -638,9 +853,19 @@ export class ChatView extends LitElement {
       align-items: center;
       gap: 6px;
       user-select: none;
+      list-style: none;
     }
+    .msg-thinking summary::-webkit-details-marker { display: none; }
     .msg-thinking summary:hover {
       color: var(--ac-text-secondary, #64748b);
+    }
+    .msg-thinking .thinking-chevron {
+      display: inline-flex;
+      transition: transform 0.15s ease;
+      flex-shrink: 0;
+    }
+    .msg-thinking[open] .thinking-chevron {
+      transform: rotate(90deg);
     }
     .msg-thinking-body {
       padding: 6px 14px 12px;
@@ -740,12 +965,16 @@ export class ChatView extends LitElement {
 
     .input-area {
       display: flex;
-      gap: 16px;
-      padding: 16px 24px;
+      flex-direction: column;
+      padding: 16px 24px 12px;
       background: var(--ac-bg-surface);
       border: 1px solid var(--ac-border);
       border-radius: 24px;
       box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+    }
+    .input-top-row {
+      display: flex;
+      gap: 16px;
       align-items: flex-end;
     }
 
@@ -785,9 +1014,17 @@ export class ChatView extends LitElement {
       font-size: 16px;
     }
 
+    .input-bottom-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 8px;
+      border-top: 1px solid var(--ac-border-subtle);
+      margin-top: 8px;
+    }
+
     .send-btn {
-      align-self: center;
-      padding: 12px 28px;
+      padding: 10px 24px;
       background: var(--ac-primary, #0ea5e9);
       color: #fff;
       border-radius: 14px;
@@ -809,6 +1046,13 @@ export class ChatView extends LitElement {
       transform: none;
       box-shadow: none;
     }
+    .input-model-select {
+      padding: 4px 8px; font-size: 12px; font-weight: 600;
+      background: var(--ac-bg-hover); border: 1px solid var(--ac-border-subtle);
+      border-radius: var(--ac-radius); color: var(--ac-text-secondary); font-family: inherit;
+      cursor: pointer; max-width: 200px;
+    }
+    .input-model-select:focus { border-color: var(--ac-primary); outline: none; }
 
     .no-tabs-state {
       display: flex;
@@ -857,6 +1101,8 @@ export class ChatView extends LitElement {
       background: var(--ac-primary-dark);
     }
 
+    
+
     @keyframes msgIn {
       from { opacity: 0; transform: translateY(6px); }
       to { opacity: 1; transform: translateY(0); }
@@ -886,17 +1132,23 @@ export class ChatView extends LitElement {
     // Load history for the active tab
     this._loadHistory(this._activeTabId);
 
+    
+
     // Reload history when gateway (re)connects — covers the case where
     // connectedCallback fires before the WebSocket is established.
     this._handleGatewayState = ((e: CustomEvent) => {
       if (e.detail?.state === "connected") {
         this._loadHistory(this._activeTabId);
+        this._loadModels();
       }
     }) as EventListener;
     gateway.addEventListener("state-change", this._handleGatewayState);
 
     // Fetch the workdir for the active tab
     this._fetchWorkdir(this._activeTabId);
+
+    // Load available models for the model selector
+    this._loadModels();
   }
 
   override disconnectedCallback() {
@@ -909,6 +1161,8 @@ export class ChatView extends LitElement {
     this._cleanupChat?.();
     this._cleanupChat = null;
   }
+
+  
 
   private _handleOpenAgent(e: Event) {
     const detail = (e as CustomEvent).detail as { agentId: string };
@@ -1424,9 +1678,12 @@ export class ChatView extends LitElement {
       saveSessionTitle(this._getSessionKey(tab.agentId), text);
     }
 
+    const currentAttachments = [...this._attachments];
+    this._attachments = [];
+
     tab.messages = [
       ...tab.messages,
-      { role: "user", content: text, thinking: "", timestamp: new Date().toLocaleTimeString() },
+      { role: "user", content: text, thinking: "", timestamp: new Date().toLocaleTimeString(), attachments: currentAttachments.length > 0 ? currentAttachments : undefined },
       { role: "assistant", content: "", thinking: "", timestamp: "" },
     ];
     tab.input = "";
@@ -1436,10 +1693,15 @@ export class ChatView extends LitElement {
     try {
       const sessionKey = this._getSessionKey(tab.agentId);
       const idempotencyKey = crypto.randomUUID();
+      const apiAttachments = currentAttachments.map((a) => {
+        const base64 = a.dataUrl.split(",")[1] ?? "";
+        return { type: "image" as const, mimeType: a.mimeType, content: base64 };
+      });
       const res = await gateway.call<{ runId?: string }>("chat.send", {
         sessionKey,
         message: text,
         idempotencyKey,
+        ...(apiAttachments.length > 0 ? { attachments: apiAttachments } : {}),
       });
       if (res?.runId) {
         tab.activeRunId = res.runId;
@@ -1678,6 +1940,10 @@ export class ChatView extends LitElement {
           <button class="new-project-btn" @click=${this._newChat} title=${t("chat.newChat.title")}>
             ${qiMsgPlus} ${t("chat.newChat")}
           </button>
+          <button class="new-project-btn" @click=${this._exportChat} title="${t("chat.export")}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+            ${t("chat.export")}
+          </button>
           ${this._showNewProject ? html`
             <div class="new-project-popover">
               <div class="new-project-popover-label">${t("workspace.dialog.newProject")}</div>
@@ -1747,9 +2013,11 @@ export class ChatView extends LitElement {
                       </div>
                     `
                   : activeTab.messages.map(
-                      (m, idx) => m.role === "assistant"
+                      (m, idx) => {
+                        const isLastAssistant = activeTab.sending && idx === activeTab.messages.length - 1 && m.role === "assistant";
+                        return m.role === "assistant"
                         ? html`
-                          <div class="message assistant">
+                          <div class="message assistant${isLastAssistant ? " streaming" : ""}">
                             <div class="msg-row">
                               <div class="msg-avatar">${activeTab.agent.photoUrl
                                 ? html`<img src="${activeTab.agent.photoUrl}" alt="${activeTab.agent.name}" />`
@@ -1760,17 +2028,33 @@ export class ChatView extends LitElement {
                                   ${m.timestamp ? ` \u00B7 ${m.timestamp}` : ""}
                                 </div>
                                 ${m.thinking
-                                  ? html`<details class="msg-thinking"
-                                      ?open=${activeTab.sending && idx === activeTab.messages.length - 1}>
-                                      <summary>${t("chat.reasoning")}</summary>
+                                  ? html`<details class="msg-thinking" open>
+                                      <summary>
+                                        <span class="thinking-chevron">
+                                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                                        </span>
+                                        ${t("chat.reasoning")}
+                                      </summary>
                                       <div class="msg-thinking-body">${m.thinking}</div>
                                     </details>`
                                   : ""}
-                                <div class="msg-content">
-                                  ${m.content || (activeTab.sending
-                                    ? m.thinking ? t("chat.reasoningProgress") : t("chat.thinking")
-                                    : "")}
+                                <div class="msg-content" @click=${this._handleContentClick}>
+                                  ${m.content
+                                    ? unsafeHTML(toMarkdownHtml(m.content))
+                                    : (activeTab.sending
+                                      ? html`<span class="reading-indicator"><span></span><span></span><span></span></span>`
+                                      : "")}
                                 </div>
+                                ${m.content ? html`
+                                  <div class="msg-actions">
+                                    <button class="msg-action-btn" title="${t("chat.copy")}" @click=${() => this._copyMessage(m.content)}>
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                                    </button>
+                                    <button class="msg-action-btn" title="${t("chat.speak")}" @click=${() => this._speakMessage(m.content)}>
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+                                    </button>
+                                  </div>
+                                ` : ""}
                               </div>
                             </div>
                           </div>
@@ -1780,34 +2064,248 @@ export class ChatView extends LitElement {
                             <div class="msg-header">
                               ${t("chat.you")}${m.timestamp ? ` \u00B7 ${m.timestamp}` : ""}
                             </div>
-                            <div class="msg-content">${m.content}</div>
+                            ${m.attachments?.length ? html`
+                              <div class="msg-attachments">
+                                ${m.attachments.map((a) => html`<img src="${a.dataUrl}" alt="attachment" />`)}
+                              </div>
+                            ` : ""}
+                            <div class="msg-content">${unsafeHTML(toMarkdownHtml(m.content))}</div>
                           </div>
-                        `
+                        `;
+                      }
                     )}
               </div>
 
-              <div class="input-area">
-                <div class="input-agent-badge">
-                  ${activeTab.agent.photoUrl ? html`<img src="${activeTab.agent.photoUrl}" style="width:22px;height:22px;border-radius:5px" />` : activeTab.agent.icon} ${activeTab.agent.name}
+              <div class="input-area" @dragover=${this._onDragOver} @drop=${this._onDrop} @paste=${this._onPaste}>
+                ${this._attachments.length > 0 ? html`
+                  <div class="attachment-row">
+                    ${this._attachments.map((a) => html`
+                      <div class="attachment-thumb">
+                        <img src="${a.dataUrl}" alt="attachment" />
+                        <button class="attachment-remove" @click=${() => this._removeAttachment(a.id)}>\u00d7</button>
+                      </div>
+                    `)}
+                  </div>
+                ` : ""}
+                ${this._interimTranscript ? html`<div class="interim-text">${this._interimTranscript}</div>` : ""}
+                <div class="input-top-row">
+                  <div class="input-agent-badge">
+                    ${activeTab.agent.photoUrl ? html`<img src="${activeTab.agent.photoUrl}" style="width:22px;height:22px;border-radius:5px" />` : activeTab.agent.icon} ${activeTab.agent.name}
+                  </div>
+                  <textarea
+                    placeholder=${t("chat.askAnything", activeTab.agent.name)}
+                    .value=${activeTab.input}
+                    @input=${this._handleInput}
+                    @keydown=${this._handleKeyDown}
+                    ?disabled=${activeTab.sending}
+                  ></textarea>
                 </div>
-                <textarea
-                  placeholder=${t("chat.askAnything", activeTab.agent.name)}
-                  .value=${activeTab.input}
-                  @input=${this._handleInput}
-                  @keydown=${this._handleKeyDown}
-                  ?disabled=${activeTab.sending}
-                ></textarea>
-                <button
-                  class="send-btn"
-                  @click=${this._send}
-                  ?disabled=${activeTab.sending || !activeTab.input.trim()}
-                >
-                  ${activeTab.sending ? t("chat.sending") : t("chat.send")}
-                </button>
+                <div class="input-bottom-row">
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <select class="input-model-select"
+                      .value=${this._selectedModel}
+                      @change=${(e: Event) => { this._selectedModel = (e.target as HTMLSelectElement).value; this._onModelChange(); }}>
+                      <option value="">${this._defaultModelName ? `Default (${this._defaultModelName})` : t("chat.defaultModel")}</option>
+                      ${this._availableModels.map((m) => html`<option value=${m.id}>${m.label}</option>`)}
+                    </select>
+                    <div class="input-actions">
+                      <input type="file" accept="image/*" multiple style="display:none" @change=${this._onFileSelect} />
+                      <button title="${t("chat.attach")}" @click=${this._triggerFileInput}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                      </button>
+                      ${isSttSupported() ? html`
+                        <button title="${t("chat.voice")}" class="${this._isRecording ? "active" : ""}" @click=${this._toggleVoice}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                        </button>
+                      ` : ""}
+                    </div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px">
+                    ${activeTab.sending
+                      ? html`<button class="send-btn stop-btn" @click=${this._stopGeneration}>${t("chat.stop")}</button>`
+                      : html`<button class="send-btn" @click=${this._send} ?disabled=${!activeTab.input.trim() && this._attachments.length === 0}>${t("chat.send")}</button>`
+                    }
+                    <button class="new-session-inline" title="${t("chat.newChat.title")}" @click=${this._newChat}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           `
         : ""}
     `;
+  }
+
+  // ── File attachments ──
+
+  private _triggerFileInput() {
+    const input = this.shadowRoot?.querySelector('input[type="file"]') as HTMLInputElement;
+    input?.click();
+  }
+
+  private _onFileSelect(e: Event) {
+    const files = (e.target as HTMLInputElement).files;
+    if (files) this._addImageFiles(Array.from(files));
+    (e.target as HTMLInputElement).value = "";
+  }
+
+  private _onDragOver(e: DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  private _onDrop(e: DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const files = Array.from(e.dataTransfer?.files ?? []);
+    this._addImageFiles(files.filter((f) => f.type.startsWith("image/")));
+  }
+
+  private _onPaste(e: ClipboardEvent) {
+    const items = Array.from(e.clipboardData?.items ?? []);
+    const imageFiles = items
+      .filter((item) => item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((f): f is File => f !== null);
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      this._addImageFiles(imageFiles);
+    }
+  }
+
+  private _addImageFiles(files: File[]) {
+    for (const file of files) {
+      if (!file.type.startsWith("image/")) continue;
+      const reader = new FileReader();
+      reader.onload = () => {
+        this._attachments = [...this._attachments, {
+          id: crypto.randomUUID(),
+          dataUrl: reader.result as string,
+          mimeType: file.type,
+        }];
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  private _removeAttachment(id: string) {
+    this._attachments = this._attachments.filter((a) => a.id !== id);
+  }
+
+  // ── Voice ──
+
+  private _toggleVoice() {
+    if (isSttActive()) {
+      stopStt();
+      this._isRecording = false;
+      this._interimTranscript = "";
+      return;
+    }
+    startStt({
+      onTranscript: (text, isFinal) => {
+        if (isFinal) {
+          const tab = this._getActiveTab();
+          if (tab) {
+            tab.input = (tab.input ? tab.input + " " : "") + text;
+            this._tabs = [...this._tabs];
+          }
+          this._interimTranscript = "";
+        } else {
+          this._interimTranscript = text;
+        }
+      },
+      onStart: () => { this._isRecording = true; },
+      onEnd: () => { this._isRecording = false; this._interimTranscript = ""; },
+      onError: () => { this._isRecording = false; this._interimTranscript = ""; },
+    });
+  }
+
+  // ── Message actions ──
+
+  private async _copyMessage(content: string) {
+    try {
+      await navigator.clipboard.writeText(content);
+    } catch { /* fallback: ignore */ }
+  }
+
+  private _speakMessage(content: string) {
+    if (isTtsSpeaking()) {
+      stopTts();
+      this._isSpeaking = false;
+      return;
+    }
+    speakText(content, {
+      onEnd: () => { this._isSpeaking = false; },
+    });
+    this._isSpeaking = true;
+  }
+
+  private _handleContentClick(e: Event) {
+    const target = e.target as HTMLElement;
+    if (target.classList.contains("code-copy")) {
+      const code = target.getAttribute("data-code") ?? "";
+      navigator.clipboard.writeText(
+        code.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+      );
+      target.classList.add("copied");
+      setTimeout(() => target.classList.remove("copied"), 1500);
+    }
+  }
+
+  // ── Export ──
+
+  private _exportChat() {
+    const tab = this._getActiveTab();
+    if (!tab || tab.messages.length === 0) return;
+    exportChatMarkdown(tab.messages, tab.agent.name);
+  }
+
+  // ── Stop generation ──
+
+  private async _stopGeneration() {
+    const tab = this._getActiveTab();
+    if (!tab) return;
+    try {
+      const sessionKey = this._getSessionKey(tab.agentId);
+      await gateway.call("chat.abort", { sessionKey, runId: tab.activeRunId || undefined });
+    } catch { /* ignore */ }
+    tab.sending = false;
+    this._tabs = [...this._tabs];
+  }
+
+  private async _onModelChange() {
+    const tab = this._getActiveTab();
+    if (!tab) return;
+    try {
+      const sessionKey = this._getSessionKey(tab.agentId);
+      await gateway.call("sessions.patch", {
+        key: sessionKey,
+        model: this._selectedModel || null,
+      });
+    } catch { /* ignore */ }
+  }
+
+  private async _loadModels() {
+    try {
+      const [modelsResult, sessionsResult] = await Promise.all([
+        gateway.call<{ models: Array<{id: string; name: string; provider?: string}> }>("models.list", {}),
+        gateway.call<{ defaults?: { model?: string; modelProvider?: string } }>("sessions.list", {
+          includeGlobal: true, includeUnknown: true,
+        }),
+      ]);
+      const raw = modelsResult?.models ?? [];
+      this._availableModels = raw.map((m) => ({
+        id: m.id,
+        label: m.provider ? `${m.name} · ${m.provider}` : m.name,
+      }));
+      const dm = sessionsResult?.defaults?.model ?? "";
+      const dp = sessionsResult?.defaults?.modelProvider ?? "";
+      if (dm) {
+        this._defaultModelName = dp ? `${dm} · ${dp}` : dm;
+      }
+    } catch {
+      this._availableModels = [];
+    }
   }
 }
