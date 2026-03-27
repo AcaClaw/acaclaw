@@ -158,6 +158,14 @@ export class MonitorView extends LitElement {
   @state() private _editingTitle = "";
   private _chatUnsub: (() => void) | null = null;
 
+  /* session management controls */
+  @state() private _sessionSearch = "";
+  @state() private _sessionSortField: "updatedAt" | "agentName" | "totalTokens" | "model" = "updatedAt";
+  @state() private _sessionSortDir: "asc" | "desc" = "desc";
+  @state() private _sessionPage = 0;
+  @state() private _sessionPageSize = 10;
+  @state() private _sessionSelected = new Set<string>();
+
   @state() private _refreshTimer: ReturnType<typeof setInterval> | null = null;
 
   static override styles = css`
@@ -770,6 +778,57 @@ export class MonitorView extends LitElement {
       border-color: var(--ac-primary);
     }
 
+    /* ── Session Management Controls ── */
+    .session-toolbar {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 12px; flex-wrap: wrap;
+    }
+    .session-search {
+      flex: 1; min-width: 160px; padding: 8px 12px; font-size: 12px;
+      background: var(--ac-bg-surface); border: 1px solid var(--ac-border-subtle);
+      border-radius: var(--ac-radius-lg); color: var(--ac-text); outline: none;
+      font-family: inherit;
+    }
+    .session-search:focus { border-color: var(--ac-primary); }
+    .session-search::placeholder { color: var(--ac-text-tertiary); }
+    .session-sort-btn {
+      padding: 5px 10px; font-size: 11px; font-weight: 600;
+      border: 1px solid var(--ac-border); border-radius: var(--ac-radius-full);
+      background: var(--ac-bg-surface); color: var(--ac-text-muted);
+      cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    }
+    .session-sort-btn:hover { color: var(--ac-text); border-color: var(--ac-text-muted); }
+    .session-sort-btn.active { background: var(--ac-primary); color: #fff; border-color: var(--ac-primary); }
+    .session-bulk-bar {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 14px; background: rgba(99, 102, 241, 0.06);
+      border: 1px solid rgba(99, 102, 241, 0.2); border-radius: var(--ac-radius-lg);
+      margin-bottom: 10px; font-size: 12px; color: var(--ac-text);
+    }
+    .session-bulk-btn {
+      padding: 4px 10px; font-size: 11px; font-weight: 600;
+      border: 1px solid var(--ac-border); border-radius: var(--ac-radius-full);
+      background: var(--ac-bg-surface); color: var(--ac-text-muted);
+      cursor: pointer; transition: all 0.15s;
+    }
+    .session-bulk-btn:hover { color: var(--ac-text); }
+    .session-bulk-btn.danger { background: #ef4444; color: #fff; border-color: #ef4444; }
+    .session-bulk-btn.danger:hover { background: #dc2626; }
+    .session-checkbox { width: 14px; height: 14px; accent-color: var(--ac-primary); cursor: pointer; flex-shrink: 0; }
+    .session-pagination {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-top: 10px; font-size: 12px; color: var(--ac-text-muted);
+    }
+    .session-page-btns { display: flex; gap: 4px; }
+    .session-page-btn {
+      padding: 4px 10px; font-size: 11px; font-weight: 600;
+      border: 1px solid var(--ac-border); border-radius: var(--ac-radius-full);
+      background: var(--ac-bg-surface); color: var(--ac-text-muted);
+      cursor: pointer; transition: all 0.15s;
+    }
+    .session-page-btn:hover { color: var(--ac-text); }
+    .session-page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
     /* ── Projects ── */
     .project-list {
       display: flex;
@@ -817,6 +876,17 @@ export class MonitorView extends LitElement {
   `;
 
   private _gatewayListener: EventListener | null = null;
+  private _refreshIntervalListener: EventListener | null = null;
+
+  private _getRefreshMs(): number {
+    const stored = parseInt(localStorage.getItem("acaclaw-refresh-interval") ?? "15", 10);
+    return (stored > 0 ? stored : 15) * 1000;
+  }
+
+  private _resetRefreshTimer() {
+    if (this._refreshTimer) clearInterval(this._refreshTimer);
+    this._refreshTimer = setInterval(() => this._fetchData(), this._getRefreshMs());
+  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -827,7 +897,13 @@ export class MonitorView extends LitElement {
       if (e.detail.state === "connected") this._fetchData();
     }) as EventListener;
     gateway.addEventListener("state-change", this._gatewayListener);
-    this._refreshTimer = setInterval(() => this._fetchData(), 15000);
+    this._resetRefreshTimer();
+
+    // Listen for setting changes from the Advanced tab
+    this._refreshIntervalListener = (() => {
+      this._resetRefreshTimer();
+    }) as EventListener;
+    window.addEventListener("refresh-interval-changed", this._refreshIntervalListener);
 
     // Subscribe to chat notifications for real-time agent tracking
     this._chatUnsub = gateway.onNotification("chat", (data: unknown) => {
@@ -840,6 +916,10 @@ export class MonitorView extends LitElement {
     if (this._gatewayListener) {
       gateway.removeEventListener("state-change", this._gatewayListener);
       this._gatewayListener = null;
+    }
+    if (this._refreshIntervalListener) {
+      window.removeEventListener("refresh-interval-changed", this._refreshIntervalListener);
+      this._refreshIntervalListener = null;
     }
     if (this._refreshTimer) {
       clearInterval(this._refreshTimer);
@@ -1221,11 +1301,85 @@ export class MonitorView extends LitElement {
     `;
   }
 
+  /** Filter + sort sessions for the management table */
+  private _filteredSortedSessions(): SessionInfo[] {
+    let list = [...this._sessions];
+    if (this._sessionSearch) {
+      const q = this._sessionSearch.toLowerCase();
+      list = list.filter(
+        (s) =>
+          s.key.toLowerCase().includes(q) ||
+          s.derivedTitle.toLowerCase().includes(q) ||
+          s.agentName.toLowerCase().includes(q) ||
+          s.model.toLowerCase().includes(q)
+      );
+    }
+    list.sort((a, b) => {
+      const f = this._sessionSortField;
+      let av: string | number = (a as unknown as Record<string, unknown>)[f] as string | number ?? "";
+      let bv: string | number = (b as unknown as Record<string, unknown>)[f] as string | number ?? "";
+      if (typeof av === "string") av = av.toLowerCase();
+      if (typeof bv === "string") bv = bv.toLowerCase();
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      return this._sessionSortDir === "asc" ? cmp : -cmp;
+    });
+    return list;
+  }
+
+  private _pagedSessions(): SessionInfo[] {
+    const all = this._filteredSortedSessions();
+    const start = this._sessionPage * this._sessionPageSize;
+    return all.slice(start, start + this._sessionPageSize);
+  }
+
+  private _toggleSessionSort(field: typeof this._sessionSortField) {
+    if (this._sessionSortField === field) {
+      this._sessionSortDir = this._sessionSortDir === "asc" ? "desc" : "asc";
+    } else {
+      this._sessionSortField = field;
+      this._sessionSortDir = field === "updatedAt" ? "desc" : "asc";
+    }
+  }
+
+  private _toggleSessionSelect(key: string) {
+    const s = new Set(this._sessionSelected);
+    if (s.has(key)) s.delete(key);
+    else s.add(key);
+    this._sessionSelected = s;
+  }
+
+  private _toggleSessionSelectAll() {
+    const paged = this._pagedSessions();
+    const allSel = paged.every((s) => this._sessionSelected.has(s.key));
+    const next = new Set(this._sessionSelected);
+    for (const s of paged) {
+      if (allSel) next.delete(s.key);
+      else next.add(s.key);
+    }
+    this._sessionSelected = next;
+  }
+
+  private async _deleteSelectedSessions() {
+    for (const key of this._sessionSelected) {
+      try {
+        await gateway.call("sessions.delete", { key });
+      } catch { /* ignore individual failures */ }
+    }
+    this._sessionSelected = new Set();
+    this._fetchData();
+  }
+
   private _renderSessions() {
     const hasActive = this._activeRuns.length > 0;
     const hasRecent = this._recentRuns.length > 0;
     const hasSessions = this._sessions.length > 0;
     if (!hasActive && !hasRecent && !hasSessions) return nothing;
+
+    const filtered = this._filteredSortedSessions();
+    const paged = this._pagedSessions();
+    const totalPages = Math.ceil(filtered.length / this._sessionPageSize);
+    const sortArrow = (f: typeof this._sessionSortField) =>
+      this._sessionSortField === f ? (this._sessionSortDir === "asc" ? " ▲" : " ▼") : "";
 
     return html`
       <div class="card">
@@ -1269,9 +1423,35 @@ export class MonitorView extends LitElement {
 
         ${hasSessions ? html`
           <div class="section-divider">${t("monitor.sessions")}</div>
+
+          <div class="session-toolbar">
+            <input class="session-search" placeholder="${t("sessions.search")}"
+              .value=${this._sessionSearch}
+              @input=${(e: InputEvent) => { this._sessionSearch = (e.target as HTMLInputElement).value; this._sessionPage = 0; }} />
+            <button class="session-sort-btn ${this._sessionSortField === "updatedAt" ? "active" : ""}"
+              @click=${() => this._toggleSessionSort("updatedAt")}>${t("sessions.col.updated")}${sortArrow("updatedAt")}</button>
+            <button class="session-sort-btn ${this._sessionSortField === "agentName" ? "active" : ""}"
+              @click=${() => this._toggleSessionSort("agentName")}>${t("monitor.agents")}${sortArrow("agentName")}</button>
+            <button class="session-sort-btn ${this._sessionSortField === "totalTokens" ? "active" : ""}"
+              @click=${() => this._toggleSessionSort("totalTokens")}>${t("sessions.col.tokens")}${sortArrow("totalTokens")}</button>
+            <button class="session-sort-btn ${this._sessionSortField === "model" ? "active" : ""}"
+              @click=${() => this._toggleSessionSort("model")}>Model${sortArrow("model")}</button>
+          </div>
+
+          ${this._sessionSelected.size > 0 ? html`
+            <div class="session-bulk-bar">
+              <span>${this._sessionSelected.size} ${t("sessions.selected")}</span>
+              <button class="session-bulk-btn danger" @click=${this._deleteSelectedSessions}>${t("sessions.deleteSelected")}</button>
+              <button class="session-bulk-btn" @click=${() => { this._sessionSelected = new Set(); }}>${t("sessions.deselectAll")}</button>
+            </div>
+          ` : nothing}
+
           <div class="agent-run-list">
-            ${(this._showAllSessions ? this._sessions : this._sessions.slice(0, 3)).map((s) => html`
+            ${paged.map((s) => html`
               <div class="agent-run session-info">
+                <input type="checkbox" class="session-checkbox"
+                  .checked=${this._sessionSelected.has(s.key)}
+                  @change=${() => this._toggleSessionSelect(s.key)} />
                 <span class="agent-run-icon">${s.agentIcon}</span>
                 <div class="agent-run-info">
                   ${this._editingSessionKey === s.key ? html`
@@ -1294,15 +1474,15 @@ export class MonitorView extends LitElement {
               </div>
             `)}
           </div>
-          ${!this._showAllSessions && this._sessions.length > 3 ? html`
-            <button class="load-more-btn" @click=${() => (this._showAllSessions = true)}>
-              ${t("monitor.loadMore", this._sessions.length - 3)}
-            </button>
-          ` : nothing}
-          ${this._showAllSessions && this._sessions.length > 3 ? html`
-            <button class="load-more-btn" @click=${() => (this._showAllSessions = false)}>
-              ${t("monitor.showLess")}
-            </button>
+
+          ${filtered.length > this._sessionPageSize ? html`
+            <div class="session-pagination">
+              <span>${t("sessions.showing", this._sessionPage * this._sessionPageSize + 1, Math.min((this._sessionPage + 1) * this._sessionPageSize, filtered.length), filtered.length)}</span>
+              <div class="session-page-btns">
+                <button class="session-page-btn" ?disabled=${this._sessionPage === 0} @click=${() => { this._sessionPage--; }}>← Prev</button>
+                <button class="session-page-btn" ?disabled=${this._sessionPage >= totalPages - 1} @click=${() => { this._sessionPage++; }}>Next →</button>
+              </div>
+            </div>
           ` : nothing}
         ` : nothing}
       </div>
@@ -1319,7 +1499,6 @@ export class MonitorView extends LitElement {
   private _startEditTitle(s: SessionInfo) {
     this._editingSessionKey = s.key;
     this._editingTitle = s.derivedTitle || s.agentName;
-    // Focus the input after render
     this.updateComplete.then(() => {
       const input = this.shadowRoot?.querySelector<HTMLInputElement>(".session-title-input");
       input?.focus();
@@ -1330,7 +1509,6 @@ export class MonitorView extends LitElement {
   private _saveTitle(s: SessionInfo) {
     const title = this._editingTitle.trim().slice(0, 60);
     if (title) {
-      // Save to localStorage
       try {
         const raw = localStorage.getItem("acaclaw-session-titles");
         const titles: Record<string, string> = raw ? JSON.parse(raw) : {};
@@ -1339,7 +1517,6 @@ export class MonitorView extends LitElement {
         titles[uuid] = title;
         localStorage.setItem("acaclaw-session-titles", JSON.stringify(titles));
       } catch { /* ignore */ }
-      // Update in-memory session
       s.derivedTitle = title;
       this._sessions = [...this._sessions];
     }

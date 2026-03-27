@@ -40,6 +40,11 @@ interface FilePreview {
 }
 
 const MD_EXTS = new Set(["md", "rmd", "qmd"]);
+
+const CORE_FILE_NAMES = new Set([
+  "AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md", "USER.md",
+  "HEARTBEAT.md", "BOOTSTRAP.md", "MEMORY.md", "memory.md",
+]);
 const CODE_EXTS = new Set([
   "py", "r", "js", "ts", "jsx", "tsx", "json", "yml", "yaml", "sh", "bash",
   "csv", "html", "css", "xml", "toml", "ini", "cfg", "conf", "ipynb", "tex",
@@ -64,6 +69,16 @@ export class WorkspaceView extends LitElement {
   @state() private _preview: FilePreview | null = null;
   @state() private _previewLoading = false;
   @state() private _zoom = 100;
+  @state() private _editMode = false;
+  @state() private _editDraft = "";
+  @state() private _saving = false;
+  @state() private _saveError = "";
+  @state() private _coreTab: string | null = null;
+  @state() private _coreContent = "";
+  @state() private _coreDraft = "";
+  @state() private _coreLoading = false;
+  @state() private _coreSaving = false;
+  @state() private _coreSaveError = "";
 
   static override styles = css`
     :host { display: block; }
@@ -346,6 +361,61 @@ export class WorkspaceView extends LitElement {
       text-align: center; padding: 8px;
       border-top: 1px solid var(--ac-border-subtle);
     }
+    .preview-edit-area {
+      width: 100%; min-height: 400px; resize: vertical;
+      font-family: "Fira Code", "JetBrains Mono", ui-monospace, monospace;
+      font-size: 13px; line-height: 1.6; padding: 16px;
+      background: var(--ac-bg); color: var(--ac-text);
+      border: 1px solid var(--ac-border-subtle); border-radius: var(--ac-radius);
+      box-sizing: border-box; tab-size: 4;
+    }
+    .preview-edit-area:focus { outline: none; border-color: var(--ac-primary); }
+    .preview-footer {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 20px; border-top: 1px solid var(--ac-border-subtle);
+      flex-shrink: 0;
+    }
+    .preview-footer .save-status { font-size: 12px; color: var(--ac-text-muted); flex: 1; }
+    .preview-footer .save-error { font-size: 12px; color: var(--ac-error, #ef4444); flex: 1; }
+    .btn-edit, .btn-save { padding: 6px 16px; border-radius: var(--ac-radius-full); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+    .btn-edit { background: var(--ac-bg-hover); border: 1px solid var(--ac-border); color: var(--ac-text-secondary); }
+    .btn-edit:hover { border-color: var(--ac-primary); color: var(--ac-primary); }
+    .btn-save { background: var(--ac-primary); border: none; color: #fff; }
+    .btn-save:hover { opacity: 0.9; }
+    .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Core files section (Skills, Soul, etc.) */
+    .core-section { margin-bottom: 24px; }
+    .core-section h2 { font-size: 16px; font-weight: 700; color: var(--ac-text); margin-bottom: 12px; }
+    .core-tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+    .core-tab {
+      padding: 6px 14px; border-radius: var(--ac-radius-full); font-size: 12px; font-weight: 500;
+      background: var(--ac-bg-surface); border: 1px solid var(--ac-border); color: var(--ac-text-secondary);
+      cursor: pointer; transition: all 0.15s;
+    }
+    .core-tab:hover { border-color: var(--ac-primary); color: var(--ac-primary); }
+    .core-tab.active { background: var(--ac-primary); color: #fff; border-color: var(--ac-primary); }
+    .core-tab.missing { opacity: 0.6; border-style: dashed; }
+    .core-tab .tab-badge { font-size: 9px; padding: 1px 5px; background: var(--ac-bg-hover); border-radius: 10px; margin-left: 4px; color: var(--ac-text-muted); }
+    .core-editor {
+      background: var(--ac-bg-surface); border: 1px solid var(--ac-border-subtle); border-radius: var(--ac-radius-lg);
+      overflow: hidden;
+    }
+    .core-editor-header {
+      display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+      border-bottom: 1px solid var(--ac-border-subtle); font-size: 13px; font-weight: 600; color: var(--ac-text);
+    }
+    .core-editor-header .dirty-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ac-primary); }
+    .core-textarea {
+      width: 100%; min-height: 300px; resize: vertical; padding: 16px; box-sizing: border-box;
+      font-family: "Fira Code", "JetBrains Mono", ui-monospace, monospace;
+      font-size: 13px; line-height: 1.6; border: none; background: var(--ac-bg); color: var(--ac-text); tab-size: 4;
+    }
+    .core-textarea:focus { outline: none; }
+    .core-editor-footer {
+      display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+      border-top: 1px solid var(--ac-border-subtle);
+    }
     .preview-unsupported {
       text-align: center; padding: 40px 20px;
       color: var(--ac-text-muted); font-size: 13px;
@@ -505,7 +575,109 @@ export class WorkspaceView extends LitElement {
   private _closePreview() {
     this._preview = null;
     this._previewLoading = false;
+    this._editMode = false;
+    this._editDraft = "";
+    this._saving = false;
+    this._saveError = "";
     this._zoom = 100;
+  }
+
+  private _toggleEdit() {
+    if (!this._editMode && this._preview?.content !== undefined) {
+      this._editDraft = this._preview.content;
+      this._editMode = true;
+      this._saveError = "";
+    } else {
+      this._editMode = false;
+    }
+  }
+
+  private async _saveFile() {
+    if (!this._preview || this._saving) return;
+    this._saving = true;
+    this._saveError = "";
+    const filePath = this._currentPath.length > 0
+      ? this._currentPath.join("/") + "/" + this._preview.name
+      : this._preview.name;
+    try {
+      const res = await gateway.call<{ error?: string }>(
+        "agents.files.set", { agentId: "general", name: filePath, content: this._editDraft }
+      );
+      if (res?.error) {
+        // Fallback: try workspace write
+        const res2 = await gateway.call<{ error?: string }>(
+          "acaclaw.workspace.writeFile", { path: filePath, content: this._editDraft }
+        );
+        if (res2?.error) { this._saveError = res2.error; this._saving = false; return; }
+      }
+      if (this._preview) {
+        this._preview = { ...this._preview, content: this._editDraft };
+      }
+      this._editMode = false;
+    } catch (err: unknown) {
+      this._saveError = (err as Error).message ?? "Failed to save";
+    }
+    this._saving = false;
+  }
+
+  // --- Core bootstrap files (Skills, Soul, etc.) ---
+
+  private get _coreFiles(): FileEntry[] {
+    if (this._currentPath.length > 0) return [];
+    return this._entries.filter((e) => e.type === "file" && CORE_FILE_NAMES.has(e.name));
+  }
+
+  private async _selectCoreTab(name: string) {
+    this._coreTab = name;
+    this._coreLoading = true;
+    this._coreSaveError = "";
+    try {
+      // Try agents.files.get first (proper OpenClaw RPC)
+      const res = await gateway.call<{ content?: string }>(
+        "agents.files.get", { agentId: "general", name }
+      );
+      if (res?.content !== undefined) {
+        this._coreContent = res.content;
+        this._coreDraft = this._coreContent;
+        this._coreLoading = false;
+        return;
+      }
+    } catch { /* fallback to workspace read */ }
+    try {
+      const res = await gateway.call<{ type: string; content?: string }>(
+        "acaclaw.workspace.readFile", { path: name }
+      );
+      this._coreContent = res?.content ?? "";
+      this._coreDraft = this._coreContent;
+    } catch {
+      this._coreContent = "";
+      this._coreDraft = "";
+    }
+    this._coreLoading = false;
+  }
+
+  private async _saveCoreFile() {
+    if (!this._coreTab || this._coreSaving) return;
+    this._coreSaving = true;
+    this._coreSaveError = "";
+    try {
+      // Try agents.files.set first
+      await gateway.call("agents.files.set", {
+        agentId: "general", name: this._coreTab, content: this._coreDraft,
+      });
+      this._coreContent = this._coreDraft;
+    } catch {
+      // Fallback to workspace write
+      try {
+        await gateway.call("acaclaw.workspace.writeFile", {
+          path: this._coreTab, content: this._coreDraft,
+        });
+        this._coreContent = this._coreDraft;
+      } catch (err: unknown) {
+        this._coreSaveError = (err as Error).message ?? "Failed to save";
+      }
+    }
+    this._coreSaving = false;
   }
 
   private _zoomIn() { this._zoom = Math.min(300, this._zoom + 25); }
@@ -765,24 +937,42 @@ export class WorkspaceView extends LitElement {
             <button class="preview-close" @click=${() => this._closePreview()}>✕</button>
           </div>
           <div class="preview-body">
-            ${p.type === "image" && p.data
-              ? html`<img src="data:${p.mime};base64,${p.data}" alt="${p.name}"
-                     style="transform: scale(${this._zoom / 100}); max-width: ${this._zoom <= 100 ? '100%' : 'none'};">`
-              : p.type === "image" && p.truncated
-                ? html`<div class="preview-unsupported">
-                    <div class="big-icon">${wsIconImage}</div>
-                    Image too large to preview (${this._formatSize(p.size)})
+            ${this._editMode && p.type === "text"
+              ? html`<textarea class="preview-edit-area"
+                  .value=${this._editDraft}
+                  @input=${(e: Event) => { this._editDraft = (e.target as HTMLTextAreaElement).value; }}
+                ></textarea>`
+              : p.type === "image" && p.data
+                ? html`<img src="data:${p.mime};base64,${p.data}" alt="${p.name}"
+                       style="transform: scale(${this._zoom / 100}); max-width: ${this._zoom <= 100 ? '100%' : 'none'};">`
+                : p.type === "image" && p.truncated
+                  ? html`<div class="preview-unsupported">
+                      <div class="big-icon">${wsIconImage}</div>
+                      Image too large to preview (${this._formatSize(p.size)})
+                    </div>`
+                : p.type === "text" && p.content !== undefined && MD_EXTS.has(p.ext)
+                  ? html`<div class="preview-md">${unsafeHTML(this._renderMarkdown(p.content))}</div>`
+                : p.type === "text" && p.content !== undefined
+                  ? html`<pre class="preview-code">${p.content}</pre>`
+                : html`<div class="preview-unsupported">
+                    <div class="big-icon">${wsIconFile}</div>
+                    Preview not available for .${p.ext} files
                   </div>`
-              : p.type === "text" && p.content !== undefined && MD_EXTS.has(p.ext)
-                ? html`<div class="preview-md">${unsafeHTML(this._renderMarkdown(p.content))}</div>`
-              : p.type === "text" && p.content !== undefined
-                ? html`<pre class="preview-code">${p.content}</pre>`
-              : html`<div class="preview-unsupported">
-                  <div class="big-icon">${wsIconFile}</div>
-                  Preview not available for .${p.ext} files
-                </div>`
             }
           </div>
+          ${p.type === "text" && p.content !== undefined ? html`
+            <div class="preview-footer">
+              ${this._saveError ? html`<span class="save-error">${this._saveError}</span>` : html`<span class="save-status">${this._editMode ? "Editing" : ""}</span>`}
+              ${this._editMode
+                ? html`
+                  <button class="btn-edit" @click=${() => { this._editMode = false; }}>Cancel</button>
+                  <button class="btn-save" @click=${this._saveFile} ?disabled=${this._saving || this._editDraft === p.content}>
+                    ${this._saving ? "Saving..." : "Save"}
+                  </button>`
+                : html`<button class="btn-edit" @click=${this._toggleEdit}>Edit</button>`
+              }
+            </div>
+          ` : nothing}
           ${p.truncated && p.type === "text" ? html`
             <div class="preview-truncated">${t("workspace.preview.truncated")}</div>
           ` : nothing}
@@ -791,10 +981,54 @@ export class WorkspaceView extends LitElement {
     `;
   }
 
+  private _renderCoreFiles() {
+    const coreFiles = this._coreFiles;
+    if (coreFiles.length === 0) return nothing;
+
+    const isDirty = this._coreDraft !== this._coreContent;
+
+    return html`
+      <div class="core-section">
+        <h2>Agent Files</h2>
+        <div class="core-tabs">
+          ${coreFiles.map((f) => html`
+            <button class="core-tab ${this._coreTab === f.name ? "active" : ""}"
+              @click=${() => this._selectCoreTab(f.name)}>
+              ${f.name.replace(/\.md$/i, "")}
+            </button>
+          `)}
+        </div>
+        ${this._coreTab ? html`
+          <div class="core-editor">
+            <div class="core-editor-header">
+              ${this._coreTab}
+              ${isDirty ? html`<span class="dirty-dot" title="Unsaved changes"></span>` : ""}
+            </div>
+            ${this._coreLoading
+              ? html`<div style="padding:40px;text-align:center;color:var(--ac-text-muted)">Loading...</div>`
+              : html`<textarea class="core-textarea"
+                  .value=${this._coreDraft}
+                  @input=${(e: Event) => { this._coreDraft = (e.target as HTMLTextAreaElement).value; }}
+                ></textarea>`
+            }
+            <div class="core-editor-footer">
+              ${this._coreSaveError ? html`<span class="save-error" style="flex:1;font-size:12px;color:var(--ac-error)">${this._coreSaveError}</span>` : html`<span style="flex:1"></span>`}
+              <button class="btn-save" @click=${this._saveCoreFile} ?disabled=${this._coreSaving || !isDirty}>
+                ${this._coreSaving ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        ` : ""}
+      </div>
+    `;
+  }
+
   override render() {
     return html`
       <h1>${t("backup.snapshots.header.workspace")}</h1>
       <div class="subtitle">${t("workspace.subtitle")}</div>
+
+      ${this._renderCoreFiles()}
 
       ${this._renderBreadcrumb()}
       ${this._renderToolbar()}

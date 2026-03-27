@@ -6,7 +6,7 @@ import { t, getLocale, setLocale, LocaleController, type Locale } from "../i18n.
 
 type Theme = "light" | "dark" | "system";
 type SecurityMode = "standard" | "maximum";
-type Tab = "appearance" | "security" | "connection" | "openclaw" | "uninstall";
+type Tab = "appearance" | "security" | "connection" | "advanced" | "openclaw" | "debug" | "logs" | "uninstall";
 
 interface SecuritySettings {
   mode: SecurityMode;
@@ -28,9 +28,6 @@ function applyTheme(theme: Theme) {
   localStorage.setItem(THEME_KEY, theme);
 }
 
-// Apply saved theme on load
-applyTheme((localStorage.getItem(THEME_KEY) as Theme) ?? "system");
-
 @customElement("acaclaw-settings")
 export class SettingsView extends LitElement {
   static override styles = css`
@@ -47,9 +44,9 @@ export class SettingsView extends LitElement {
     .subtitle { font-size: 15px; color: var(--ac-text-muted); line-height: 1.5; margin-bottom: 32px; }
 
     /* Tabs */
-    .tabs { display: flex; gap: 0; margin-bottom: 28px; border-bottom: 1px solid var(--ac-border); }
+    .tabs { display: flex; flex-wrap: wrap; gap: 0; margin-bottom: 28px; border-bottom: 1px solid var(--ac-border); }
     .tab {
-      padding: 12px 20px; font-size: 13px; font-weight: 600;
+      padding: 10px 16px; font-size: 13px; font-weight: 600;
       color: var(--ac-text-muted); cursor: pointer;
       border-bottom: 2px solid transparent; margin-bottom: -1px;
       transition: color var(--ac-transition-fast);
@@ -222,11 +219,45 @@ export class SettingsView extends LitElement {
   @state() private _uninstallLog: string[] = [];
   private _uninstallCleanup: (() => void) | null = null;
 
+  /* Advanced settings */
+  @state() private _refreshInterval = parseInt(localStorage.getItem("acaclaw-refresh-interval") ?? "15", 10);
+  @state() private _sessionRetention = parseInt(localStorage.getItem("acaclaw-session-retention") ?? "30", 10);
+  @state() private _debugLogging = localStorage.getItem("acaclaw-debug-logging") === "true";
+  @state() private _tokenAlertThreshold = parseInt(localStorage.getItem("acaclaw-token-alert") ?? "0", 10);
+
+  /* Debug tab */
+  @state() private _debugTab: "snapshots" | "rpc" | "events" = "snapshots";
+  @state() private _statusSnapshot = "";
+  @state() private _healthSnapshot = "";
+  @state() private _heartbeat = "";
+  @state() private _rpcMethod = "";
+  @state() private _rpcParams = "{}";
+  @state() private _rpcResult = "";
+  @state() private _rpcError = "";
+  @state() private _rpcLoading = false;
+  @state() private _debugEvents: Array<{ type: string; timestamp: string; payload: string }> = [];
+
+  /* Logs tab */
+  @state() private _logEntries: Array<{ timestamp: string; level: string; subsystem: string; message: string; raw?: string }> = [];
+  @state() private _logLoading = true;
+  @state() private _logSearch = "";
+  @state() private _logLevels = new Set<string>(["info", "warn", "error", "fatal"]);
+  @state() private _logAutoFollow = true;
+  private _logPollTimer: ReturnType<typeof setInterval> | null = null;
+
 
   override connectedCallback() {
     super.connectedCallback();
     this._loadSettings();
     this._checkGateway();
+  }
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    if (this._logPollTimer) {
+      clearInterval(this._logPollTimer);
+      this._logPollTimer = null;
+    }
   }
 
   private async _loadSettings() {
@@ -294,7 +325,10 @@ export class SettingsView extends LitElement {
       appearance: t("settings.tab.appearance"),
       security: t("settings.tab.security"),
       connection: t("settings.tab.connection"),
+      advanced: t("settings.tab.advanced"),
       openclaw: t("settings.tab.openclaw"),
+      debug: t("settings.tab.debug"),
+      logs: t("settings.tab.logs"),
       uninstall: t("settings.tab.uninstall"),
     };
     return html`
@@ -302,14 +336,17 @@ export class SettingsView extends LitElement {
       <div class="subtitle">${t("settings.subtitle")}</div>
 
       <div class="tabs">
-        ${(["appearance", "security", "connection", "openclaw", "uninstall"] as Tab[]).map(
-          (tab) => html`<div class="tab ${this._tab === tab ? "active" : ""}" @click=${() => { if (tab === "openclaw") { this._openOpenClawUI(); } else { this._tab = tab; } }}>${tabLabels[tab]}</div>`
+        ${(["appearance", "security", "connection", "advanced", "openclaw", "debug", "logs", "uninstall"] as Tab[]).map(
+          (tab) => html`<div class="tab ${this._tab === tab ? "active" : ""}" @click=${() => { if (tab === "openclaw") { this._openOpenClawUI(); } else { this._tab = tab; if (tab === "debug") this._loadDebugSnapshots(); if (tab === "logs") this._startLogPolling(); } }}>${tabLabels[tab]}</div>`
         )}
       </div>
 
       ${this._tab === "appearance" ? this._renderAppearance() : nothing}
       ${this._tab === "security" ? this._renderSecurity() : nothing}
       ${this._tab === "connection" ? this._renderConnection() : nothing}
+      ${this._tab === "advanced" ? this._renderAdvanced() : nothing}
+      ${this._tab === "debug" ? this._renderDebugTab() : nothing}
+      ${this._tab === "logs" ? this._renderLogsTab() : nothing}
       ${this._tab === "uninstall" ? this._renderUninstall() : nothing}
       ${this._dirty ? html`<div class="save-banner" @click=${this._saveSecuritySettings}>${t("settings.save")}</div>` : nothing}
     `;
@@ -442,6 +479,94 @@ export class SettingsView extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  private _renderAdvanced() {
+    const intervals = [5, 10, 15, 30, 60];
+    const retentionDays = [7, 14, 30, 90, 0];
+    const retentionLabel = (d: number) => d === 0 ? t("settings.advanced.forever") : t("settings.advanced.days", d);
+    const thresholds = [0, 50000, 100000, 500000, 1000000];
+    const thresholdLabel = (n: number) => n === 0 ? t("settings.advanced.alertOff") : n >= 1000000 ? `${n / 1000000}M` : `${n / 1000}K`;
+
+    return html`
+      <div class="section">
+        <div class="section-title">${t("settings.advanced.refresh.title")}</div>
+        <div class="section-desc">${t("settings.advanced.refresh.desc")}</div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">${t("settings.advanced.refresh.label")}</div>
+            <div class="setting-hint">${t("settings.advanced.refresh.hint")}</div>
+          </div>
+          <div class="theme-options">
+            ${intervals.map((s) => html`<button class="theme-btn ${this._refreshInterval === s ? "active" : ""}" @click=${() => this._setRefreshInterval(s)}>${s}s</button>`)}
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">${t("settings.advanced.retention.title")}</div>
+        <div class="section-desc">${t("settings.advanced.retention.desc")}</div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">${t("settings.advanced.retention.label")}</div>
+            <div class="setting-hint">${t("settings.advanced.retention.hint")}</div>
+          </div>
+          <div class="theme-options">
+            ${retentionDays.map((d) => html`<button class="theme-btn ${this._sessionRetention === d ? "active" : ""}" @click=${() => this._setSessionRetention(d)}>${retentionLabel(d)}</button>`)}
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">${t("settings.advanced.alerts.title")}</div>
+        <div class="section-desc">${t("settings.advanced.alerts.desc")}</div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">${t("settings.advanced.alerts.label")}</div>
+            <div class="setting-hint">${t("settings.advanced.alerts.hint")}</div>
+          </div>
+          <div class="theme-options">
+            ${thresholds.map((n) => html`<button class="theme-btn ${this._tokenAlertThreshold === n ? "active" : ""}" @click=${() => this._setTokenAlertThreshold(n)}>${thresholdLabel(n)}</button>`)}
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">${t("settings.advanced.debug.title")}</div>
+        <div class="section-desc">${t("settings.advanced.debug.desc")}</div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">${t("settings.advanced.debug.label")}</div>
+            <div class="setting-hint">${t("settings.advanced.debug.hint")}</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" .checked=${this._debugLogging} @change=${() => this._toggleDebugLogging()} />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+      </div>
+    `;
+  }
+
+  private _setRefreshInterval(s: number) {
+    this._refreshInterval = s;
+    localStorage.setItem("acaclaw-refresh-interval", String(s));
+    window.dispatchEvent(new CustomEvent("refresh-interval-changed", { detail: s }));
+  }
+
+  private _setSessionRetention(d: number) {
+    this._sessionRetention = d;
+    localStorage.setItem("acaclaw-session-retention", String(d));
+  }
+
+  private _setTokenAlertThreshold(n: number) {
+    this._tokenAlertThreshold = n;
+    localStorage.setItem("acaclaw-token-alert", String(n));
+  }
+
+  private _toggleDebugLogging() {
+    this._debugLogging = !this._debugLogging;
+    localStorage.setItem("acaclaw-debug-logging", String(this._debugLogging));
   }
 
   @state() private _copyState: Record<string, boolean> = {};
@@ -596,6 +721,235 @@ export class SettingsView extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  /* ── Debug tab ── */
+
+  private async _loadDebugSnapshots() {
+    try {
+      const [status, health, heartbeat] = await Promise.all([
+        gateway.call<Record<string, unknown>>("status.snapshot").catch(() => null),
+        gateway.call<Record<string, unknown>>("health.snapshot").catch(() => null),
+        gateway.call<Record<string, unknown>>("heartbeat.last").catch(() => null),
+      ]);
+      this._statusSnapshot = JSON.stringify(status, null, 2) || "null";
+      this._healthSnapshot = JSON.stringify(health, null, 2) || "null";
+      this._heartbeat = JSON.stringify(heartbeat, null, 2) || "null";
+    } catch { /* ignore */ }
+  }
+
+  private async _loadDebugEvents() {
+    try {
+      const result = await gateway.call<{ events: Array<{ type: string; timestamp: string; payload: string }> }>("events.recent", { limit: 50 });
+      this._debugEvents = result?.events ?? [];
+    } catch { this._debugEvents = []; }
+  }
+
+  private async _callRpc() {
+    if (!this._rpcMethod.trim()) return;
+    this._rpcLoading = true;
+    this._rpcResult = "";
+    this._rpcError = "";
+    try {
+      let params: unknown;
+      try { params = JSON.parse(this._rpcParams); } catch {
+        this._rpcError = "Invalid JSON params";
+        this._rpcLoading = false;
+        return;
+      }
+      const result = await gateway.call<unknown>(this._rpcMethod.trim(), params as Record<string, unknown>);
+      this._rpcResult = JSON.stringify(result, null, 2) || "null";
+    } catch (e) { this._rpcError = String(e); }
+    this._rpcLoading = false;
+  }
+
+  private _renderDebugTab() {
+    const debugTabLabels: Record<string, string> = {
+      snapshots: t("debug.tab.snapshots"),
+      rpc: t("debug.tab.rpc"),
+      events: t("debug.tab.events"),
+    };
+    return html`
+      <div style="display:flex;gap:0;margin-bottom:20px;border-bottom:1px solid var(--ac-border)">
+        ${(["snapshots", "rpc", "events"] as const).map((dt) => html`
+          <div class="tab ${this._debugTab === dt ? "active" : ""}"
+            @click=${() => { this._debugTab = dt; if (dt === "events") this._loadDebugEvents(); }}>
+            ${debugTabLabels[dt]}${dt === "events" && this._debugEvents.length > 0 ? html`<span style="font-size:10px;margin-left:4px;opacity:0.6">(${this._debugEvents.length})</span>` : nothing}
+          </div>
+        `)}
+      </div>
+
+      ${this._debugTab === "snapshots" ? html`
+        <div class="section">
+          <div class="section-title">${t("debug.statusSnapshot")}</div>
+          <div class="section-desc">${t("debug.statusSnapshotDesc")}</div>
+          <div class="uninstall-log" style="max-height:250px">${this._statusSnapshot || "Loading\u2026"}</div>
+          <button class="btn-action" style="margin-top:8px" @click=${this._loadDebugSnapshots}>${t("debug.refresh")}</button>
+        </div>
+        <div class="section">
+          <div class="section-title">${t("debug.healthSnapshot")}</div>
+          <div class="section-desc">${t("debug.healthSnapshotDesc")}</div>
+          <div class="uninstall-log" style="max-height:250px">${this._healthSnapshot || "Loading\u2026"}</div>
+        </div>
+        <div class="section">
+          <div class="section-title">${t("debug.heartbeat")}</div>
+          <div class="section-desc">${t("debug.heartbeatDesc")}</div>
+          <div class="uninstall-log" style="max-height:250px">${this._heartbeat || "Loading\u2026"}</div>
+        </div>
+      ` : nothing}
+
+      ${this._debugTab === "rpc" ? html`
+        <div class="section">
+          <div class="section-title">${t("debug.manualRpc")}</div>
+          <div class="section-desc">${t("debug.manualRpcDesc")}</div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;gap:10px;align-items:flex-start">
+              <input class="setting-row" style="flex:1;padding:10px 14px;font-size:13px;border-radius:var(--ac-radius-lg);margin-bottom:0"
+                placeholder="${t("debug.rpcMethodPlaceholder")}"
+                .value=${this._rpcMethod}
+                @input=${(e: InputEvent) => { this._rpcMethod = (e.target as HTMLInputElement).value; }} />
+              <button class="btn-action" style="white-space:nowrap;padding:10px 16px" ?disabled=${this._rpcLoading} @click=${this._callRpc}>
+                ${this._rpcLoading ? t("debug.calling") : t("debug.call")}
+              </button>
+            </div>
+            <textarea style="padding:10px 14px;font-size:12px;background:var(--ac-bg-surface);border:1px solid var(--ac-border-subtle);border-radius:var(--ac-radius-lg);color:var(--ac-text);outline:none;font-family:'JetBrains Mono','Fira Code',monospace;resize:vertical;min-height:80px"
+              placeholder='${t("debug.rpcParamsPlaceholder")}'
+              .value=${this._rpcParams}
+              @input=${(e: InputEvent) => { this._rpcParams = (e.target as HTMLTextAreaElement).value; }}></textarea>
+            ${this._rpcError ? html`<div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:var(--ac-radius-lg);padding:12px 16px;color:#ef4444;font-size:13px;font-family:monospace">${this._rpcError}</div>` : nothing}
+            ${this._rpcResult ? html`<div class="uninstall-log" style="max-height:300px">${this._rpcResult}</div>` : nothing}
+          </div>
+        </div>
+      ` : nothing}
+
+      ${this._debugTab === "events" ? html`
+        <div class="section">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+            <div class="section-title" style="margin-bottom:0">${t("debug.eventLog")}</div>
+            <button class="btn-action" @click=${this._loadDebugEvents}>${t("debug.refresh")}</button>
+          </div>
+          ${this._debugEvents.length === 0
+            ? html`<div style="text-align:center;padding:48px;color:var(--ac-text-muted);font-size:14px">${t("debug.noEvents")}</div>`
+            : this._debugEvents.map((ev) => html`
+                <div class="setting-row" style="padding:8px 12px;margin-bottom:4px;gap:10px;font-size:12px">
+                  <span style="color:var(--ac-text-muted);flex-shrink:0;width:80px">${this._fmtTime(ev.timestamp)}</span>
+                  <span style="font-weight:700;font-size:11px;padding:2px 8px;border-radius:var(--ac-radius-full);background:var(--ac-bg-hover);color:var(--ac-primary);flex-shrink:0">${ev.type}</span>
+                  <span style="font-family:'JetBrains Mono','Fira Code',monospace;font-size:11px;color:var(--ac-text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${ev.payload?.slice(0, 120) || "\u2014"}</span>
+                </div>
+              `)
+          }
+        </div>
+      ` : nothing}
+    `;
+  }
+
+  /* ── Logs tab ── */
+
+  private _startLogPolling() {
+    this._fetchLogs();
+    if (this._logPollTimer) clearInterval(this._logPollTimer);
+    this._logPollTimer = setInterval(() => { if (this._tab === "logs") this._fetchLogs(); }, 5000);
+  }
+
+  private async _fetchLogs() {
+    try {
+      const result = await gateway.call<{ entries: Array<{ timestamp: string; level: string; subsystem: string; message: string; raw?: string }> }>("logs.tail", { lines: 200 });
+      if (result?.entries) {
+        this._logEntries = result.entries;
+        this._logLoading = false;
+        if (this._logAutoFollow) {
+          this.updateComplete.then(() => {
+            const el = this.shadowRoot?.querySelector(".log-container");
+            if (el) el.scrollTop = el.scrollHeight;
+          });
+        }
+      }
+    } catch { if (this._logLoading) this._logLoading = false; }
+  }
+
+  private _filteredLogs() {
+    return this._logEntries.filter((e) => {
+      const level = (e.level || "info").toLowerCase();
+      if (!this._logLevels.has(level)) return false;
+      if (this._logSearch) {
+        const q = this._logSearch.toLowerCase();
+        return e.message.toLowerCase().includes(q) || (e.subsystem || "").toLowerCase().includes(q) || (e.raw || "").toLowerCase().includes(q);
+      }
+      return true;
+    });
+  }
+
+  private _toggleLogLevel(level: string) {
+    const s = new Set(this._logLevels);
+    if (s.has(level)) s.delete(level);
+    else s.add(level);
+    this._logLevels = s;
+  }
+
+  private _exportLogs() {
+    const lines = this._filteredLogs().map((e) => `${e.timestamp} [${e.level}] ${e.subsystem}: ${e.message}`);
+    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `acaclaw-logs-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  private _renderLogsTab() {
+    const levels = ["trace", "debug", "info", "warn", "error", "fatal"] as const;
+    const levelColors: Record<string, string> = { trace: "#94a3b8", debug: "#a78bfa", info: "#60a5fa", warn: "#fbbf24", error: "#f87171", fatal: "#ef4444" };
+    const filtered = this._filteredLogs();
+
+    return html`
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+        <input style="flex:1;min-width:160px;padding:10px 14px;font-size:13px;background:var(--ac-bg-surface);border:1px solid var(--ac-border-subtle);border-radius:var(--ac-radius-lg);color:var(--ac-text);outline:none;font-family:inherit"
+          placeholder="${t("logs.search")}"
+          .value=${this._logSearch}
+          @input=${(e: InputEvent) => { this._logSearch = (e.target as HTMLInputElement).value; }} />
+        <div style="display:flex;gap:4px">
+          ${levels.map((level) => html`
+            <button style="padding:5px 10px;font-size:11px;font-weight:700;border:1px solid var(--ac-border);border-radius:var(--ac-radius-full);cursor:pointer;transition:all 0.15s;text-transform:uppercase;letter-spacing:0.03em;${this._logLevels.has(level) ? `background:${levelColors[level]};border-color:${levelColors[level]};color:#fff` : "background:var(--ac-bg-surface);color:var(--ac-text-muted)"}"
+              @click=${() => this._toggleLogLevel(level)}>
+              ${level}
+            </button>
+          `)}
+        </div>
+        <button class="btn-action ${this._logAutoFollow ? "active" : ""}" style="${this._logAutoFollow ? "background:var(--ac-primary);color:#fff;border-color:var(--ac-primary)" : ""}"
+          @click=${() => { this._logAutoFollow = !this._logAutoFollow; }}>
+          ${t("logs.autoFollow")}
+        </button>
+        <button class="btn-action" @click=${this._exportLogs}>${t("logs.export")}</button>
+      </div>
+
+      <div class="log-container" style="background:#0d1117;border-radius:var(--ac-radius-lg);border:1px solid var(--ac-border-subtle);max-height:calc(100vh - 360px);overflow-y:auto;font-family:'JetBrains Mono','Fira Code',monospace;font-size:12px;line-height:1.7">
+        ${this._logLoading
+          ? html`<div style="text-align:center;padding:48px;color:#6e7681;font-size:13px">${t("logs.loading")}</div>`
+          : filtered.length === 0
+            ? html`<div style="text-align:center;padding:48px;color:#6e7681;font-size:13px">${t("logs.empty")}</div>`
+            : filtered.map((e) => html`
+                <div style="display:flex;gap:10px;padding:3px 14px;border-bottom:1px solid rgba(255,255,255,0.03)">
+                  <span style="color:#6e7681;flex-shrink:0;min-width:70px">${this._fmtTime(e.timestamp)}</span>
+                  <span style="font-weight:700;flex-shrink:0;min-width:50px;text-transform:uppercase;font-size:11px;color:${levelColors[e.level?.toLowerCase()] || levelColors.info}">${e.level || "INFO"}</span>
+                  <span style="color:#8b949e;flex-shrink:0;min-width:100px">${e.subsystem || ""}</span>
+                  <span style="color:#c9d1d9;word-break:break-word;flex:1">${e.message || e.raw || ""}</span>
+                </div>
+              `)
+        }
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;font-size:12px;color:var(--ac-text-muted)">
+        <span>${filtered.length} entries (${this._logEntries.length} total)</span>
+        <span>${this._logAutoFollow ? "Auto-scrolling" : "Scroll paused"}</span>
+      </div>
+    `;
+  }
+
+  private _fmtTime(ts: string): string {
+    try {
+      return new Date(ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    } catch { return ts?.slice(11, 19) || ""; }
   }
 
 }
