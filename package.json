@@ -3,15 +3,30 @@
   "version": "0.1.0",
   "description": "Academic distribution of OpenClaw — AI-powered academic assistant",
   "type": "module",
-  "private": true,
   "license": "MIT",
   "author": "Cosinx AI",
   "repository": {
     "type": "git",
     "url": "https://github.com/acaclaw/acaclaw.git"
   },
+  "files": [
+    "plugins/",
+    "config/",
+    "env/",
+    "agents/",
+    "scripts/",
+    "ui/dist/",
+    "skills.json"
+  ],
+  "bin": {
+    "acaclaw-install": "./scripts/install.sh",
+    "acaclaw-start": "./scripts/start.sh",
+    "acaclaw-stop": "./scripts/stop.sh"
+  },
   "scripts": {
     "build": "tsc --noEmit",
+    "build:ui": "cd ui && npm install --no-audit --no-fund && npm run build",
+    "prepare": "npm run build:ui",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "check": "tsc --noEmit"

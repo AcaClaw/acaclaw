@@ -5,6 +5,7 @@ import { t, LocaleController } from "./i18n.js";
 // Eager: default/primary views needed immediately
 import "./views/monitor.js";
 import "./views/chat.js";
+import "./views/command-palette.js";
 import type { ChatView } from "./views/chat.js";
 
 // Lazy-loaded on first navigation
@@ -20,6 +21,15 @@ const lazyViews: Record<string, () => Promise<unknown>> = {
   staff: () => import("./views/staff.js"),
 };
 const loadedViews = new Set<string>();
+
+// Apply saved theme at startup (before lazy-loading settings view)
+{
+  const saved = localStorage.getItem("acaclaw-theme") ?? "system";
+  const theme = saved === "system"
+    ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+    : saved;
+  document.documentElement.setAttribute("data-theme", theme);
+}
 
 // Import gateway controller
 import { gateway, GatewayState } from "./controllers/gateway.js";
@@ -138,6 +148,35 @@ export class AcaClawApp extends LitElement {
       gap: 14px;
       padding: 16px 24px 24px;
     }
+    .sidebar-toggle {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: transparent;
+      border: none;
+      color: var(--ac-text-muted);
+      cursor: pointer;
+      transition: all var(--ac-transition-fast);
+      flex-shrink: 0;
+    }
+    .sidebar-toggle:hover {
+      background: var(--ac-bg-hover);
+      color: var(--ac-text);
+    }
+    .sidebar-toggle svg { pointer-events: none; }
+    .sidebar.collapsed .sidebar-header {
+      flex-direction: column;
+      gap: 8px;
+      padding: 16px 12px 12px;
+      align-items: center;
+    }
+    .sidebar.collapsed .sidebar-toggle {
+      margin-left: 0;
+    }
     .sidebar-header img {
       width: 36px;
       height: 36px;
@@ -195,6 +234,9 @@ export class AcaClawApp extends LitElement {
       letter-spacing: 0.05em;
       color: var(--ac-text-muted);
       margin: 16px 0 8px 12px;
+    }
+    .sidebar.collapsed .nav-group-title {
+      display: none;
     }
 
     
@@ -285,25 +327,42 @@ export class AcaClawApp extends LitElement {
       display: none;
     }
 
-    .collapse-btn {
-      padding: 16px 24px;
-      cursor: pointer;
-      color: var(--ac-text-muted);
-      font-size: 13px;
-      font-weight: 500;
+    /* collapse-btn removed – sidebar-toggle in header replaces it */
+
+    /* ── Main column (header + content) ── */
+    .main-column {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Top header bar ── */
+    .top-header {
       display: flex;
       align-items: center;
-      gap: 10px;
-      transition: all var(--ac-transition-fast);
-      border-top: 1px solid var(--ac-border-subtle);
+      justify-content: space-between;
+      padding: 10px 24px;
+      flex-shrink: 0;
     }
-    .sidebar.collapsed .collapse-btn {
-      justify-content: center;
-      padding: 16px 0;
+    .breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: var(--ac-text-secondary);
     }
-    .collapse-btn:hover {
+    .breadcrumb-root {
+      font-weight: 600;
+      color: var(--ac-text-secondary);
+    }
+    .breadcrumb-sep {
+      color: var(--ac-text-muted);
+    }
+    .breadcrumb-page {
+      font-weight: 700;
       color: var(--ac-text);
-      background: var(--ac-bg-hover);
     }
 
     /* ── Main content (Floating/Card Style) ── */
@@ -314,7 +373,7 @@ export class AcaClawApp extends LitElement {
       border-radius: var(--ac-radius-xl);
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 10px 24px rgba(0, 0, 0, 0.04);
       margin-bottom: 0px;
-      padding: 48px 64px;
+      padding: 40px 48px;
     }
 
     /* ── Sidebar Footer & Status ── */
@@ -400,7 +459,7 @@ export class AcaClawApp extends LitElement {
         display: none;
       }
       .main {
-        padding: 20px;
+        padding: 16px;
       }
     }
   `;
@@ -552,11 +611,16 @@ export class AcaClawApp extends LitElement {
               />`
               : html`<span class="brand" @dblclick=${() => { this._editingBrand = true; this.updateComplete.then(() => this.shadowRoot?.querySelector<HTMLInputElement>(".brand-input")?.focus()); }}>${this._brandName}</span>`
             }
+            <button class="sidebar-toggle"
+              title="${this._sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}"
+              @click=${() => (this._sidebarCollapsed = !this._sidebarCollapsed)}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
+            </button>
           </div>
           <div class="nav-list">
             ${NAV_GROUPS.map(
               (group) => html`
-                
+                <div class="nav-group-title">${group.title}</div>
                 ${group.items.map(
                   (item) => html`
                     <div
@@ -595,23 +659,33 @@ export class AcaClawApp extends LitElement {
                 <span class="status-text">${this._formatTokens(this._tokenCount)}</span>
               </div>
             </div>
-            <div
-              class="collapse-btn"
-              @click=${() =>
-                (this._sidebarCollapsed = !this._sidebarCollapsed)}
-            >
-              ${this._sidebarCollapsed ? "›" : "‹"}
-              ${this._sidebarCollapsed ? nothing : html`<span>${t("nav.collapse")}</span>`}
-            </div>
           </div>
         </nav>
-        <main class="main">${this._renderView()}</main>
+        <div class="main-column">
+          <header class="top-header">
+            <div class="breadcrumb">
+              <span class="breadcrumb-root">${this._brandName}</span>
+              <span class="breadcrumb-sep">›</span>
+              <span class="breadcrumb-page">${this._currentPageTitle()}</span>
+            </div>
+          </header>
+          <main class="main">${this._renderView()}</main>
+        </div>
       </div>
+      <acaclaw-command-palette></acaclaw-command-palette>
     `;
   }
 
   private _formatTokens(n: number): string {
     if (n >= 1000) return (n / 1000).toFixed(1) + "K";
     return String(n);
+  }
+
+  private _currentPageTitle(): string {
+    for (const g of NAV_GROUPS) {
+      const item = g.items.find(i => i.id === this._route);
+      if (item) return t("nav." + item.id);
+    }
+    return this._route;
   }
 }

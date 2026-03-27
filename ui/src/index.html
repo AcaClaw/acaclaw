@@ -3,6 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="oc-gateway-url" content="ws://localhost:2090/" />
+    <!-- In production, oc-token is injected by start.sh / gateway at runtime.
+         For local dev (Vite on :5173), set it here so the handshake succeeds. -->
+    <meta name="oc-token" content="e20b44ec89c2ea66a2d273469b6c36e3398e021547c591ce" />
     <title>AcaClaw</title>
     <link rel="stylesheet" href="/fonts/inter.css" />
     <link rel="icon" type="image/svg+xml" href="/logo/AcaClaw.svg" />
@@ -11,5 +15,6 @@
   <body>
     <acaclaw-app></acaclaw-app>
     <script type="module" src="/main.ts"></script>
+    
   </body>
 </html>

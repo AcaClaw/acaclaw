@@ -16,9 +16,9 @@ set -euo pipefail
 
 ACACLAW_VERSION="0.1.0"
 ACACLAW_DIR="${ACACLAW_DIR:-$HOME/.acaclaw}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OPENCLAW_MIN_VERSION="2026.3.24"
 NODE_MIN_VERSION="22"
+ACACLAW_GITHUB_REPO="acaclaw/acaclaw"
 
 # AcaClaw runs as an OpenClaw profile — fully isolated state dir
 ACACLAW_PROFILE="acaclaw"
@@ -36,6 +36,57 @@ log()   { echo -e "${GREEN}[acaclaw]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[acaclaw]${NC} $*"; }
 error() { echo -e "${RED}[acaclaw]${NC} $*" >&2; }
 header() { echo -e "\n${BOLD}${BLUE}$*${NC}\n"; }
+
+# --- Resolve REPO_ROOT ---
+# When run locally from a git clone: SCRIPT_DIR/../ is the repo root.
+# When piped via curl: clone the repo first, then use the clone as root.
+
+_resolve_repo_root() {
+	# Try local repo first (running from clone)
+	local script_dir
+	script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}" 2>/dev/null || echo ".")" && pwd)"
+	if [[ -f "${script_dir}/../package.json" ]] && grep -q '"acaclaw"' "${script_dir}/../package.json" 2>/dev/null; then
+		REPO_ROOT="$(cd "${script_dir}/.." && pwd)"
+		return
+	fi
+
+	# Try npm global install path (npm install -g github:acaclaw/acaclaw)
+	local npm_root
+	npm_root="$(npm root -g 2>/dev/null)/acaclaw"
+	if [[ -d "$npm_root" ]] && [[ -f "${npm_root}/package.json" ]]; then
+		REPO_ROOT="$npm_root"
+		return
+	fi
+
+	# Remote install: clone the repo to a temporary directory
+	if ! command -v git &>/dev/null; then
+		error "git is required for remote install. Install git and try again."
+		error "Or clone manually: git clone https://github.com/${ACACLAW_GITHUB_REPO}.git && bash acaclaw/scripts/install.sh"
+		exit 1
+	fi
+	log "Downloading AcaClaw from GitHub..."
+	ACACLAW_CLONE_DIR="$(mktemp -d)"
+	if git clone --depth 1 "https://github.com/${ACACLAW_GITHUB_REPO}.git" "$ACACLAW_CLONE_DIR" 2>/dev/null; then
+		REPO_ROOT="$ACACLAW_CLONE_DIR"
+		return
+	fi
+
+	error "Could not find AcaClaw source files."
+	error "Install via: npm install -g github:acaclaw/acaclaw && acaclaw-install"
+	error "Or clone manually: git clone https://github.com/${ACACLAW_GITHUB_REPO}.git && bash acaclaw/scripts/install.sh"
+	exit 1
+}
+
+_resolve_repo_root
+SCRIPT_DIR="${REPO_ROOT}/scripts"
+
+# Clean up clone dir on exit if we downloaded from GitHub
+_cleanup_clone() {
+	if [[ -n "${ACACLAW_CLONE_DIR:-}" && -d "${ACACLAW_CLONE_DIR:-}" ]]; then
+		rm -rf "$ACACLAW_CLONE_DIR"
+	fi
+}
+trap '_cleanup_clone' EXIT
 
 # --- Parse arguments ---
 
@@ -129,11 +180,17 @@ header "Step 1: OpenClaw"
 
 if check_command openclaw; then
 	OC_VERSION="$(openclaw --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")"
-	log "OpenClaw ${OC_VERSION} already installed ✓"
+	if version_ge "$OC_VERSION" "$OPENCLAW_MIN_VERSION"; then
+		log "OpenClaw ${OC_VERSION} ✓"
+	else
+		log "Upgrading OpenClaw to ${OPENCLAW_MIN_VERSION}..."
+		npm install -g "openclaw@${OPENCLAW_MIN_VERSION}"
+		log "OpenClaw ${OPENCLAW_MIN_VERSION} installed ✓"
+	fi
 else
-	log "Installing OpenClaw..."
-	npm install -g openclaw@latest
-	log "OpenClaw installed ✓"
+	log "Installing OpenClaw ${OPENCLAW_MIN_VERSION}..."
+	npm install -g "openclaw@${OPENCLAW_MIN_VERSION}"
+	log "OpenClaw ${OPENCLAW_MIN_VERSION} installed ✓"
 fi
 
 # --- Install Miniforge + Scientific Python ---
@@ -218,7 +275,8 @@ else
 			_CONDARC_BAK=""
 		fi
 	}
-	trap '_restore_condarc' EXIT
+	# Extend cleanup: restore condarc + clone dir removal
+	trap '_restore_condarc; _cleanup_clone' EXIT
 
 	MIRROR_URLS=(
 		"https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud"
