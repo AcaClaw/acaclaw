@@ -42,23 +42,7 @@ header() { echo -e "\n${BOLD}${BLUE}$*${NC}\n"; }
 # When piped via curl: clone the repo first, then use the clone as root.
 
 _resolve_repo_root() {
-	# Try local repo first (running from clone)
-	local script_dir
-	script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}" 2>/dev/null || echo ".")" && pwd)"
-	if [[ -f "${script_dir}/../package.json" ]] && grep -q '"acaclaw"' "${script_dir}/../package.json" 2>/dev/null; then
-		REPO_ROOT="$(cd "${script_dir}/.." && pwd)"
-		return
-	fi
-
-	# Try npm global install path (npm install -g github:acaclaw/acaclaw)
-	local npm_root
-	npm_root="$(npm root -g 2>/dev/null)/acaclaw"
-	if [[ -d "$npm_root" ]] && [[ -f "${npm_root}/package.json" ]]; then
-		REPO_ROOT="$npm_root"
-		return
-	fi
-
-	# Remote install: clone the repo to a temporary directory
+	# Always install from GitHub — clone the latest release
 	if ! command -v git &>/dev/null; then
 		error "git is required for remote install. Install git and try again."
 		error "Or clone manually: git clone https://github.com/${ACACLAW_GITHUB_REPO}.git && bash acaclaw/scripts/install.sh"
