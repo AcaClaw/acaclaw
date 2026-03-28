@@ -66,7 +66,14 @@ _resolve_repo_root() {
 	fi
 	log "Downloading AcaClaw from GitHub..."
 	ACACLAW_CLONE_DIR="$(mktemp -d)"
-	if git clone --depth 1 "https://github.com/${ACACLAW_GITHUB_REPO}.git" "$ACACLAW_CLONE_DIR" 2>/dev/null; then
+	# Try HTTPS first (works for most users), then SSH fallback (for corporate proxies / SSH-configured users)
+	if GIT_TERMINAL_PROMPT=0 git clone --depth 1 "https://github.com/${ACACLAW_GITHUB_REPO}.git" "$ACACLAW_CLONE_DIR" 2>/dev/null; then
+		REPO_ROOT="$ACACLAW_CLONE_DIR"
+		return
+	fi
+	rm -rf "$ACACLAW_CLONE_DIR"
+	ACACLAW_CLONE_DIR="$(mktemp -d)"
+	if git clone --depth 1 "git@github.com:${ACACLAW_GITHUB_REPO}.git" "$ACACLAW_CLONE_DIR" 2>/dev/null; then
 		REPO_ROOT="$ACACLAW_CLONE_DIR"
 		return
 	fi
@@ -865,6 +872,14 @@ else
 	log "Desktop shortcut script not found — skipping"
 fi
 
+# --- Copy management scripts to persistent location ---
+for _script in start.sh stop.sh uninstall.sh; do
+	if [[ -f "${SCRIPT_DIR}/${_script}" ]]; then
+		cp -f "${SCRIPT_DIR}/${_script}" "${ACACLAW_DIR}/${_script}"
+		chmod +x "${ACACLAW_DIR}/${_script}"
+	fi
+done
+
 echo ""
 echo -e "${GREEN}AcaClaw v${ACACLAW_VERSION} installed successfully.${NC}"
 echo ""
@@ -878,7 +893,7 @@ echo "    4. Choose security level"
 echo ""
 echo "  After setup, launch AcaClaw anytime:"
 echo "    • From your app launcher (desktop shortcut installed)"
-echo "    • Or run: ${BOLD}bash ${SCRIPT_DIR}/start.sh${NC}"
-echo "    • Stop:  ${BOLD}bash ${SCRIPT_DIR}/stop.sh${NC}"
+echo "    • Or run: ${BOLD}bash ${ACACLAW_DIR}/start.sh${NC}"
+echo "    • Stop:  ${BOLD}bash ${ACACLAW_DIR}/stop.sh${NC}"
 echo ""
 log "Happy researching!"
