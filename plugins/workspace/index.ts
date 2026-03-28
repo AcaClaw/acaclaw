@@ -23,8 +23,21 @@ import {
 	setWorkdirOverride,
 	getAllWorkdirOverrides,
 } from "./workspace.js";
-import { join } from "node:path";
-import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+
+function resolveAgentWorkspace(api: OpenClawPluginApi, agentId: string, defaultDir: string): string {
+	const override = getEffectiveWorkdir(agentId, "");
+	if (override) return override;
+
+	const agents = (api.config as any)?.agents?.list ?? [];
+	const agentCfg = agents.find((a: any) => a.id === agentId);
+	if (agentCfg?.workspace) {
+		return resolve(agentCfg.workspace.replace(/^~/, homedir()));
+	}
+	return defaultDir;
+}
 
 /** Build agent identity context from SOUL.md + config for LLM injection. */
 function buildIdentityContext(api: OpenClawPluginApi, sessionKey: string, workspaceDir: string): string {
@@ -119,7 +132,7 @@ const workspacePlugin = {
 				const identitySection = buildIdentityContext(api, sk, workspaceDir);
 
 				const sections = identitySection ? [identitySection, context] : [context];
-				return { systemPromptSections: sections };
+				return { prependSystemContext: sections.join("\n\n") };
 			},
 			{ priority: 150 }, // After academic-env (50), before backup/security
 		);
@@ -298,6 +311,62 @@ const workspacePlugin = {
 			try {
 				createWorkspaceFile(root, subPath, content);
 				respond(true, { created: subPath });
+			} catch (err: unknown) {
+				respond(false, { error: (err as Error).message });
+			}
+		});
+
+		api.registerGatewayMethod("acaclaw.workspace.writeFile", async ({ params, respond, context }) => {
+			const root = context?.workspaceDir ?? DEFAULT_WORKSPACE_ROOT;
+			const { path: subPath, content } = params as { path: string; content: string };
+			if (!subPath) {
+				respond(false, { error: "File path is required" });
+				return;
+			}
+			if (typeof content !== "string") {
+				respond(false, { error: "Content is required" });
+				return;
+			}
+			try {
+				createWorkspaceFile(root, subPath, content);
+				respond(true, { written: subPath });
+			} catch (err: unknown) {
+				respond(false, { error: (err as Error).message });
+			}
+		});
+
+		// -------------------------------------------------------------------------
+		// Gateway: SOUL.md — read and write agent identity files
+		// -------------------------------------------------------------------------
+
+		api.registerGatewayMethod("acaclaw.soul.get", async ({ params, respond, context }) => {
+			const { agentId } = (params ?? {}) as { agentId?: string };
+			const defaultDir = context?.workspaceDir ?? DEFAULT_WORKSPACE_ROOT;
+			const workdir = agentId ? resolveAgentWorkspace(api, agentId, defaultDir) : defaultDir;
+			const soulPath = join(workdir, "SOUL.md");
+			try {
+				if (existsSync(soulPath)) {
+					respond(true, { content: readFileSync(soulPath, "utf-8"), path: soulPath });
+				} else {
+					respond(true, { content: "", path: soulPath });
+				}
+			} catch (err: unknown) {
+				respond(false, { error: (err as Error).message });
+			}
+		});
+
+		api.registerGatewayMethod("acaclaw.soul.set", async ({ params, respond, context }) => {
+			const { agentId, content } = params as { agentId?: string; content: string };
+			if (typeof content !== "string") {
+				respond(false, { error: "Content is required" });
+				return;
+			}
+			const defaultDir = context?.workspaceDir ?? DEFAULT_WORKSPACE_ROOT;
+			const workdir = agentId ? resolveAgentWorkspace(api, agentId, defaultDir) : defaultDir;
+			const soulPath = join(workdir, "SOUL.md");
+			try {
+				writeFileSync(soulPath, content);
+				respond(true, { written: soulPath });
 			} catch (err: unknown) {
 				respond(false, { error: (err as Error).message });
 			}

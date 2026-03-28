@@ -108,7 +108,7 @@ export class ChatView extends LitElement {
   @state() private _activeTabId = GENERAL_TAB_ID;
   @state() private _workdir = "";
 
-  @state() private _availableModels: Array<{id: string; label: string}> = [];
+  @state() private _availableModels: Array<{id: string; label: string; provider?: string}> = [];
   @state() private _selectedModel = "";
   @state() private _defaultModelName = "";
   @state() private _attachments: ChatAttachment[] = [];
@@ -1047,12 +1047,11 @@ export class ChatView extends LitElement {
       box-shadow: none;
     }
     .input-model-select {
-      padding: 4px 8px; font-size: 12px; font-weight: 600;
+      padding: 4px 8px; font-size: 12px; font-weight: 500;
       background: var(--ac-bg-hover); border: 1px solid var(--ac-border-subtle);
-      border-radius: var(--ac-radius); color: var(--ac-text-secondary); font-family: inherit;
-      cursor: pointer; max-width: 200px;
+      border-radius: var(--ac-radius); color: var(--ac-text-muted); font-family: inherit;
+      max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .input-model-select:focus { border-color: var(--ac-primary); outline: none; }
 
     .no-tabs-state {
       display: flex;
@@ -2102,12 +2101,9 @@ export class ChatView extends LitElement {
                 </div>
                 <div class="input-bottom-row">
                   <div style="display:flex;align-items:center;gap:6px">
-                    <select class="input-model-select"
-                      .value=${this._selectedModel}
-                      @change=${(e: Event) => { this._selectedModel = (e.target as HTMLSelectElement).value; this._onModelChange(); }}>
-                      <option value="">${this._defaultModelName ? `Default (${this._defaultModelName})` : t("chat.defaultModel")}</option>
-                      ${this._availableModels.map((m) => html`<option value=${m.id}>${m.label}</option>`)}
-                    </select>
+                    <span class="input-model-select" style="cursor:default">
+                      ${this._defaultModelName ? `${this._defaultModelName}` : t("chat.defaultModel")}
+                    </span>
                     <div class="input-actions">
                       <input type="file" accept="image/*" multiple style="display:none" @change=${this._onFileSelect} />
                       <button title="${t("chat.attach")}" @click=${this._triggerFileInput}>
@@ -2279,29 +2275,79 @@ export class ChatView extends LitElement {
     if (!tab) return;
     try {
       const sessionKey = this._getSessionKey(tab.agentId);
+      const selected = this._availableModels.find(m => m.id === this._selectedModel);
+      let modelValue: string | null = this._selectedModel || null;
+      if (modelValue && selected?.provider && !modelValue.includes("/")) {
+        modelValue = `${selected.provider}/${modelValue}`;
+      }
       await gateway.call("sessions.patch", {
         key: sessionKey,
-        model: this._selectedModel || null,
+        model: modelValue,
       });
     } catch { /* ignore */ }
   }
 
   private async _loadModels() {
     try {
-      const [modelsResult, sessionsResult] = await Promise.all([
+      const [modelsResult, sessionsResult, configSnapshot] = await Promise.all([
         gateway.call<{ models: Array<{id: string; name: string; provider?: string}> }>("models.list", {}),
         gateway.call<{ defaults?: { model?: string; modelProvider?: string } }>("sessions.list", {
           includeGlobal: true, includeUnknown: true,
         }),
+        gateway.call<Record<string, unknown>>("config.get"),
       ]);
+
+      // Determine which providers have configured API keys
+      const configuredProviders = new Set<string>();
+      const cfg = (configSnapshot?.config ?? configSnapshot) as Record<string, unknown> | undefined;
+      if (cfg) {
+        const auth = cfg.auth as Record<string, unknown> | undefined;
+        if (auth?.profiles && typeof auth.profiles === "object") {
+          for (const profile of Object.values(auth.profiles as Record<string, Record<string, unknown>>)) {
+            if (profile?.provider) configuredProviders.add(String(profile.provider).toLowerCase());
+          }
+        }
+        const models = cfg.models as Record<string, unknown> | undefined;
+        if (models?.providers && typeof models.providers === "object") {
+          for (const [pid, pval] of Object.entries(models.providers as Record<string, Record<string, unknown>>)) {
+            if (pval?.apiKey) configuredProviders.add(pid.toLowerCase());
+          }
+        }
+      }
+
       const raw = modelsResult?.models ?? [];
-      this._availableModels = raw.map((m) => ({
+      // Filter to only show models from providers with configured API keys
+      const filtered = configuredProviders.size > 0
+        ? raw.filter((m) => m.provider && configuredProviders.has(m.provider.toLowerCase()))
+        : raw;
+      this._availableModels = filtered.map((m) => ({
         id: m.id,
         label: m.provider ? `${m.name} · ${m.provider}` : m.name,
+        provider: m.provider,
       }));
       const dm = sessionsResult?.defaults?.model ?? "";
       const dp = sessionsResult?.defaults?.modelProvider ?? "";
-      if (dm) {
+
+      // Prefer user-configured default model from config
+      const agents = cfg?.agents as Record<string, unknown> | undefined;
+      const defaults = agents?.defaults as Record<string, unknown> | undefined;
+      const userModel = defaults?.model;
+      if (typeof userModel === "string" && userModel) {
+        // User has explicitly set a default model (e.g. "openrouter/auto")
+        const parts = userModel.split("/");
+        if (parts.length >= 2) {
+          this._defaultModelName = `${parts.slice(1).join("/")} · ${parts[0]}`;
+        } else {
+          this._defaultModelName = userModel;
+        }
+      } else if (dm && dp && configuredProviders.has(dp.toLowerCase())) {
+        // Session default provider is actually configured
+        this._defaultModelName = `${dm} · ${dp}`;
+      } else if (filtered.length > 0) {
+        // Use first available model from configured providers
+        const first = filtered[0];
+        this._defaultModelName = first.provider ? `${first.name} · ${first.provider}` : first.name;
+      } else if (dm) {
         this._defaultModelName = dp ? `${dm} · ${dp}` : dm;
       }
     } catch {

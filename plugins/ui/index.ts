@@ -61,12 +61,14 @@ const uiPlugin = {
     const injectToken = (html: Buffer | string): Buffer => {
       const token = resolveToken();
       if (!token) return Buffer.isBuffer(html) ? html : Buffer.from(html);
-      const str = Buffer.isBuffer(html) ? html.toString("utf-8") : html;
-      const injected = str.replace(
-        "</head>",
-        `<meta name="oc-token" content="${token}">\n</head>`
-      );
-      return Buffer.from(injected);
+      let str = Buffer.isBuffer(html) ? html.toString("utf-8") : html;
+      // Replace existing oc-token meta tag if present, otherwise append before </head>
+      if (/<meta\s+name="oc-token"[^>]*>/i.test(str)) {
+        str = str.replace(/<meta\s+name="oc-token"[^>]*>/i, `<meta name="oc-token" content="${token}">`);
+      } else {
+        str = str.replace("</head>", `<meta name="oc-token" content="${token}">\n</head>`);
+      }
+      return Buffer.from(str);
     };
 
     api.registerHttpRoute({

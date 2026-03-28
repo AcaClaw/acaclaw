@@ -1,5 +1,5 @@
 {
-  "name": "@acaclaw/academic-env",
+  "name": "acaclaw-academic-env",
   "version": "0.1.0",
   "description": "AcaClaw environment detection — finds Conda, Python, and scientific tools",
   "type": "module",

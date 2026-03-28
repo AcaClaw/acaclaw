@@ -1,5 +1,5 @@
 {
-  "name": "@acaclaw/workspace",
+  "name": "acaclaw-workspace",
   "version": "0.1.0",
   "description": "Workspace management for AcaClaw — project scaffold, file tree context, workspace-scoped operations",
   "type": "module",

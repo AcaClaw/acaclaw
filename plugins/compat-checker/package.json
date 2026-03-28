@@ -1,5 +1,5 @@
 {
-  "name": "@acaclaw/compat-checker",
+  "name": "acaclaw-compat-checker",
   "version": "0.1.0",
   "description": "AcaClaw compatibility checker — validates OpenClaw upgrades and environment integrity",
   "type": "module",

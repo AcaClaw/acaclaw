@@ -376,7 +376,7 @@ export const STAFF_MEMBERS: StaffMember[] = [
   },
 ];
 
-type PanelType = "config" | "skills";
+type PanelType = "config" | "skills" | "soul";
 
 interface PanelState {
   staffId: string;
@@ -471,6 +471,12 @@ export class StaffView extends LitElement {
   @state() private _skillUninstalling: Record<string, boolean> = {};
   /** Skill install log lines */
   @state() private _skillInstallLog: string[] = [];
+  /** Soul editor state */
+  @state() private _soulContent = "";
+  @state() private _soulDraft = "";
+  @state() private _soulLoading = false;
+  @state() private _soulSaving = false;
+  @state() private _soulSaveError = "";
   /** Sequential install queue — prevents concurrent clawhub CLI calls. */
   private _installQueue: Promise<void> = Promise.resolve();
 
@@ -1146,6 +1152,26 @@ export class StaffView extends LitElement {
       margin-bottom: 12px;
     }
 
+    /* Soul editor */
+    .soul-editor {
+      width: 100%;
+      min-height: 400px;
+      padding: 12px 14px;
+      border: 1px solid var(--ac-border);
+      border-radius: 8px;
+      background: var(--ac-bg);
+      color: var(--ac-text);
+      font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      resize: vertical;
+      box-sizing: border-box;
+    }
+    .soul-editor:focus {
+      outline: none;
+      border-color: var(--ac-primary, #6366f1);
+    }
+
     /* Config panel */
     /* Config panel — env dropdown */
     .env-select {
@@ -1409,6 +1435,9 @@ export class StaffView extends LitElement {
     if (type === "config" && gateway.state === "connected") {
       this._loadStaffPackages(staffId);
     }
+    if (type === "soul" && gateway.state === "connected") {
+      this._loadSoul(staffId);
+    }
   }
 
   private async _loadStaffPackages(staffId: string) {
@@ -1669,6 +1698,42 @@ export class StaffView extends LitElement {
 
   private _closePanel() {
     this._panel = null;
+  }
+
+  private async _loadSoul(staffId: string) {
+    this._soulLoading = true;
+    this._soulSaveError = "";
+    this._soulContent = "";
+    this._soulDraft = "";
+    try {
+      const agentId = staffId === "main" ? undefined : staffId;
+      const res = await gateway.call<{ content: string; path: string }>(
+        "acaclaw.soul.get", { agentId }
+      );
+      this._soulContent = res?.content ?? "";
+      this._soulDraft = this._soulContent;
+    } catch {
+      this._soulContent = "";
+      this._soulDraft = "";
+    }
+    this._soulLoading = false;
+  }
+
+  private async _saveSoul() {
+    if (!this._panel || this._soulSaving) return;
+    this._soulSaving = true;
+    this._soulSaveError = "";
+    try {
+      const agentId = this._panel.staffId === "main" ? undefined : this._panel.staffId;
+      await gateway.call("acaclaw.soul.set", {
+        agentId,
+        content: this._soulDraft,
+      });
+      this._soulContent = this._soulDraft;
+    } catch (err: unknown) {
+      this._soulSaveError = (err as Error).message ?? "Failed to save";
+    }
+    this._soulSaving = false;
   }
 
   private _setEnv(staffId: string, envId: string) {
@@ -2004,6 +2069,14 @@ export class StaffView extends LitElement {
         </div>
 
         <div class="kv-row">
+          <div class="kv-label">Soul</div>
+          <div class="kv-value" style="display:flex;align-items:center;gap:6px">
+            <span style="color:var(--ac-text-muted)">SOUL.md</span>
+            <button class="manage-link" @click=${() => this._openPanel(s.id, "soul")}>${t("staff.manage")}</button>
+          </div>
+        </div>
+
+        <div class="kv-row">
           <div class="kv-label">${t("agents.env")}</div>
           <div class="kv-value" style="display:flex;align-items:center;gap:6px">
             <span class="env-badge">
@@ -2064,6 +2137,7 @@ export class StaffView extends LitElement {
     let title = "";
     if (type === "config") title = t("staff.panel.env", staff.name);
     if (type === "skills") title = t("staff.panel.skills", staff.name);
+    if (type === "soul") title = `${staff.name}'s Soul`;
 
     return html`
       <div class="panel-overlay" @click=${this._closePanel}></div>
@@ -2075,6 +2149,7 @@ export class StaffView extends LitElement {
         <div class="panel-body">
           ${type === "config" ? this._renderConfigPanel(staff) : ""}
           ${type === "skills" ? this._renderSkillsPanel(staff) : ""}
+          ${type === "soul" ? this._renderSoulPanel(staff) : ""}
         </div>
         ${type === "config"
           ? html`
@@ -2096,6 +2171,31 @@ export class StaffView extends LitElement {
               </div>
             `
           : ""}
+      </div>
+    `;
+  }
+
+  private _renderSoulPanel(staff: StaffMember) {
+    if (this._soulLoading) {
+      return html`<div style="padding:16px;color:var(--ac-text-muted)">Loading…</div>`;
+    }
+    const dirty = this._soulDraft !== this._soulContent;
+    return html`
+      <div class="panel-section-title">SOUL.md — ${staff.name}</div>
+      <div style="font-size:12px;color:var(--ac-text-muted);margin-bottom:12px">
+        This file defines ${staff.name}'s personality, expertise, and behaviour. It is injected into the system prompt at the start of every conversation.
+      </div>
+      <textarea
+        class="soul-editor"
+        .value=${this._soulDraft}
+        @input=${(e: Event) => { this._soulDraft = (e.target as HTMLTextAreaElement).value; }}
+        spellcheck="false"
+      ></textarea>
+      ${this._soulSaveError ? html`<div style="color:var(--ac-error);font-size:12px;margin-top:4px">${this._soulSaveError}</div>` : ""}
+      <div style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end">
+        <button class="btn-panel-action" style="opacity:${dirty ? 1 : 0.4}" ?disabled=${!dirty || this._soulSaving} @click=${this._saveSoul}>
+          ${this._soulSaving ? "Saving…" : "Save"}
+        </button>
       </div>
     `;
   }

@@ -564,8 +564,8 @@ export class ApiKeysView extends LitElement {
         }
       }
 
-      // ── Set default model from config ──
       // ── Build model list from configured providers ──
+      // First try models.providers in config, then fall back to models.list
       const configuredModels: ModelOption[] = [];
       if (models?.providers && typeof models.providers === "object") {
         for (const [pid, pval] of Object.entries(
@@ -587,6 +587,38 @@ export class ApiKeysView extends LitElement {
               }
             }
           }
+        }
+      }
+
+      // If no models from config, fetch from gateway and filter by configured providers
+      if (configuredModels.length === 0 && this._llmKeys.size > 0) {
+        try {
+          const modelsResult = await gateway.call<Record<string, unknown>>("models.list");
+          const allModels = Array.isArray(modelsResult) ? modelsResult : (modelsResult as Record<string, unknown>)?.models;
+          if (Array.isArray(allModels)) {
+            const configuredProviderIds = new Set<string>();
+            for (const key of this._llmKeys.keys()) {
+              configuredProviderIds.add(key);
+            }
+            for (const m of allModels) {
+              const mid = m.id as string;
+              const mprovider = m.provider as string;
+              const mname = (m.name as string) ?? mid;
+              if (!mid || !mprovider) continue;
+              const mapped = this._mapProviderName(mprovider);
+              if (mapped && configuredProviderIds.has(mapped)) {
+                const providerName = LLM_PROVIDERS.find((p) => p.id === mapped)?.name ?? mprovider;
+                configuredModels.push({
+                  id: `${mprovider}/${mid}`,
+                  name: mname,
+                  provider: mprovider,
+                  providerName,
+                });
+              }
+            }
+          }
+        } catch {
+          // models.list not available — keep empty
         }
       }
       this._configuredModels = configuredModels;

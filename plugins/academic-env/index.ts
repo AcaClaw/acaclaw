@@ -36,6 +36,21 @@ function resolveStateDir(): string {
 	return join(homedir(), ".openclaw");
 }
 
+// Module-level cache: detectEnvironment() shells out to conda (~2.7s).
+// The gateway hot-reloads plugins every ~3s; without caching, register()
+// would block the event loop on every cycle.
+let _envCache: { env: ReturnType<typeof detectEnvironment>; discipline: string; ts: number } | null = null;
+const ENV_REGISTER_CACHE_TTL = 300_000; // 5 minutes
+
+function getCachedEnv(discipline: string) {
+	if (_envCache && _envCache.discipline === discipline && Date.now() - _envCache.ts < ENV_REGISTER_CACHE_TTL) {
+		return _envCache.env;
+	}
+	const env = detectEnvironment(discipline);
+	_envCache = { env, discipline, ts: Date.now() };
+	return env;
+}
+
 const academicEnvPlugin = {
 	id: "acaclaw-academic-env",
 	name: "AcaClaw Academic Environment",
@@ -46,7 +61,7 @@ const academicEnvPlugin = {
 		const rawConfig = resolveConfig(api.pluginConfig ?? {});
 		// The actual discipline comes from install-time profile.txt, with plugin config as fallback
 		const discipline = readInstalledDiscipline(rawConfig.discipline);
-		const env = detectEnvironment(discipline);
+		const env = getCachedEnv(discipline);
 
 		if (env.condaAvailable && env.envExists) {
 			api.logger.info?.(
@@ -67,19 +82,13 @@ const academicEnvPlugin = {
 		// --- LLM context injection ---
 		// Inject the computing environment description into the system prompt
 		// so the LLM knows which packages are available and doesn't try to install them.
-		// Cache detectEnvironment() to avoid 4 synchronous conda subprocess calls (~1.5s) per message.
-		let envDetectCache: { data: ReturnType<typeof detectEnvironment>; ts: number } | null = null;
-		const ENV_DETECT_CACHE_TTL = 300_000; // 5 minutes — env rarely changes mid-session
-		function invalidateEnvDetectCache() { envDetectCache = null; }
+		// Uses the module-level cache (getCachedEnv) to avoid repeated conda subprocess calls.
 
 		api.on(
 			"before_prompt_build",
 			async () => {
-				if (!envDetectCache || Date.now() - envDetectCache.ts > ENV_DETECT_CACHE_TTL) {
-					envDetectCache = { data: detectEnvironment(discipline), ts: Date.now() };
-				}
 				return {
-					appendSystemContext: buildEnvContext(envDetectCache.data),
+					appendSystemContext: buildEnvContext(getCachedEnv(discipline)),
 				};
 			},
 			{ priority: 50 },
