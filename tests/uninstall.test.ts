@@ -846,10 +846,9 @@ describe("uninstall-all.sh — end-to-end", () => {
 		);
 
 		expect(code).toBe(0);
-		expect(stdout).toContain("Part 1: Removing AcaClaw");
-		expect(stdout).toContain("Part 2: Removing OpenClaw");
-		expect(stdout).toContain("Full Uninstall Complete");
-		expect(stdout).toContain("Removed AcaClaw profile");
+		expect(stdout).toContain("Removing AcaClaw Profile");
+		expect(stdout).toContain("Removing OpenClaw CLI");
+		expect(stdout).toContain("Uninstall Complete");
 	});
 
 	it("handles missing dirs gracefully (idempotent)", async () => {
@@ -860,7 +859,7 @@ describe("uninstall-all.sh — end-to-end", () => {
 		);
 
 		expect(code).toBe(0);
-		expect(stdout).toContain("Full Uninstall Complete");
+		expect(stdout).toContain("Uninstall Complete");
 	});
 });
 
@@ -878,6 +877,10 @@ describe("uninstall.sh — end-to-end", () => {
 		// Stub pkill — no-op to avoid killing real gateway processes
 		await writeFile(join(fakeBin, "pkill"), "#!/bin/bash\nexit 0\n");
 		await runBash(`chmod +x "${join(fakeBin, "pkill")}"`);
+
+		// Stub npm — no-op to avoid uninstalling real packages
+		await writeFile(join(fakeBin, "npm"), "#!/bin/bash\nexit 0\n");
+		await runBash(`chmod +x "${join(fakeBin, "npm")}"`);
 	});
 
 	afterEach(async () => {

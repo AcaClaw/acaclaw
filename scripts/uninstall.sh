@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# AcaClaw Uninstaller — removes AcaClaw config and computing environment
+# AcaClaw Uninstaller — removes AcaClaw, OpenClaw, and computing environment
 # Usage: bash uninstall.sh [--keep-backups] [--yes]
 #
 # What this removes:
-#   - AcaClaw OpenClaw config (~/.openclaw/)
-#   - AcaClaw conda environments (acaclaw, acaclaw-bio, etc.)
-#   - AcaClaw-installed Miniforge (only if AcaClaw installed it)
-#   - AcaClaw config and audit data (~/.acaclaw/)
+#   - OpenClaw directory (~/.openclaw/) — config, plugins, sessions, UI
+#   - AcaClaw data (~/.acaclaw/) — conda envs, miniforge, audit, scripts
+#   - OpenClaw gateway service (systemd/launchd)
+#   - OpenClaw + ClawHub CLI (npm global packages)
 #
 # What this does NOT touch:
-#   - OpenClaw itself (~/.openclaw/) — completely untouched
 #   - User data (~/AcaClaw/) — your research files stay
 #   - System conda (miniconda3, mambaforge, etc.) — only AcaClaw's own miniforge
+#   - Node.js itself
 set -euo pipefail
 
 ACACLAW_DIR="${ACACLAW_DIR:-$HOME/.acaclaw}"
@@ -51,15 +51,14 @@ while [[ $# -gt 0 ]]; do
 			echo ""
 			echo "Usage: bash uninstall.sh [OPTIONS]"
 			echo ""
-			echo "Removes AcaClaw config, plugins, conda envs, and computing environment."
+			echo "Removes AcaClaw and OpenClaw completely: config, plugins,"
+			echo "conda envs, gateway service, and CLI packages."
 			echo "Your research data (~/AcaClaw/) is NOT touched."
 			echo ""
 			echo "Options:"
 			echo "  --keep-backups   Keep backup files in ~/.acaclaw/backups/"
 			echo "  --yes, -y        Skip confirmation prompts"
 			echo "  -h, --help       Show this help"
-			echo ""
-			echo "To also remove OpenClaw, use: bash uninstall-all.sh"
 			exit 0
 			;;
 		*)
@@ -73,19 +72,24 @@ done
 
 header "AcaClaw Uninstaller"
 
-echo "This will remove:"
-echo "  - AcaClaw profile   ${OPENCLAW_DIR}/"
-echo "    (plugins, skills, sessions, config)"
+echo -e "${RED}${BOLD}This will remove AcaClaw and OpenClaw completely.${NC}"
+echo ""
+echo "Will be removed:"
+echo "  - OpenClaw directory  ${OPENCLAW_DIR}/"
+echo "    (config, plugins, skills, sessions, UI)"
+echo "  - AcaClaw data        ${ACACLAW_DIR}/"
 if [[ -d "$ACACLAW_MINIFORGE" ]]; then
-	echo "  - AcaClaw Miniforge  ${ACACLAW_MINIFORGE}/"
+	echo "  - AcaClaw Miniforge   ${ACACLAW_MINIFORGE}/"
 fi
-echo "  - AcaClaw data      ${ACACLAW_DIR}/"
+echo "  - Gateway service     (systemd/launchd)"
+echo "  - OpenClaw CLI        (npm global package)"
 if [[ "$KEEP_BACKUPS" == "true" ]]; then
 	echo -e "    ${GREEN}(keeping backups)${NC}"
 fi
 echo ""
 echo -e "  ${GREEN}NOT touched:${NC}"
 echo -e "    ${GREEN}✓ Research data  ${HOME}/AcaClaw/${NC}"
+echo -e "    ${GREEN}✓ Node.js${NC}"
 echo -e "    ${GREEN}✓ Conda environments${NC}"
 echo ""
 
@@ -198,11 +202,37 @@ else
 fi
 log "AcaClaw data removed ✓"
 
+# --- Remove OpenClaw CLI ---
+
+header "Removing OpenClaw CLI"
+
+if command -v openclaw &>/dev/null; then
+	log "Removing OpenClaw CLI..."
+	npm rm -g openclaw 2>/dev/null || true
+	log "OpenClaw CLI removed ✓"
+else
+	log "OpenClaw CLI not found (already removed)"
+fi
+
+# Also remove clawhub CLI if present
+if command -v clawhub &>/dev/null; then
+	log "Removing ClawHub CLI..."
+	npm rm -g clawhub 2>/dev/null || true
+	log "ClawHub CLI removed ✓"
+fi
+
+# --- Remove macOS app (if present) ---
+
+if [[ "$(uname -s)" == "Darwin" && -d "/Applications/OpenClaw.app" ]]; then
+	rm -rf "/Applications/OpenClaw.app"
+	log "Removed /Applications/OpenClaw.app ✓"
+fi
+
 # --- Summary ---
 
 header "Uninstall Complete"
 
-echo "AcaClaw has been removed."
+echo "AcaClaw and OpenClaw have been removed."
 echo ""
 echo -e "  ${GREEN}✓${NC} Your research data at ~/AcaClaw/ is preserved"
 echo ""
@@ -220,6 +250,7 @@ echo ""
 # stdout pipe, killing the script. By deferring to the very end, all file
 # removals are guaranteed to complete first.
 
+# Remove AcaClaw gateway service
 SERVICE_SCRIPT="${SCRIPT_DIR}/acaclaw-service.sh"
 if [[ -f "$SERVICE_SCRIPT" ]]; then
 	bash "$SERVICE_SCRIPT" remove 2>/dev/null || true
@@ -232,11 +263,32 @@ else
 		systemctl --user daemon-reload 2>/dev/null || true
 	fi
 fi
+
+# Remove OpenClaw's own gateway service (if installed separately)
+case "$(uname -s)" in
+	Linux*)
+		OC_UNIT="${HOME}/.config/systemd/user/openclaw-gateway.service"
+		if [[ -f "$OC_UNIT" ]] && command -v systemctl &>/dev/null; then
+			systemctl --user stop openclaw-gateway.service 2>/dev/null || true
+			systemctl --user disable openclaw-gateway.service 2>/dev/null || true
+			rm -f "$OC_UNIT"
+			systemctl --user daemon-reload 2>/dev/null || true
+		fi
+		;;
+	Darwin*)
+		if [[ -f "${HOME}/Library/LaunchAgents/ai.openclaw.gateway.plist" ]]; then
+			launchctl unload "${HOME}/Library/LaunchAgents/ai.openclaw.gateway.plist" 2>/dev/null || true
+			rm -f "${HOME}/Library/LaunchAgents/ai.openclaw.gateway.plist"
+		fi
+		;;
+esac
+
 bash "${SCRIPT_DIR}/stop.sh" 2>/dev/null || true
 
-# Kill any remaining AcaClaw-profile processes
+# Kill any remaining openclaw processes
 if command -v pkill &>/dev/null; then
-	pkill -u "$(id -u)" -f "openclaw.*gateway.*--port 2090" 2>/dev/null || true
+	pkill -u "$(id -u)" -f "openclaw.*gateway" 2>/dev/null || true
+	pkill -u "$(id -u)" -x "openclaw" 2>/dev/null || true
 fi
 
 log "Done."

@@ -280,8 +280,6 @@ UNIT
     <key>ProgramArguments</key>
     <array>
         <string>\${OPENCLAW_BIN}</string>
-        <string>--profile</string>
-        <string>acaclaw</string>
         <string>gateway</string>
         <string>run</string>
         <string>--bind</string>
@@ -308,7 +306,7 @@ PLIST
 			const content = await readFile(plistFile, "utf-8");
 			expect(content).toContain("<string>com.acaclaw.gateway</string>");
 			expect(content).toContain("<string>/usr/local/bin/openclaw</string>");
-			expect(content).toContain("<string>acaclaw</string>");
+			expect(content).toContain("<string>gateway</string>");
 			expect(content).toContain("<string>2090</string>");
 			expect(content).toContain("KeepAlive");
 		});

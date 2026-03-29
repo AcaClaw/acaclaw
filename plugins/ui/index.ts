@@ -1,5 +1,5 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/acaclaw-ui";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { join, extname } from "node:path";
 import { homedir } from "node:os";
@@ -47,15 +47,7 @@ const uiPlugin = {
       // Read the gateway auth token from the resolved OpenClaw config
       const token = (api.config as Record<string, unknown> & { gateway?: { auth?: { token?: string } } })
         ?.gateway?.auth?.token;
-      if (token) return token;
-
-      // Fallback: check config file at profile home
-      try {
-        const home = process.env.OPENCLAW_HOME ?? join(homedir(), ".openclaw");
-        const configPath = join(home, "openclaw.json");
-        const raw = JSON.parse(readFileSync(configPath, "utf-8"));
-        return raw?.gateway?.auth?.token ?? "";
-      } catch { return ""; }
+      return token ?? "";
     };
 
     const injectToken = (html: Buffer | string): Buffer => {
