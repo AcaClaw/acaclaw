@@ -42,7 +42,7 @@ find_gateway_pid() {
     fi
 
     local pid
-    pid="$(pgrep -f "openclaw.*--profile acaclaw.*gateway" 2>/dev/null | head -1)" || true
+    pid="$(pgrep -f "openclaw.*gateway.*--port 2090" 2>/dev/null | head -1)" || true
     if [[ -n "$pid" ]]; then
         echo "$pid"
         return 0

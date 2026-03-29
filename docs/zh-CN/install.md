@@ -167,11 +167,11 @@ curl -fsSL https://acaclaw.com/install.sh | bash
 |---|---|---|
 | 1 | 通过 npm 安装 OpenClaw | 全局 `npm install -g openclaw` |
 | 2 | 安装 Miniforge | `~/.acaclaw/miniforge3/` |
-| 3 | 复制 AcaClaw 插件 | `~/.openclaw-acaclaw/extensions/`（独立 profile） |
-| 4 | 从 ClawHub 安装学术技能 | `~/.openclaw-acaclaw/skills/` |
-| 5 | 写入 AcaClaw 配置 | `~/.openclaw-acaclaw/openclaw.json`（复制已有 API 密钥） |
+| 3 | 复制 AcaClaw 插件 | `~/.openclaw/extensions/` |
+| 4 | 从 ClawHub 安装学术技能 | `~/.openclaw/skills/` |
+| 5 | 写入 AcaClaw 配置 | `~/.openclaw/openclaw.json`（复制已有 API 密钥） |
 | 6 | 注册 systemd 用户服务 | `~/.config/systemd/user/acaclaw-gateway.service` |
-| 7 | 启动网关并打开向导 | `openclaw --profile acaclaw gateway run` → `http://localhost:2090/` |
+| 7 | 启动网关并打开向导 | `openclaw gateway run` → `http://localhost:2090/` |
 
 向导随后创建 Conda 环境、保存配置、创建 `~/AcaClaw/` 结构。除包下载与密钥测试外，不向互联网发送你的私密数据。
 
@@ -220,7 +220,7 @@ bash ~/github/acaclaw/scripts/uninstall-all.sh
 
 | 项目 | 路径 | 删除者 |
 |---|---|---|
-| AcaClaw profile（插件、技能、配置、会话） | `~/.openclaw-acaclaw/` | 两个脚本 |
+| AcaClaw 数据（插件、技能、配置、会话） | `~/.openclaw/` | 两个脚本 |
 | AcaClaw conda 环境 | conda env list | 两个脚本 |
 | AcaClaw 配置与审计数据 | `~/.acaclaw/` | 两个脚本 |
 | AcaClaw 安装的 Miniforge | `~/.acaclaw/miniforge3/` | 两个脚本 |

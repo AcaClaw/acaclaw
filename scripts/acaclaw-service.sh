@@ -10,7 +10,7 @@
 set -euo pipefail
 
 ACACLAW_PORT="${ACACLAW_PORT:-2090}"
-ACACLAW_STATE_DIR="${HOME}/.openclaw-acaclaw"
+OPENCLAW_DIR="${HOME}/.openclaw"
 ACACLAW_DATA_DIR="${HOME}/.acaclaw"
 ACACLAW_LOG_FILE="${ACACLAW_DATA_DIR}/gateway.log"
 
@@ -126,7 +126,7 @@ StartLimitBurst=5
 [Service]
 Type=simple
 ExecStartPre=-${cleanup_script}
-ExecStart=${OPENCLAW_BIN} --profile acaclaw gateway run --bind loopback --port ${ACACLAW_PORT} --force
+ExecStart=${OPENCLAW_BIN} gateway run --bind loopback --port ${ACACLAW_PORT} --force
 Restart=on-failure
 RestartSec=3
 StandardOutput=append:${ACACLAW_LOG_FILE}
@@ -209,8 +209,6 @@ install_launchd() {
     <key>ProgramArguments</key>
     <array>
         <string>${OPENCLAW_BIN}</string>
-        <string>--profile</string>
-        <string>acaclaw</string>
         <string>gateway</string>
         <string>run</string>
         <string>--bind</string>

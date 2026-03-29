@@ -22,7 +22,7 @@
       "coding-agent",
       "clawhub"
     ],
-    "notes": "Agent-required skills are installed by install.sh via clawhub install --workdir ~/.openclaw-acaclaw. Additional skills: clawhub install <skill-name> --workdir ~/.openclaw-acaclaw"
+    "notes": "Agent-required skills are installed by install.sh via clawhub install --workdir ~/.openclaw. Additional skills: clawhub install <skill-name> --workdir ~/.openclaw"
   },
   "agents": {
     "main": {

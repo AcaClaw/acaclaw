@@ -74,7 +74,7 @@ AcaClaw 可与已有 OpenClaw 安装并存，且不修改对方。这依赖 Open
 │   skills/                   ← 用户既有技能
 │   sessions/                 ← 用户既有会话
 │
-~/.openclaw-acaclaw/          ← AcaClaw 配置文件（由安装程序创建）
+~/.openclaw/                      ← OpenClaw 目录（AcaClaw 使用）
 │   openclaw.json             ← AcaClaw 配置（$include → ~/.openclaw/openclaw.json）
 │   plugins/                  ← 仅 AcaClaw 的插件（backup、security、env、ui 等）
 │   skills/                   ← 来自 ClawHub 的学术技能
@@ -89,7 +89,7 @@ AcaClaw 可与已有 OpenClaw 安装并存，且不修改对方。这依赖 Open
 
 **配置继承如何工作：**
 
-AcaClaw 在 `~/.openclaw-acaclaw/openclaw.json` 中使用 OpenClaw 的 `$include` 指令继承用户现有设置：
+AcaClaw 在 `~/.openclaw/openclaw.json` 中使用 OpenClaw 的 `$include` 指令继承用户现有设置：
 
 ```json
 {
@@ -98,7 +98,7 @@ AcaClaw 在 `~/.openclaw-acaclaw/openclaw.json` 中使用 OpenClaw 的 `$include
     "port": 2090,
     "controlUi": {
       "basePath": "/",
-      "root": "~/.openclaw-acaclaw/ui"
+      "root": "~/.openclaw/ui"
     }
   },
   "agents": {
@@ -117,7 +117,7 @@ AcaClaw 在 `~/.openclaw-acaclaw/openclaw.json` 中使用 OpenClaw 的 `$include
 |---|---|
 | 用户已有 OpenClaw | AcaClaw 通过 `$include` 继承 API 密钥，**从不**写入 `~/.openclaw/` |
 | 用户更新 OpenClaw | `npm install -g openclaw@latest` — AcaClaw 不受影响 |
-| 用户卸载 AcaClaw | `rm -rf ~/.openclaw-acaclaw ~/.acaclaw` — OpenClaw 不受影响 |
+| 用户卸载 AcaClaw | 删除 `~/.acaclaw` 并从 `~/.openclaw/openclaw.json` 移除 AcaClaw 条目 |
 | 用户同时运行两者 | OpenClaw 网关在默认端口，AcaClaw 网关在 2090（不同 profile = 不同进程） |
 | 用户先装 AcaClaw | AcaClaw 创建独立配置，之后安装的 OpenClaw 与之分离 |
 
@@ -175,7 +175,7 @@ http://localhost:18789          → OpenClaw UI（通道、调试、cron — 不
 
 ### 工作原理
 
-AcaClaw 运行专用网关进程（`acaclaw-gateway.service`）在端口 2090。网关的 `controlUi` 中间件从 `~/.openclaw-acaclaw/ui/` 服务 AcaClaw SPA。OpenClaw 默认网关（`openclaw-gateway.service`）在端口 18789 独立运行，提供自带的控制面板。
+AcaClaw 运行专用网关进程（`acaclaw-gateway.service`）在端口 2090。网关的 `controlUi` 中间件从 `~/.openclaw/ui/` 服务 AcaClaw SPA。OpenClaw 默认网关（`openclaw-gateway.service`）在端口 18789 独立运行，提供自带的控制面板。
 
 AcaClaw 的配置：
 
@@ -184,7 +184,7 @@ AcaClaw 的配置：
   "gateway": {
     "controlUi": {
       "basePath": "/",
-      "root": "~/.openclaw-acaclaw/ui"
+      "root": "~/.openclaw/ui"
     }
   }
 }
@@ -1091,11 +1091,11 @@ AcaClaw 插件注册自定义 WebSocket 方法，两套 UI 均可调用（但只
 | 安装 OpenClaw | `npm install -g openclaw` | 否 |
 | 安装 Miniforge | 静默下载并安装 | 否 |
 | 创建基础 Conda 环境 | Python + R + 核心科学栈 | 否 |
-| 复制 AcaClaw 插件 | 到 `~/.openclaw-acaclaw/plugins/`（隔离 profile） | 否 |
-| 安装学术技能 | 从 ClawHub 安装到 `~/.openclaw-acaclaw/skills/` | 否 |
-| 应用 AcaClaw 配置 | 写入 `~/.openclaw-acaclaw/openclaw.json`（含 `$include`） | 否 |
+| 复制 AcaClaw 插件 | 到 `~/.openclaw/plugins/` | 否 |
+| 安装学术技能 | 从 ClawHub 安装到 `~/.openclaw/skills/` | 否 |
+| 应用 AcaClaw 配置 | 写入 `~/.openclaw/openclaw.json`（含 `$include`） | 否 |
 | 创建工作区目录 | `~/AcaClaw/` 结构 | 否 |
-| 启动网关并打开浏览器 | `openclaw --profile acaclaw gateway run` → `http://localhost:2090/` | 否 |
+| 启动网关并打开浏览器 | `openclaw gateway run` → `http://localhost:2090/` | 否 |
 
 ### 浏览器向导做什么（用户选择）
 
@@ -1268,11 +1268,11 @@ acaclaw/
 ```
 OpenClaw update (npm install -g openclaw@latest)
   └── Updates: gateway binary, built-in skills, core plugins, admin UI at :18789
-  └── Does NOT touch: ~/.openclaw-acaclaw/, AcaClaw UI, AcaClaw plugins, AcaClaw skills
+  └── Does NOT touch: ~/.openclaw/, AcaClaw UI, AcaClaw plugins, AcaClaw skills
 
 AcaClaw update (install.sh --upgrade)
   └── Updates: AcaClaw UI build at /, AcaClaw plugins, AcaClaw skills
-  └── Writes to: ~/.openclaw-acaclaw/plugins/, ~/.openclaw-acaclaw/skills/
+  └── Writes to: ~/.openclaw/plugins/, ~/.openclaw/skills/
   └── Does NOT touch: ~/.openclaw/ (OpenClaw's config, plugins, sessions)
 ```
 

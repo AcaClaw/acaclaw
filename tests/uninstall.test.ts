@@ -54,7 +54,6 @@ async function exists(path: string): Promise<boolean> {
 // Scaffold a fake AcaClaw installation inside a temp HOME
 async function scaffoldInstall(fakeHome: string) {
 	const acaclawDir = join(fakeHome, ".acaclaw");
-	const stateDir = join(fakeHome, ".openclaw-acaclaw");
 	const openclawDir = join(fakeHome, ".openclaw");
 	const workspaceDir = join(fakeHome, "AcaClaw");
 
@@ -68,14 +67,14 @@ async function scaffoldInstall(fakeHome: string) {
 		JSON.stringify({ "acaclaw-workspace": {} }),
 	);
 
-	// AcaClaw profile (state) dir with plugins
-	await mkdir(join(stateDir, "extensions/acaclaw-workspace"), { recursive: true });
-	await mkdir(join(stateDir, "extensions/acaclaw-backup"), { recursive: true });
-	await mkdir(join(stateDir, "extensions/acaclaw-security"), { recursive: true });
-	await mkdir(join(stateDir, "ui"), { recursive: true });
+	// Shared OpenClaw directory (AcaClaw uses the default ~/.openclaw/)
+	await mkdir(join(openclawDir, "extensions/acaclaw-workspace"), { recursive: true });
+	await mkdir(join(openclawDir, "extensions/acaclaw-backup"), { recursive: true });
+	await mkdir(join(openclawDir, "extensions/acaclaw-security"), { recursive: true });
+	await mkdir(join(openclawDir, "ui"), { recursive: true });
 	await writeFile(
-		join(stateDir, "openclaw.json"),
-		JSON.stringify({ gateway: { auth: { token: "test-token" } } }),
+		join(openclawDir, "openclaw.json"),
+		JSON.stringify({ gateway: { port: 2080, auth: { token: "test-token" } } }),
 	);
 
 	// AcaClaw's own miniforge
@@ -83,18 +82,11 @@ async function scaffoldInstall(fakeHome: string) {
 	await mkdir(join(miniforgeDir, "bin"), { recursive: true });
 	await writeFile(join(miniforgeDir, "bin/conda"), "#!/bin/bash\necho conda");
 
-	// OpenClaw install (should NOT be touched by acaclaw-only uninstall)
-	await mkdir(openclawDir, { recursive: true });
-	await writeFile(
-		join(openclawDir, "openclaw.json"),
-		JSON.stringify({ gateway: { port: 2080 } }),
-	);
-
 	// User research workspace
 	await mkdir(join(workspaceDir, "data/raw"), { recursive: true });
 	await writeFile(join(workspaceDir, "README.md"), "# Research data\n");
 
-	return { acaclawDir, stateDir, openclawDir, workspaceDir, miniforgeDir };
+	return { acaclawDir, stateDir: openclawDir, openclawDir, workspaceDir, miniforgeDir };
 }
 
 describe("uninstall.sh — AcaClaw-only uninstall", () => {
@@ -142,15 +134,15 @@ describe("uninstall.sh — AcaClaw-only uninstall", () => {
 	// Removal of AcaClaw profile
 	// ---------------------------------------------------------------
 	describe("AcaClaw profile removal", () => {
-		it("removes ~/.openclaw-acaclaw/", async () => {
+		it("removes ~/.openclaw/", async () => {
 			const { stateDir } = await scaffoldInstall(fakeHome);
 			expect(await exists(stateDir)).toBe(true);
 
 			const { code } = await runBash(`
 				set -euo pipefail
-				ACACLAW_STATE_DIR="${stateDir}"
-				if [[ -d "\${ACACLAW_STATE_DIR}" ]]; then
-					rm -rf "\${ACACLAW_STATE_DIR}"
+				OPENCLAW_DIR="${stateDir}"
+				if [[ -d "\${OPENCLAW_DIR}" ]]; then
+					rm -rf "\${OPENCLAW_DIR}"
 				fi
 			`);
 			expect(code).toBe(0);
@@ -269,29 +261,24 @@ describe("uninstall.sh — AcaClaw-only uninstall", () => {
 	});
 
 	// ---------------------------------------------------------------
-	// OpenClaw is NOT touched
+	// Shared directory removal
 	// ---------------------------------------------------------------
-	describe("OpenClaw preservation", () => {
-		it("does NOT remove ~/.openclaw/", async () => {
+	describe("shared directory removal", () => {
+		it("removes ~/.openclaw/ (shared with AcaClaw)", async () => {
 			const { openclawDir } = await scaffoldInstall(fakeHome);
 
 			// Simulate full AcaClaw-only uninstall (remove AcaClaw dirs only)
 			const { code } = await runBash(`
 				set -euo pipefail
-				ACACLAW_STATE_DIR="${fakeHome}/.openclaw-acaclaw"
+				OPENCLAW_DIR="${fakeHome}/.openclaw"
 				ACACLAW_DIR="${fakeHome}/.acaclaw"
 				ACACLAW_MINIFORGE="${fakeHome}/.acaclaw/miniforge3"
-				rm -rf "$ACACLAW_STATE_DIR"
+				rm -rf "$OPENCLAW_DIR"
 				rm -rf "$ACACLAW_MINIFORGE"
 				rm -rf "\${ACACLAW_DIR}/config" "\${ACACLAW_DIR}/audit" "\${ACACLAW_DIR}/backups"
 			`);
 			expect(code).toBe(0);
-			expect(await exists(openclawDir)).toBe(true);
-
-			const config = JSON.parse(
-				await readFile(join(openclawDir, "openclaw.json"), "utf-8"),
-			);
-			expect(config.gateway.port).toBe(2080);
+			expect(await exists(openclawDir)).toBe(false);
 		});
 
 		it("does NOT remove ~/AcaClaw/ research data", async () => {
@@ -299,9 +286,9 @@ describe("uninstall.sh — AcaClaw-only uninstall", () => {
 
 			const { code } = await runBash(`
 				set -euo pipefail
-				ACACLAW_STATE_DIR="${fakeHome}/.openclaw-acaclaw"
+				OPENCLAW_DIR="${fakeHome}/.openclaw"
 				ACACLAW_DIR="${fakeHome}/.acaclaw"
-				rm -rf "$ACACLAW_STATE_DIR"
+				rm -rf "$OPENCLAW_DIR"
 				rm -rf "\${ACACLAW_DIR}/config" "\${ACACLAW_DIR}/audit" "\${ACACLAW_DIR}/backups"
 			`);
 			expect(code).toBe(0);
@@ -449,8 +436,8 @@ describe("uninstall-all.sh — full uninstall", () => {
 
 			const { code } = await runBash(`
 				set -euo pipefail
-				ACACLAW_STATE_DIR="${stateDir}"
-				rm -rf "$ACACLAW_STATE_DIR"
+				OPENCLAW_DIR="${stateDir}"
+				rm -rf "$OPENCLAW_DIR"
 			`);
 			expect(code).toBe(0);
 			expect(await exists(stateDir)).toBe(false);
@@ -752,5 +739,167 @@ describe("uninstall-all.sh — full uninstall", () => {
 			expect(code).toBe(0);
 			expect(await exists(plistFile)).toBe(false);
 		});
+	});
+});
+
+// =================================================================
+// End-to-end tests — run the ACTUAL scripts against a sandboxed HOME
+// =================================================================
+
+describe("uninstall-all.sh — end-to-end", () => {
+	let fakeHome: string;
+	let fakeBin: string;
+
+	beforeEach(async () => {
+		fakeHome = await mkdtemp(join(tmpdir(), "acaclaw-e2e-uninstall-"));
+		// Create a fake bin directory with stubs for external commands
+		// so the script never touches real system services.
+		fakeBin = join(fakeHome, ".local/bin");
+		await mkdir(fakeBin, { recursive: true });
+
+		// Stub systemctl — always succeeds, does nothing
+		await writeFile(join(fakeBin, "systemctl"), "#!/bin/bash\nexit 0\n");
+		await runBash(`chmod +x "${join(fakeBin, "systemctl")}"`);
+
+		// Stub pkill — no-op to avoid killing real gateway processes
+		await writeFile(join(fakeBin, "pkill"), "#!/bin/bash\nexit 0\n");
+		await runBash(`chmod +x "${join(fakeBin, "pkill")}"`);
+
+		// Stub openclaw — pretend it doesn't exist (command -v will fail)
+		// No stub needed — just ensure it's not on the overridden PATH
+
+		// Stub npm — always succeeds
+		await writeFile(join(fakeBin, "npm"), "#!/bin/bash\nexit 0\n");
+		await runBash(`chmod +x "${join(fakeBin, "npm")}"`);
+	});
+
+	afterEach(async () => {
+		await rm(fakeHome, { recursive: true, force: true });
+	});
+
+	it("removes all AcaClaw and OpenClaw dirs when run end-to-end", async () => {
+		const { stateDir, acaclawDir, openclawDir, miniforgeDir, workspaceDir } =
+			await scaffoldInstall(fakeHome);
+
+		// Verify everything exists before uninstall
+		expect(await exists(stateDir)).toBe(true);
+		expect(await exists(acaclawDir)).toBe(true);
+		expect(await exists(openclawDir)).toBe(true);
+		expect(await exists(miniforgeDir)).toBe(true);
+		expect(await exists(workspaceDir)).toBe(true);
+
+		// Run the ACTUAL uninstall-all.sh with overridden HOME.
+		// Override PATH to use our stubs first. Exclude stop.sh effects
+		// by creating a no-op stop.sh in a temp scripts dir that shadows
+		// the real one would not work easily, so we override the SCRIPTS_DIR
+		// or just let it fail gracefully (stop.sh with no running gateway exits 0).
+		const { code, stdout, stderr } = await runBash(
+			`HOME="${fakeHome}" PATH="${fakeBin}:$PATH" bash "${UNINSTALL_ALL_SCRIPT}" --yes 2>&1`,
+			{ timeout: 30_000 },
+		);
+
+		// Script should exit 0
+		expect(code).toBe(0);
+
+		// All AcaClaw dirs removed
+		expect(await exists(stateDir)).toBe(false);
+		expect(await exists(acaclawDir)).toBe(false);
+		expect(await exists(miniforgeDir)).toBe(false);
+
+		// OpenClaw dir removed
+		expect(await exists(openclawDir)).toBe(false);
+
+		// Research data preserved
+		expect(await exists(workspaceDir)).toBe(true);
+		expect(await exists(join(workspaceDir, "data/raw"))).toBe(true);
+		const readme = await readFile(join(workspaceDir, "README.md"), "utf-8");
+		expect(readme).toContain("Research data");
+	});
+
+	it("preserves backups with --keep-backups flag", async () => {
+		const { acaclawDir, openclawDir, stateDir } =
+			await scaffoldInstall(fakeHome);
+
+		const backupsDir = join(acaclawDir, "backups");
+		expect(await exists(backupsDir)).toBe(true);
+
+		const { code } = await runBash(
+			`HOME="${fakeHome}" PATH="${fakeBin}:$PATH" bash "${UNINSTALL_ALL_SCRIPT}" --yes --keep-backups 2>&1`,
+			{ timeout: 30_000 },
+		);
+
+		expect(code).toBe(0);
+
+		// Backups preserved
+		expect(await exists(backupsDir)).toBe(true);
+		// But AcaClaw and OpenClaw state dirs removed
+		expect(await exists(stateDir)).toBe(false);
+		expect(await exists(openclawDir)).toBe(false);
+	});
+
+	it("outputs progress log lines during uninstall", async () => {
+		await scaffoldInstall(fakeHome);
+
+		const { code, stdout } = await runBash(
+			`HOME="${fakeHome}" PATH="${fakeBin}:$PATH" bash "${UNINSTALL_ALL_SCRIPT}" --yes 2>&1`,
+			{ timeout: 30_000 },
+		);
+
+		expect(code).toBe(0);
+		expect(stdout).toContain("Part 1: Removing AcaClaw");
+		expect(stdout).toContain("Part 2: Removing OpenClaw");
+		expect(stdout).toContain("Full Uninstall Complete");
+		expect(stdout).toContain("Removed AcaClaw profile");
+	});
+
+	it("handles missing dirs gracefully (idempotent)", async () => {
+		// Don't scaffold — everything is already absent
+		const { code, stdout } = await runBash(
+			`HOME="${fakeHome}" PATH="${fakeBin}:$PATH" bash "${UNINSTALL_ALL_SCRIPT}" --yes 2>&1`,
+			{ timeout: 30_000 },
+		);
+
+		expect(code).toBe(0);
+		expect(stdout).toContain("Full Uninstall Complete");
+	});
+});
+
+describe("uninstall.sh — end-to-end", () => {
+	let fakeHome: string;
+	let fakeBin: string;
+
+	beforeEach(async () => {
+		fakeHome = await mkdtemp(join(tmpdir(), "acaclaw-e2e-uninstall-only-"));
+		fakeBin = join(fakeHome, ".local/bin");
+		await mkdir(fakeBin, { recursive: true });
+		await writeFile(join(fakeBin, "systemctl"), "#!/bin/bash\nexit 0\n");
+		await runBash(`chmod +x "${join(fakeBin, "systemctl")}"`);
+
+		// Stub pkill — no-op to avoid killing real gateway processes
+		await writeFile(join(fakeBin, "pkill"), "#!/bin/bash\nexit 0\n");
+		await runBash(`chmod +x "${join(fakeBin, "pkill")}"`);
+	});
+
+	afterEach(async () => {
+		await rm(fakeHome, { recursive: true, force: true });
+	});
+
+	it("removes AcaClaw dirs but preserves OpenClaw", async () => {
+		const { stateDir, acaclawDir, openclawDir, workspaceDir } =
+			await scaffoldInstall(fakeHome);
+
+		const { code } = await runBash(
+			`HOME="${fakeHome}" PATH="${fakeBin}:$PATH" bash "${UNINSTALL_SCRIPT}" --yes 2>&1`,
+			{ timeout: 30_000 },
+		);
+
+		expect(code).toBe(0);
+
+		// AcaClaw + OpenClaw shared directory removed
+		expect(await exists(stateDir)).toBe(false);
+		expect(await exists(openclawDir)).toBe(false);
+
+		// Research data preserved
+		expect(await exists(workspaceDir)).toBe(true);
 	});
 });

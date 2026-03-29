@@ -207,3 +207,122 @@ describe("AcaClawApp DOM", () => {
     cleanup(el);
   });
 });
+
+// ─────────────────────────────────────────────────
+// API Key Gate tests
+// ─────────────────────────────────────────────────
+
+/** Helper: create element then simulate gateway "connected" with a config response. */
+async function createWithConfig(config: Record<string, unknown> | null): Promise<App> {
+  // config.get returns { config: {...}, hash: "..." }
+  mockCall.mockImplementation((method: string) => {
+    if (method === "config.get") {
+      return config ? Promise.resolve({ config, hash: "abc" }) : Promise.resolve(null);
+    }
+    return Promise.resolve(undefined);
+  });
+
+  const el = document.createElement("acaclaw-app") as App;
+  document.body.appendChild(el);
+  await el.updateComplete;
+
+  // Find the "state-change" listener registered on gateway and fire it
+  const stateChangeCalls = mockAddEventListener.mock.calls.filter(
+    (c: unknown[]) => c[0] === "state-change"
+  );
+  for (const [, handler] of stateChangeCalls) {
+    (handler as (e: CustomEvent) => void)(new CustomEvent("state-change", { detail: { state: "connected" } }));
+  }
+
+  // Let async _checkKeysConfigured settle
+  await new Promise((r) => setTimeout(r, 100));
+  await el.updateComplete;
+  return el;
+}
+
+describe("API Key Gate", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    location.hash = "";
+  });
+
+  it("defaults to api-keys route when no keys are configured", async () => {
+    const el = await createWithConfig({ auth: { profiles: {} }, models: {} });
+    // Internal route should be api-keys (hash may be empty since that's the default)
+    expect((el as unknown as Record<string, string>)._route).toBe("api-keys");
+    cleanup(el);
+  });
+
+  it("nav items except api-keys are locked when no keys configured", async () => {
+    const el = await createWithConfig({ auth: { profiles: {} }, models: {} });
+    const locked = qa(el, ".nav-item.locked");
+    // 10 nav items total, only api-keys is unlocked → 9 locked
+    expect(locked.length).toBe(9);
+    cleanup(el);
+  });
+
+  it("allows navigation when keys are configured", async () => {
+    const el = await createWithConfig({
+      auth: { profiles: { "anthropic:default": { provider: "anthropic" } } },
+    });
+    // Should NOT be locked
+    const locked = qa(el, ".nav-item.locked");
+    expect(locked.length).toBe(0);
+    // _keysConfigured should be true
+    expect((el as unknown as Record<string, boolean>)._keysConfigured).toBe(true);
+    cleanup(el);
+  });
+
+  it("blocks hash navigation to other routes when no keys", async () => {
+    const el = await createWithConfig({ auth: { profiles: {} } });
+    location.hash = "monitor";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    await el.updateComplete;
+    // Should be redirected back to api-keys
+    expect(location.hash).toBe("#api-keys");
+    cleanup(el);
+  });
+
+  it("redirects to api-keys if started on another route without keys", async () => {
+    location.hash = "chat";
+    const el = await createWithConfig({ auth: { profiles: {} } });
+    // Gate should redirect to api-keys
+    expect(location.hash).toBe("#api-keys");
+    expect((el as unknown as Record<string, string>)._route).toBe("api-keys");
+    cleanup(el);
+  });
+
+  it("lifts the gate when keys-saved event fires", async () => {
+    const el = await createWithConfig({ auth: { profiles: {} } });
+    // Gate is active — route should be api-keys
+    expect((el as unknown as Record<string, string>)._route).toBe("api-keys");
+
+    // Simulate keys-saved event from api-keys view
+    window.dispatchEvent(new CustomEvent("keys-saved"));
+    await el.updateComplete;
+
+    // Now navigation should work
+    location.hash = "chat";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    await el.updateComplete;
+    expect(location.hash).toBe("#chat");
+    cleanup(el);
+  });
+
+  it("detects keys from models.providers with apiKey", async () => {
+    const el = await createWithConfig({
+      models: { providers: { openai: { apiKey: "sk-test123" } } },
+    });
+    const locked = qa(el, ".nav-item.locked");
+    expect(locked.length).toBe(0);
+    cleanup(el);
+  });
+
+  it("treats null config.get response as no keys", async () => {
+    const el = await createWithConfig(null);
+    expect((el as unknown as Record<string, string>)._route).toBe("api-keys");
+    const locked = qa(el, ".nav-item.locked");
+    expect(locked.length).toBe(9);
+    cleanup(el);
+  });
+});

@@ -104,8 +104,8 @@ _load_proxy
 _tlog "proxy loaded"
 
 ACACLAW_PORT="${ACACLAW_PORT:-2090}"
-ACACLAW_STATE_DIR="${HOME}/.openclaw-acaclaw"
-ACACLAW_CONFIG="${ACACLAW_STATE_DIR}/openclaw.json"
+OPENCLAW_DIR="${HOME}/.openclaw"
+ACACALAW_CONFIG="${OPENCLAW_DIR}/openclaw.json"
 ACACLAW_DATA_DIR="${HOME}/.acaclaw"
 ACACLAW_PID_FILE="${ACACLAW_DATA_DIR}/gateway.pid"
 ACACLAW_LOG_FILE="${ACACLAW_DATA_DIR}/gateway.log"
@@ -194,7 +194,7 @@ gateway_pid() {
     # Fallback: search for the process by pattern
     # Node.js may rewrite the process title, so try multiple patterns
     local pid
-    pid="$(pgrep -f "openclaw.*--profile acaclaw.*gateway" 2>/dev/null | head -1)" || true
+    pid="$(pgrep -f "openclaw.*gateway.*--port ${ACACLAW_PORT}" 2>/dev/null | head -1)" || true
     if [[ -n "$pid" ]]; then
         echo "$pid"
         return 0
@@ -270,9 +270,16 @@ mkdir -p "$ACACLAW_DATA_DIR"
 # The built-in control-UI server serves static HTML as-is (no runtime injection).
 # After UI rebuilds the token meta tag may be missing. Re-inject if needed.
 ensure_token_in_html() {
-    local ui_index="${ACACLAW_STATE_DIR}/ui/index.html"
+    local ui_index="${OPENCLAW_DIR}/ui/index.html"
     [[ -f "$ui_index" ]] || return 0
+    # Inject if meta tag is missing OR present with empty content (after UI rebuild)
+    local needs_inject=false
     if ! grep -q 'name="oc-token"' "$ui_index"; then
+        needs_inject=true
+    elif grep -q 'name="oc-token" content=""' "$ui_index"; then
+        needs_inject=true
+    fi
+    if [[ "$needs_inject" == "true" ]]; then
         local token
         token="$(python3 -c "
 import json
@@ -284,11 +291,21 @@ except Exception:
     pass
 " 2>/dev/null)" || true
         if [[ -n "$token" ]]; then
-            if [[ "$PLATFORM" == "macos" ]]; then
-                sed -i '' "s|</head>|  <meta name=\"oc-token\" content=\"${token}\" />\\
-  </head>|" "$ui_index"
+            if grep -q 'name="oc-token" content=""' "$ui_index"; then
+                # Replace empty content with token
+                if [[ "$PLATFORM" == "macos" ]]; then
+                    sed -i '' "s|content=\"\"|content=\"${token}\"|" "$ui_index"
+                else
+                    sed -i "s|content=\"\"|content=\"${token}\"|" "$ui_index"
+                fi
             else
-                sed -i "s|</head>|  <meta name=\"oc-token\" content=\"${token}\" />\n  </head>|" "$ui_index"
+                # Insert new meta tag
+                if [[ "$PLATFORM" == "macos" ]]; then
+                    sed -i '' "s|</head>|  <meta name=\"oc-token\" content=\"${token}\" />\\
+  </head>|" "$ui_index"
+                else
+                    sed -i "s|</head>|  <meta name=\"oc-token\" content=\"${token}\" />\n  </head>|" "$ui_index"
+                fi
             fi
             log "Auth token injected into UI"
         fi
@@ -331,7 +348,7 @@ elif [[ "$USE_SERVICE" == "true" ]]; then
             log "Gateway service is starting (managed by systemd) — may need a moment"
         else
             warn "systemd service stopped unexpectedly — falling back to direct start"
-            nohup openclaw --profile acaclaw gateway run \
+            nohup openclaw gateway run \
                 --bind loopback --port "$ACACLAW_PORT" --force \
                 >> "$ACACLAW_LOG_FILE" 2>&1 &
             echo "$!" > "$ACACLAW_PID_FILE"
@@ -339,7 +356,7 @@ elif [[ "$USE_SERVICE" == "true" ]]; then
         fi
     else
         warn "systemd start failed — falling back to direct start"
-        nohup openclaw --profile acaclaw gateway run \
+        nohup openclaw gateway run \
             --bind loopback --port "$ACACLAW_PORT" --force \
             >> "$ACACLAW_LOG_FILE" 2>&1 &
         echo "$!" > "$ACACLAW_PID_FILE"
@@ -348,7 +365,7 @@ elif [[ "$USE_SERVICE" == "true" ]]; then
 else
     log "Starting AcaClaw gateway on port ${ACACLAW_PORT}..."
 
-    nohup openclaw --profile acaclaw gateway run \
+    nohup openclaw gateway run \
         --bind loopback --port "$ACACLAW_PORT" --force \
         >> "$ACACLAW_LOG_FILE" 2>&1 &
     GATEWAY_PID=$!

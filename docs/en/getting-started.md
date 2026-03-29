@@ -11,10 +11,15 @@ After [installing AcaClaw](/en/install/), launch it for the first time:
 
 1. Open AcaClaw
 2. Choose your field (Chemistry, Physics, Biology, Medicine, Engineering, Math, etc.)
-3. Connect your AI provider (OpenAI, Google, Anthropic — wizard guides you)
+3. Connect your AI provider — enter your API key in the setup wizard, or configure it via OpenClaw CLI:
+   ```bash
+   openclaw config set models.providers.openai.apiKey "sk-..."
+   ```
 4. Start asking questions
 
-That's it. No terminal. No configuration files. No package managers.
+That's it. No terminal required (but it's there if you prefer it).
+
+> **Note:** AcaClaw uses OpenClaw for all LLM handling — model routing, provider URLs, and API authentication are managed by OpenClaw automatically. You just provide the API key.
 
 ---
 

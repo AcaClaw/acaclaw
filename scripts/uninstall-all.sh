@@ -14,9 +14,8 @@
 set -euo pipefail
 
 ACACLAW_DIR="${ACACLAW_DIR:-$HOME/.acaclaw}"
-ACACLAW_STATE_DIR="${HOME}/.openclaw-acaclaw"
+OPENCLAW_DIR="${HOME}/.openclaw"
 ACACLAW_MINIFORGE="${ACACLAW_DIR}/miniforge3"
-OPENCLAW_STATE_DIR="${HOME}/.openclaw"
 
 # Colors
 RED='\033[0;31m'
@@ -76,12 +75,11 @@ header "AcaClaw + OpenClaw Full Uninstaller"
 echo -e "${RED}${BOLD}This will remove BOTH AcaClaw and OpenClaw.${NC}"
 echo ""
 echo "Will be removed:"
-echo "  - AcaClaw profile     ${ACACLAW_STATE_DIR}/"
+echo "  - OpenClaw directory  ${OPENCLAW_DIR}/"
 echo "  - AcaClaw data        ${ACACLAW_DIR}/"
 if [[ -d "$ACACLAW_MINIFORGE" ]]; then
 	echo "  - AcaClaw Miniforge   ${ACACLAW_MINIFORGE}/"
 fi
-echo "  - OpenClaw config     ${OPENCLAW_STATE_DIR}/"
 echo "  - OpenClaw service    (gateway)"
 echo "  - OpenClaw CLI        (npm global package)"
 echo ""
@@ -107,8 +105,8 @@ header "Part 1: Removing AcaClaw"
 
 # --- AcaClaw profile ---
 
-if [[ -d "${ACACLAW_STATE_DIR}" ]]; then
-	rm -rf "${ACACLAW_STATE_DIR}"
+if [[ -d "${OPENCLAW_DIR}" ]]; then
+	rm -rf "${OPENCLAW_DIR}"
 	log "Removed AcaClaw profile ✓"
 else
 	log "AcaClaw profile not found (already removed)"
@@ -126,20 +124,16 @@ if [[ "$KEEP_BACKUPS" == "true" ]]; then
 	log "Keeping backups at ${ACACLAW_DIR}/backups/"
 fi
 
-for subdir in config audit; do
-	if [[ -d "${ACACLAW_DIR}/${subdir}" ]]; then
-		rm -rf "${ACACLAW_DIR}/${subdir}"
-	fi
-done
-
-if [[ "$KEEP_BACKUPS" == "false" && -d "${ACACLAW_DIR}/backups" ]]; then
-	rm -rf "${ACACLAW_DIR}/backups"
-fi
-
-if [[ -d "$ACACLAW_DIR" ]]; then
-	if [[ -z "$(ls -A "$ACACLAW_DIR" 2>/dev/null)" ]]; then
-		rmdir "$ACACLAW_DIR"
-	fi
+if [[ "$KEEP_BACKUPS" == "true" && -d "${ACACLAW_DIR}/backups" ]]; then
+	# Move backups to a temp location, wipe dir, restore
+	local_bak="$(mktemp -d)"
+	mv "${ACACLAW_DIR}/backups" "${local_bak}/backups"
+	rm -rf "${ACACLAW_DIR}"
+	mkdir -p "${ACACLAW_DIR}"
+	mv "${local_bak}/backups" "${ACACLAW_DIR}/backups"
+	rmdir "${local_bak}" 2>/dev/null || true
+else
+	rm -rf "${ACACLAW_DIR}"
 fi
 log "AcaClaw data removed ✓"
 
@@ -150,22 +144,9 @@ if [[ -f "$DESKTOP_SCRIPT" ]]; then
 	bash "$DESKTOP_SCRIPT" --remove 2>/dev/null || true
 fi
 
-# --- Stop AcaClaw gateway service (after files removed) ---
-
-ACACLAW_SVC_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/acaclaw-service.sh"
-if [[ -f "$ACACLAW_SVC_SCRIPT" ]]; then
-	bash "$ACACLAW_SVC_SCRIPT" remove 2>/dev/null || true
-else
-	SYSTEMD_UNIT="${HOME}/.config/systemd/user/acaclaw-gateway.service"
-	if [[ -f "$SYSTEMD_UNIT" ]] && command -v systemctl &>/dev/null; then
-		systemctl --user stop acaclaw-gateway.service 2>/dev/null || true
-		systemctl --user disable acaclaw-gateway.service 2>/dev/null || true
-		rm -f "$SYSTEMD_UNIT"
-		systemctl --user daemon-reload 2>/dev/null || true
-		log "AcaClaw service removed ✓"
-	fi
-fi
-bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/stop.sh" 2>/dev/null || true
+# NOTE: Gateway stop is deferred to the very end of the script.
+# When run via the gateway itself, stopping the gateway mid-script breaks
+# the stdout pipe (SIGPIPE) and kills this script before Part 2 runs.
 
 # =========================================================
 # Part 2: Remove OpenClaw
@@ -173,41 +154,81 @@ bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/stop.sh" 2>/dev/null || true
 
 header "Part 2: Removing OpenClaw"
 
-# --- Stop gateway service ---
+# Service stop is deferred to Part 3 to avoid killing this script.
+# Here we only remove files and CLI packages.
 
-if command -v openclaw &>/dev/null; then
-	# Use OpenClaw's own uninstall to cleanly stop services
-	log "Stopping OpenClaw gateway..."
-	openclaw uninstall --all --yes --non-interactive 2>/dev/null || true
-	log "OpenClaw service stopped ✓"
-else
-	# Manual service cleanup if CLI is already gone
-	case "$(uname -s)" in
-		Linux*)
-			if systemctl --user is-active openclaw-gateway.service &>/dev/null; then
-				systemctl --user disable --now openclaw-gateway.service 2>/dev/null || true
-				rm -f "${HOME}/.config/systemd/user/openclaw-gateway.service"
-				systemctl --user daemon-reload 2>/dev/null || true
-				log "Stopped systemd service ✓"
+# --- Remove OpenClaw systemd unit file (disable only, don't stop yet) ---
+
+case "$(uname -s)" in
+	Linux*)
+		OC_UNIT="${HOME}/.config/systemd/user/openclaw-gateway.service"
+		if [[ -f "$OC_UNIT" ]] && command -v systemctl &>/dev/null; then
+			systemctl --user disable openclaw-gateway.service 2>/dev/null || true
+			rm -f "$OC_UNIT"
+			systemctl --user daemon-reload 2>/dev/null || true
+			log "Disabled OpenClaw systemd unit ✓"
+		fi
+		;;
+	Darwin*)
+		if [[ -f "${HOME}/Library/LaunchAgents/ai.openclaw.gateway.plist" ]]; then
+			rm -f "${HOME}/Library/LaunchAgents/ai.openclaw.gateway.plist"
+			log "Removed OpenClaw launchd plist ✓"
+		fi
+		;;
+esac
+
+# --- Remove OpenClaw workspace dirs (agent workspaces from config) ---
+
+OC_CONFIG="${OPENCLAW_CONFIG_PATH:-${OPENCLAW_DIR}/openclaw.json}"
+if [[ -f "$OC_CONFIG" ]] && command -v python3 &>/dev/null; then
+	# Extract workspace paths from config before we delete the state dir
+	WORKSPACE_DIRS=$(python3 -c "
+import json, os, sys
+try:
+    cfg = json.load(open('$OC_CONFIG'))
+    dirs = set()
+    defaults = cfg.get('agents', {}).get('defaults', {})
+    if defaults.get('workspace'):
+        dirs.add(os.path.expanduser(defaults['workspace']))
+    for agent in cfg.get('agents', {}).get('list', []):
+        ws = agent.get('workspace', '')
+        if ws:
+            dirs.add(os.path.expanduser(ws))
+    for d in dirs:
+        print(d)
+except: pass
+" 2>/dev/null || true)
+
+	if [[ -n "$WORKSPACE_DIRS" ]]; then
+		while IFS= read -r ws_dir; do
+			if [[ -d "$ws_dir" ]]; then
+				rm -rf "$ws_dir"
+				log "Removed workspace $ws_dir ✓"
 			fi
-			;;
-		Darwin*)
-			if launchctl list 2>/dev/null | grep -q openclaw; then
-				launchctl bootout "gui/$(id -u)/ai.openclaw.gateway" 2>/dev/null || true
-				rm -f "${HOME}/Library/LaunchAgents/ai.openclaw.gateway.plist"
-				log "Stopped launchd service ✓"
-			fi
-			;;
-	esac
+		done <<< "$WORKSPACE_DIRS"
+	fi
 fi
 
 # --- Remove OpenClaw state directory ---
 
-if [[ -d "${OPENCLAW_STATE_DIR}" ]]; then
-	rm -rf "${OPENCLAW_STATE_DIR}"
-	log "Removed ${OPENCLAW_STATE_DIR}/ ✓"
+if [[ -d "${OPENCLAW_DIR}" ]]; then
+	rm -rf "${OPENCLAW_DIR}"
+	log "Removed ${OPENCLAW_DIR}/ ✓"
 else
 	log "OpenClaw state dir not found"
+fi
+
+# --- Remove custom config / oauth dirs if outside state dir ---
+
+if [[ -n "${OPENCLAW_CONFIG_PATH:-}" && -f "${OPENCLAW_CONFIG_PATH}" ]]; then
+	rm -f "${OPENCLAW_CONFIG_PATH}"
+	log "Removed custom config ${OPENCLAW_CONFIG_PATH} ✓"
+fi
+
+OC_OAUTH_DIR="${OPENCLAW_OAUTH_DIR:-${OPENCLAW_DIR}/identity}"
+if [[ -d "$OC_OAUTH_DIR" && "$OC_OAUTH_DIR" != "${OPENCLAW_DIR}"* ]]; then
+	rm -rf "$OC_OAUTH_DIR"
+	log "Removed OAuth dir ${OC_OAUTH_DIR} ✓"
 fi
 
 # --- Remove OpenClaw CLI ---
@@ -227,6 +248,13 @@ if command -v clawhub &>/dev/null; then
 	log "ClawHub CLI removed ✓"
 fi
 
+# --- Remove macOS app (if present) ---
+
+if [[ "$(uname -s)" == "Darwin" && -d "/Applications/OpenClaw.app" ]]; then
+	rm -rf "/Applications/OpenClaw.app"
+	log "Removed /Applications/OpenClaw.app ✓"
+fi
+
 # --- Summary ---
 
 header "Full Uninstall Complete"
@@ -239,4 +267,42 @@ if [[ "$KEEP_BACKUPS" == "true" ]]; then
 	echo "  Backups preserved at: ${ACACLAW_DIR}/backups/"
 	echo ""
 fi
+
+# =========================================================
+# Part 3: Stop gateway services (MUST be last)
+# =========================================================
+# When this script is run via the gateway, stopping the gateway breaks the
+# stdout pipe, killing the script. By deferring to the very end, all file
+# removals are guaranteed to complete first.
+
+SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+ACACLAW_SVC_SCRIPT="${SCRIPTS_DIR}/acaclaw-service.sh"
+if [[ -f "$ACACLAW_SVC_SCRIPT" ]]; then
+	bash "$ACACLAW_SVC_SCRIPT" remove 2>/dev/null || true
+else
+	SYSTEMD_UNIT="${HOME}/.config/systemd/user/acaclaw-gateway.service"
+	if [[ -f "$SYSTEMD_UNIT" ]] && command -v systemctl &>/dev/null; then
+		systemctl --user stop acaclaw-gateway.service 2>/dev/null || true
+		systemctl --user disable acaclaw-gateway.service 2>/dev/null || true
+		rm -f "$SYSTEMD_UNIT"
+		systemctl --user daemon-reload 2>/dev/null || true
+	fi
+fi
+bash "${SCRIPTS_DIR}/stop.sh" 2>/dev/null || true
+
+# --- Kill any remaining openclaw processes ---
+# stop.sh only targets AcaClaw-profile gateways. Vanilla openclaw processes
+# (started outside AcaClaw) can survive and recreate ~/.openclaw/.
+if command -v pkill &>/dev/null; then
+	pkill -u "$(id -u)" -f "openclaw-gateway" 2>/dev/null || true
+	pkill -u "$(id -u)" -x "openclaw" 2>/dev/null || true
+fi
+
+# Final cleanup: remove state dir again if a dying process recreated it
+sleep 1
+if [[ -d "${OPENCLAW_DIR}" ]]; then
+	rm -rf "${OPENCLAW_DIR}"
+fi
+
 log "Done."

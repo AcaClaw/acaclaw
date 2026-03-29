@@ -18,8 +18,8 @@ DIM='\033[2m'
 NC='\033[0m'
 
 ACACLAW_PORT="${ACACLAW_PORT:-2090}"
-ACACLAW_STATE_DIR="${HOME}/.openclaw-acaclaw"
-ACACLAW_CONFIG="${ACACLAW_STATE_DIR}/openclaw.json"
+OPENCLAW_DIR="${HOME}/.openclaw"
+ACACALAW_CONFIG="${OPENCLAW_DIR}/openclaw.json"
 ACACLAW_DATA_DIR="${HOME}/.acaclaw"
 
 # --- Timing helpers ---
@@ -199,8 +199,8 @@ measure_ws_handshake() {
 
     # Extract auth token before node call to avoid quoting issues
     local auth_token=""
-    if [[ -f "${ACACLAW_STATE_DIR}/ui/index.html" ]]; then
-        auth_token="$(grep -oP '(?<=oc-token" content=")[^"]+' "${ACACLAW_STATE_DIR}/ui/index.html" | head -1)" || true
+    if [[ -f "${OPENCLAW_DIR}/ui/index.html" ]]; then
+        auth_token="$(grep -oP '(?<=oc-token" content=")[^"]+' "${OPENCLAW_DIR}/ui/index.html" | head -1)" || true
     fi
 
     local start end
@@ -285,7 +285,7 @@ measure_cold_start() {
         systemctl --user stop acaclaw-gateway.service 2>/dev/null || true
     fi
     # Also kill any direct processes
-    pkill -f "openclaw.*--profile acaclaw.*gateway" 2>/dev/null || true
+    pkill -f "openclaw.*gateway.*--port ${ACACLAW_PORT}" 2>/dev/null || true
     sleep 2
 
     # Make sure port is free
@@ -301,7 +301,7 @@ measure_cold_start() {
     if command -v systemctl &>/dev/null && [[ -f "${HOME}/.config/systemd/user/acaclaw-gateway.service" ]]; then
         systemctl --user start acaclaw-gateway.service 2>/dev/null || true
     else
-        nohup openclaw --profile acaclaw gateway run \
+        nohup openclaw gateway run \
             --bind loopback --port "$ACACLAW_PORT" --force \
             >> "${ACACLAW_DATA_DIR}/gateway.log" 2>&1 &
     fi

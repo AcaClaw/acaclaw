@@ -21,9 +21,9 @@ NC='\033[0m'
 
 ACACLAW_PORT="${ACACLAW_PORT:-2090}"
 OPENCLAW_PORT="${OPENCLAW_PORT:-18789}"
-ACACLAW_STATE_DIR="${HOME}/.openclaw-acaclaw"
-ACACLAW_DATA_DIR="${HOME}/.acaclaw"
-ACACLAW_CONFIG="${ACACLAW_STATE_DIR}/openclaw.json"
+OPENCLAW_DIR="${HOME}/.openclaw"
+ACACALAW_DATA_DIR="${HOME}/.acaclaw"
+ACACALAW_CONFIG="${OPENCLAW_DIR}/openclaw.json"
 
 # --- Results storage ---
 declare -a RESULTS=()
@@ -95,8 +95,8 @@ _perf() {
 
 # --- Auth token ---
 _get_token() {
-    if [[ -f "${ACACLAW_STATE_DIR}/ui/index.html" ]]; then
-        grep -oP '(?<=oc-token" content=")[^"]+' "${ACACLAW_STATE_DIR}/ui/index.html" 2>/dev/null | head -1 || true
+    if [[ -f "${OPENCLAW_DIR}/ui/index.html" ]]; then
+        grep -oP '(?<=oc-token" content=")[^"]+' "${OPENCLAW_DIR}/ui/index.html" 2>/dev/null | head -1 || true
     fi
 }
 

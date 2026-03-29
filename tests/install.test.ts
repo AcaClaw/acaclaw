@@ -318,12 +318,12 @@ describe("install.sh", () => {
 	// ---------------------------------------------------------------
 	describe("plugin installation", () => {
 		it("copies plugins to the AcaClaw profile extensions dir", async () => {
-			const stateDir = join(fakeHome, ".openclaw-acaclaw");
+			const stateDir = join(fakeHome, ".openclaw");
 			const pluginsDestDir = join(stateDir, "extensions");
 
 			const { code } = await runBash(`
 				set -euo pipefail
-				ACACLAW_STATE_DIR="${stateDir}"
+				OPENCLAW_DIR="${stateDir}"
 				ACACLAW_PLUGINS_DIR="${pluginsDestDir}"
 				REPO_PLUGINS_DIR="${PLUGINS_DIR}"
 				mkdir -p "$ACACLAW_PLUGINS_DIR"
@@ -353,7 +353,7 @@ describe("install.sh", () => {
 		});
 
 		it("each installed plugin has an openclaw.plugin.json", async () => {
-			const stateDir = join(fakeHome, ".openclaw-acaclaw");
+			const stateDir = join(fakeHome, ".openclaw");
 			const pluginsDestDir = join(stateDir, "extensions");
 
 			await runBash(`
@@ -578,7 +578,7 @@ PLUGINJSON
 		it("copies auth from existing OpenClaw config", async () => {
 			const acaclawDir = join(fakeHome, ".acaclaw");
 			const openclawDir = join(fakeHome, ".openclaw");
-			const stateDir = join(fakeHome, ".openclaw-acaclaw");
+			const stateDir = join(fakeHome, ".openclaw");
 			const configSource = resolve(__dirname, "../config");
 
 			// Create fake existing OpenClaw config with auth
@@ -636,7 +636,7 @@ with open('${stateDir}/openclaw.json', 'w') as f:
 		});
 
 		it("generates fresh token when no existing OpenClaw config", async () => {
-			const stateDir = join(fakeHome, ".openclaw-acaclaw");
+			const stateDir = join(fakeHome, ".openclaw");
 			const configSource = resolve(__dirname, "../config");
 
 			const { code } = await runBash(`

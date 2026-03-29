@@ -31,6 +31,23 @@ Chemistry, physics, biology, medicine, engineering, mathematics, humanities — 
 
 ---
 
+## How AcaClaw Relates to OpenClaw
+
+AcaClaw is a **distribution layer** on top of OpenClaw — not a fork, not a replacement. OpenClaw provides the core AI platform (LLM handling, model routing, API key management, chat, plugins, CLI). AcaClaw adds:
+
+| AcaClaw adds | OpenClaw provides (used as-is) |
+|---|---|
+| Research-focused GUI | LLM handling, model routing, streaming |
+| Workspace and project system | API key storage and provider auth |
+| Stricter security policies | Model discovery and provider catalogs |
+| Automatic data backup | Chat sessions and message history |
+| Curated academic skills | Plugin SDK, skill system, CLI |
+| Discipline-specific Conda environments | WebSocket gateway and RPC |
+
+**The golden rule:** If OpenClaw already does it, AcaClaw doesn't re-implement it. Both AcaClaw's UI and OpenClaw's UI are frontends to the same OpenClaw backend.
+
+---
+
 ## Why AcaClaw Exists
 
 AcaClaw exists for four reasons — each solves a real problem researchers face every day:

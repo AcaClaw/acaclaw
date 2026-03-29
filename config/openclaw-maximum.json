@@ -5,7 +5,7 @@
     "mode": "local",
     "controlUi": {
       "basePath": "/",
-      "root": "~/.openclaw-acaclaw/ui",
+      "root": "~/.openclaw/ui",
       "dangerouslyDisableDeviceAuth": true
     }
   },

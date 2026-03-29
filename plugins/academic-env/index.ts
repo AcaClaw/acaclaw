@@ -1194,6 +1194,17 @@ const academicEnvPlugin = {
 			}
 		});
 
+		// --- Gateway: acaclaw.getSetupState ---
+		api.registerGatewayMethod("acaclaw.getSetupState", async ({ respond }) => {
+			const setupFile = join(homedir(), ".acaclaw", "config", "setup-pending.json");
+			try {
+				const raw = fs.readFileSync(setupFile, "utf-8");
+				respond(true, JSON.parse(raw));
+			} catch {
+				respond(true, { setupComplete: true });
+			}
+		});
+
 		api.registerCli(
 			({ program }) => {
 				const cmd = program.command("acaclaw-env").description("AcaClaw environment management");

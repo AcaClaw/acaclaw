@@ -21,6 +21,7 @@ export const zhCN: Record<string, string> = {
   "nav.backup.desc": "快照与恢复",
   "nav.settings": "设置",
   "nav.settings.desc": "全局偏好",
+  "nav.locked": "请先配置 API 密钥",
   "nav.sessions": "会话",
   "nav.sessions.desc": "活跃会话",
   "nav.logs": "日志",
@@ -107,7 +108,7 @@ export const zhCN: Record<string, string> = {
   "settings.uninstall.warning": "卸载将永久移除系统中的 AcaClaw 组件，此操作无法撤销。",
   "settings.uninstall.removes.title": "将被移除",
   "settings.uninstall.removes.desc": "AcaClaw 配置文件、Conda 环境与配置数据",
-  "settings.uninstall.removes.profile": "AcaClaw OpenClaw 配置 (~/.openclaw-acaclaw/)",
+  "settings.uninstall.removes.profile": "AcaClaw OpenClaw 配置 (~/.openclaw/)",
   "settings.uninstall.removes.conda": "AcaClaw Conda 环境 (acaclaw, acaclaw-bio 等)",
   "settings.uninstall.removes.config": "AcaClaw 配置与审计数据 (~/.acaclaw/)",
   "settings.uninstall.removes.miniforge": "AcaClaw 安装的 Miniforge（如适用）",
@@ -463,7 +464,7 @@ export const zhCN: Record<string, string> = {
 
   // ── API 密钥页面 ──
   "apikeys.title": "API 密钥",
-  "apikeys.subtitle": "管理你的 LLM 和搜索服务商密钥。密钥存储在本地。",
+  "apikeys.subtitle": "配置你的 AI 服务商密钥。由 OpenClaw 管理，存储在本地。",
   "apikeys.tab.llm": "LLM 服务商",
   "apikeys.tab.browser": "浏览器 / 搜索",
   "apikeys.provider": "服务商",
@@ -471,7 +472,7 @@ export const zhCN: Record<string, string> = {
   "apikeys.apiKeys": "{0} — API 密钥",
   "apikeys.configured": "{0} 已配置，可以使用。",
   "apikeys.noKeys": "{0} 尚未配置 API 密钥。",
-  "apikeys.noKeys.hint": "点击下方「添加密钥」开始配置。",
+  "apikeys.noKeys.hint": "在此添加密钥，或通过 OpenClaw CLI 配置：openclaw config set models.providers.<provider>.apiKey <key>",
   "apikeys.addKey": "+ 添加密钥",
   "apikeys.addAnother": "+ 添加另一个密钥",
   "apikeys.save": "保存",
@@ -494,6 +495,8 @@ export const zhCN: Record<string, string> = {
   "apikeys.savedModel": "✓ 默认模型已保存",
   "apikeys.savedKeys": "✓ 密钥已保存",
   "apikeys.saveFailed": "⚠ 保存失败 — 网关是否在运行？",
+  "apikeys.gate.title": "需要 API 密钥才能继续",
+  "apikeys.gate.desc": "请在下方添加至少一个 LLM 提供商密钥并保存。也可以通过 OpenClaw CLI 或环境变量配置。",
 
   // ── 团队页面 ──
   "staff.title": "团队",

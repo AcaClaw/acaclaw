@@ -3,7 +3,7 @@
 # Usage: bash uninstall.sh [--keep-backups] [--yes]
 #
 # What this removes:
-#   - AcaClaw OpenClaw profile (~/.openclaw-acaclaw/)
+#   - AcaClaw OpenClaw config (~/.openclaw/)
 #   - AcaClaw conda environments (acaclaw, acaclaw-bio, etc.)
 #   - AcaClaw-installed Miniforge (only if AcaClaw installed it)
 #   - AcaClaw config and audit data (~/.acaclaw/)
@@ -15,7 +15,7 @@
 set -euo pipefail
 
 ACACLAW_DIR="${ACACLAW_DIR:-$HOME/.acaclaw}"
-ACACLAW_STATE_DIR="${HOME}/.openclaw-acaclaw"
+OPENCLAW_DIR="${HOME}/.openclaw"
 ACACLAW_MINIFORGE="${ACACLAW_DIR}/miniforge3"
 
 # Colors
@@ -52,7 +52,7 @@ while [[ $# -gt 0 ]]; do
 			echo "Usage: bash uninstall.sh [OPTIONS]"
 			echo ""
 			echo "Removes AcaClaw config, plugins, conda envs, and computing environment."
-			echo "OpenClaw and your research data (~/AcaClaw/) are NOT touched."
+			echo "Your research data (~/AcaClaw/) is NOT touched."
 			echo ""
 			echo "Options:"
 			echo "  --keep-backups   Keep backup files in ~/.acaclaw/backups/"
@@ -74,7 +74,7 @@ done
 header "AcaClaw Uninstaller"
 
 echo "This will remove:"
-echo "  - AcaClaw profile   ${ACACLAW_STATE_DIR}/"
+echo "  - AcaClaw profile   ${OPENCLAW_DIR}/"
 echo "    (plugins, skills, sessions, config)"
 if [[ -d "$ACACLAW_MINIFORGE" ]]; then
 	echo "  - AcaClaw Miniforge  ${ACACLAW_MINIFORGE}/"
@@ -85,7 +85,6 @@ if [[ "$KEEP_BACKUPS" == "true" ]]; then
 fi
 echo ""
 echo -e "  ${GREEN}NOT touched:${NC}"
-echo -e "    ${GREEN}✓ OpenClaw       ${HOME}/.openclaw/${NC}"
 echo -e "    ${GREEN}✓ Research data  ${HOME}/AcaClaw/${NC}"
 echo -e "    ${GREEN}✓ Conda environments${NC}"
 echo ""
@@ -99,30 +98,11 @@ if [[ "$AUTO_YES" == "false" ]]; then
 	fi
 fi
 
-# --- Stop gateway FIRST (before removing files it serves) ---
-
-header "Stopping Gateway"
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SERVICE_SCRIPT="${SCRIPT_DIR}/acaclaw-service.sh"
-if [[ -f "$SERVICE_SCRIPT" ]]; then
-	bash "$SERVICE_SCRIPT" remove 2>/dev/null || true
-else
-	SYSTEMD_UNIT="${HOME}/.config/systemd/user/acaclaw-gateway.service"
-	if [[ -f "$SYSTEMD_UNIT" ]] && command -v systemctl &>/dev/null; then
-		systemctl --user stop acaclaw-gateway.service 2>/dev/null || true
-		systemctl --user disable acaclaw-gateway.service 2>/dev/null || true
-		rm -f "$SYSTEMD_UNIT"
-		systemctl --user daemon-reload 2>/dev/null || true
-		log "systemd service removed ✓"
-	fi
-fi
-bash "${SCRIPT_DIR}/stop.sh" 2>/dev/null || true
 
-# Clean up stale PID file
-ACACLAW_PID_FILE="${ACACLAW_DIR}/gateway.pid"
-rm -f "$ACACLAW_PID_FILE" 2>/dev/null || true
-log "Gateway stopped ✓"
+# NOTE: Gateway stop is deferred to the end of the script.
+# When run via the gateway itself, stopping the gateway mid-script breaks
+# the stdout pipe (SIGPIPE) and kills this script before cleanup completes.
 
 # --- Remove desktop shortcut ---
 
@@ -135,8 +115,8 @@ fi
 
 header "Removing Deployed UI"
 
-if [[ -d "${ACACLAW_STATE_DIR}/ui" ]]; then
-	rm -rf "${ACACLAW_STATE_DIR}/ui"
+if [[ -d "${OPENCLAW_DIR}/ui" ]]; then
+	rm -rf "${OPENCLAW_DIR}/ui"
 	log "Removed deployed UI ✓"
 fi
 
@@ -144,9 +124,9 @@ fi
 
 header "Removing AcaClaw Profile"
 
-if [[ -d "${ACACLAW_STATE_DIR}" ]]; then
-	rm -rf "${ACACLAW_STATE_DIR}"
-	log "Removed ${ACACLAW_STATE_DIR}/ ✓"
+if [[ -d "${OPENCLAW_DIR}" ]]; then
+	rm -rf "${OPENCLAW_DIR}"
+	log "Removed ${OPENCLAW_DIR}/ ✓"
 else
 	log "AcaClaw profile not found (already removed)"
 fi
@@ -205,27 +185,18 @@ if [[ "$KEEP_BACKUPS" == "true" ]]; then
 	log "Keeping backups at ${ACACLAW_DIR}/backups/"
 fi
 
-for subdir in config audit; do
-	if [[ -d "${ACACLAW_DIR}/${subdir}" ]]; then
-		rm -rf "${ACACLAW_DIR}/${subdir}"
-		log "Removed ${subdir}/ ✓"
-	fi
-done
-
-if [[ "$KEEP_BACKUPS" == "false" && -d "${ACACLAW_DIR}/backups" ]]; then
-	rm -rf "${ACACLAW_DIR}/backups"
-	log "Removed backups/ ✓"
+if [[ "$KEEP_BACKUPS" == "true" && -d "${ACACLAW_DIR}/backups" ]]; then
+	# Move backups to a temp location, wipe dir, restore
+	local_bak="$(mktemp -d)"
+	mv "${ACACLAW_DIR}/backups" "${local_bak}/backups"
+	rm -rf "${ACACLAW_DIR}"
+	mkdir -p "${ACACLAW_DIR}"
+	mv "${local_bak}/backups" "${ACACLAW_DIR}/backups"
+	rmdir "${local_bak}" 2>/dev/null || true
+else
+	rm -rf "${ACACLAW_DIR}"
 fi
-
-# Remove acaclaw dir if empty
-if [[ -d "$ACACLAW_DIR" ]]; then
-	if [[ -z "$(ls -A "$ACACLAW_DIR" 2>/dev/null)" ]]; then
-		rmdir "$ACACLAW_DIR"
-		log "Removed empty ${ACACLAW_DIR}/ ✓"
-	else
-		log "Kept ${ACACLAW_DIR}/ (contains remaining files)"
-	fi
-fi
+log "AcaClaw data removed ✓"
 
 # --- Summary ---
 
@@ -233,13 +204,39 @@ header "Uninstall Complete"
 
 echo "AcaClaw has been removed."
 echo ""
-echo -e "  ${GREEN}✓${NC} OpenClaw is still installed and untouched"
 echo -e "  ${GREEN}✓${NC} Your research data at ~/AcaClaw/ is preserved"
 echo ""
 if [[ "$KEEP_BACKUPS" == "true" ]]; then
 	echo "  Backups preserved at: ${ACACLAW_DIR}/backups/"
 	echo ""
 fi
-echo "To also remove OpenClaw: bash uninstall-all.sh"
+echo "To reinstall: bash install.sh"
 echo ""
+
+# =========================================================
+# Stop gateway services (MUST be last)
+# =========================================================
+# When this script is run via the gateway, stopping the gateway breaks the
+# stdout pipe, killing the script. By deferring to the very end, all file
+# removals are guaranteed to complete first.
+
+SERVICE_SCRIPT="${SCRIPT_DIR}/acaclaw-service.sh"
+if [[ -f "$SERVICE_SCRIPT" ]]; then
+	bash "$SERVICE_SCRIPT" remove 2>/dev/null || true
+else
+	SYSTEMD_UNIT="${HOME}/.config/systemd/user/acaclaw-gateway.service"
+	if [[ -f "$SYSTEMD_UNIT" ]] && command -v systemctl &>/dev/null; then
+		systemctl --user stop acaclaw-gateway.service 2>/dev/null || true
+		systemctl --user disable acaclaw-gateway.service 2>/dev/null || true
+		rm -f "$SYSTEMD_UNIT"
+		systemctl --user daemon-reload 2>/dev/null || true
+	fi
+fi
+bash "${SCRIPT_DIR}/stop.sh" 2>/dev/null || true
+
+# Kill any remaining AcaClaw-profile processes
+if command -v pkill &>/dev/null; then
+	pkill -u "$(id -u)" -f "openclaw.*gateway.*--port 2090" 2>/dev/null || true
+fi
+
 log "Done."

@@ -44,6 +44,26 @@ function resolveAuthToken(): string | undefined {
   return undefined;
 }
 
+/**
+ * Re-fetch the HTML page to get a fresh auth token after a mismatch.
+ * Updates the meta tag in-place so subsequent resolveAuthToken() calls use it.
+ */
+async function refreshAuthToken(): Promise<string | undefined> {
+  try {
+    const res = await fetch(location.href, { cache: "no-store" });
+    if (!res.ok) return undefined;
+    const html = await res.text();
+    const match = html.match(/name="oc-token"\s+content="([^"]*)"/);
+    if (match?.[1]) {
+      const meta = document.querySelector<HTMLMetaElement>('meta[name="oc-token"]');
+      if (meta) meta.content = match[1];
+      console.log("[gateway] auth: refreshed token from server");
+      return match[1];
+    }
+  } catch { /* network failure — keep old token */ }
+  return undefined;
+}
+
 class GatewayController extends EventTarget {
   private _ws: WebSocket | null = null;
   private _state: GatewayState = "disconnected";
@@ -54,6 +74,8 @@ class GatewayController extends EventTarget {
   private _connectNonce: string | null = null;
   private _connectSent = false;
   private _challengeTimer: ReturnType<typeof setTimeout> | null = null;
+  private _reconnectAttempts = 0;
+  private _tokenRefreshPending: Promise<void> | null = null;
 
   get state(): GatewayState {
     return this._state;
@@ -189,14 +211,30 @@ class GatewayController extends EventTarget {
     this._pending.set(id, {
       resolve: () => {
         this._authenticated = true;
+        this._reconnectAttempts = 0;
         this._setState("connected");
         this._startHeartbeat();
       },
       reject: (err) => {
-        console.error("[gateway] connect handshake failed:", err);
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("[gateway] connect handshake failed:", msg);
         this._authenticated = false;
+        this._reconnectAttempts++;
         this._setState("disconnected");
         this._ws?.close();
+
+        // On token mismatch, re-fetch token from server before next reconnect
+        if (msg.includes("token mismatch") || msg.includes("token_mismatch")) {
+          // After 3 consecutive mismatches, force full page reload to get new JS+token
+          if (this._reconnectAttempts >= 3) {
+            console.warn("[gateway] persistent token mismatch — reloading page");
+            location.reload();
+            return;
+          }
+          this._tokenRefreshPending = refreshAuthToken().then(() => {}).catch(() => {}).finally(() => {
+            this._tokenRefreshPending = null;
+          });
+        }
       },
     });
   }
@@ -261,6 +299,7 @@ class GatewayController extends EventTarget {
     this._authenticated = false;
     this._connectNonce = null;
     this._connectSent = false;
+    this._stopHeartbeat();
     if (this._challengeTimer) {
       clearTimeout(this._challengeTimer);
       this._challengeTimer = null;
@@ -278,6 +317,7 @@ class GatewayController extends EventTarget {
       clearTimeout(this._reconnectTimer);
       this._reconnectTimer = null;
     }
+    this._reconnectAttempts = 0;
     this._ws?.close();
     this._ws = null;
     this.connect();
@@ -285,10 +325,17 @@ class GatewayController extends EventTarget {
 
   private _scheduleReconnect() {
     if (this._reconnectTimer) return;
-    this._reconnectTimer = setTimeout(() => {
+    // Exponential backoff: 2s, 4s, 8s, 16s, 30s max
+    const delay = Math.min(2000 * Math.pow(2, this._reconnectAttempts), 30_000);
+    console.log(`[gateway] reconnect in ${delay}ms (attempt ${this._reconnectAttempts + 1})`);
+    this._reconnectTimer = setTimeout(async () => {
       this._reconnectTimer = null;
+      // Wait for any in-flight token refresh to finish before reconnecting
+      if (this._tokenRefreshPending) {
+        await this._tokenRefreshPending;
+      }
       this.connect();
-    }, 5000);
+    }, delay);
   }
 
   private _heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -297,7 +344,10 @@ class GatewayController extends EventTarget {
     this._stopHeartbeat();
     this._heartbeatTimer = setInterval(() => {
       if (this._ws?.readyState === WebSocket.OPEN) {
-        this.call("health").catch(() => {});
+        this.call("health", undefined, { timeoutMs: 10_000 }).catch(() => {
+          console.warn("[gateway] heartbeat failed — forcing reconnect");
+          this._ws?.close(1000, "heartbeat timeout");
+        });
       }
     }, 30_000);
   }
@@ -312,3 +362,17 @@ class GatewayController extends EventTarget {
 
 /** Singleton gateway instance */
 export const gateway = new GatewayController();
+
+// ── Auto-reconnect on tab focus / network recovery ──
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && gateway.state === "disconnected") {
+    console.log("[gateway] tab visible — reconnecting");
+    gateway.reconnectNow();
+  }
+});
+window.addEventListener("online", () => {
+  if (gateway.state === "disconnected") {
+    console.log("[gateway] network online — reconnecting");
+    gateway.reconnectNow();
+  }
+});

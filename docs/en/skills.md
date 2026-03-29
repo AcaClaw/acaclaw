@@ -79,10 +79,10 @@ AcaClaw does not bundle community skills, but we curate a recommended list on [a
 
 ## Where Skills Live
 
-Skills are stored in the AcaClaw gateway's working directory. The AcaClaw profile uses `~/.openclaw-acaclaw/` as its home, so managed skills (installed from ClawHub) go into:
+Skills are stored in the AcaClaw gateway's working directory. AcaClaw uses `~/.openclaw/` as its home, so managed skills (installed from ClawHub) go into:
 
 ```
-~/.openclaw-acaclaw/skills/<skill-name>/
+~/.openclaw/skills/<skill-name>/
 ```
 
 ### Storage Locations
@@ -93,14 +93,14 @@ The gateway scans these directories in priority order (later overrides earlier):
 |---|---|---|
 | 1 (lowest) | `skills.load.extraDirs` in config | Additional skill folders |
 | 2 | `<openclaw-package>/skills/` | Bundled with OpenClaw (foundation skills) |
-| 3 | **`~/.openclaw-acaclaw/skills/`** | Managed skills — **this is where ClawHub installs go** |
+| 3 | **`~/.openclaw/skills/`** | Managed skills — **this is where ClawHub installs go** |
 | 4 | `~/.agents/skills/` | Personal agent skills |
 | 5 | `<workspace>/.agents/skills/` | Per-project agent skills |
 | 6 (highest) | `<workspace>/skills/` | Workspace skills |
 
 ### What This Means for AcaClaw
 
-- **Skills installed via the Staff panel or `clawhub install` go to `~/.openclaw-acaclaw/skills/`**
+- **Skills installed via the Staff panel or `clawhub install` go to `~/.openclaw/skills/`**
 - Foundation skills (bundled) are never written to disk — they are always loaded from the OpenClaw package
 - To override a skill for AcaClaw only, place it in `~/AcaClaw/skills/<skill>/` (workspace-level override)
 
@@ -283,7 +283,7 @@ All managed skills are validated with the test suite in `tests/`:
 AcaClaw always installs the latest ClawHub version of managed skills via:
 
 ```sh
-clawhub --workdir ~/.openclaw-acaclaw --no-input install --force <skill>
+clawhub --workdir ~/.openclaw --no-input install --force <skill>
 ```
 
 The `install.sh` script pins the core skills for a fresh install:

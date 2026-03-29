@@ -21,6 +21,7 @@ export const en: Record<string, string> = {
   "nav.backup.desc": "Snapshots & restore",
   "nav.settings": "Settings",
   "nav.settings.desc": "Global preferences",
+  "nav.locked": "Configure an API key first",
   "nav.sessions": "Sessions",
   "nav.sessions.desc": "Active sessions",
   "nav.logs": "Logs",
@@ -107,7 +108,7 @@ export const en: Record<string, string> = {
   "settings.uninstall.warning": "Uninstalling will permanently remove AcaClaw components from your system. This action cannot be undone.",
   "settings.uninstall.removes.title": "What gets removed",
   "settings.uninstall.removes.desc": "AcaClaw profile, conda environments, and config data",
-  "settings.uninstall.removes.profile": "AcaClaw OpenClaw profile (~/.openclaw-acaclaw/)",
+  "settings.uninstall.removes.profile": "AcaClaw OpenClaw profile (~/.openclaw/)",
   "settings.uninstall.removes.conda": "AcaClaw conda environments (acaclaw, acaclaw-bio, etc.)",
   "settings.uninstall.removes.config": "AcaClaw config and audit data (~/.acaclaw/)",
   "settings.uninstall.removes.miniforge": "AcaClaw-installed Miniforge (if applicable)",
@@ -463,7 +464,7 @@ export const en: Record<string, string> = {
 
   // ── API Keys page ──
   "apikeys.title": "API Keys",
-  "apikeys.subtitle": "Manage your LLM and search provider keys. Stored locally on your machine.",
+  "apikeys.subtitle": "Configure your AI provider keys. Managed by OpenClaw, stored locally on your machine.",
   "apikeys.tab.llm": "LLM Providers",
   "apikeys.tab.browser": "Browser / Search",
   "apikeys.provider": "Provider",
@@ -471,7 +472,7 @@ export const en: Record<string, string> = {
   "apikeys.apiKeys": "{0} — API Keys",
   "apikeys.configured": "{0} is configured and ready to use.",
   "apikeys.noKeys": "No API keys configured for {0}.",
-  "apikeys.noKeys.hint": "Click \"Add Key\" below to get started.",
+  "apikeys.noKeys.hint": "Add a key here, or configure via OpenClaw CLI: openclaw config set models.providers.<provider>.apiKey <key>",
   "apikeys.addKey": "+ Add Key",
   "apikeys.addAnother": "+ Add Another Key",
   "apikeys.save": "Save",
@@ -494,6 +495,8 @@ export const en: Record<string, string> = {
   "apikeys.savedModel": "✓ Default model saved",
   "apikeys.savedKeys": "✓ Keys saved",
   "apikeys.saveFailed": "⚠ Save failed — is the gateway running?",
+  "apikeys.gate.title": "API key required to continue",
+  "apikeys.gate.desc": "Add at least one LLM provider key below, then save. You can also configure keys via OpenClaw CLI or environment variables.",
 
   // ── Staff page ──
   "staff.title": "Staff",

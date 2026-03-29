@@ -8,7 +8,7 @@ import { homedir } from "node:os";
 // In deployment, install.sh copies the built UI to <OPENCLAW_HOME>/ui/ (flat).
 // In dev, the build output lives at ../../ui/dist relative to this plugin.
 function resolveUiDist(): string {
-  const home = process.env.OPENCLAW_HOME ?? join(homedir(), ".openclaw-acaclaw");
+  const home = process.env.OPENCLAW_HOME ?? join(homedir(), ".openclaw");
   const deployed = join(home, "ui");
   // Deployed dir has index.html directly (not nested in dist/)
   if (existsSync(join(deployed, "index.html"))) return deployed;
@@ -51,7 +51,7 @@ const uiPlugin = {
 
       // Fallback: check config file at profile home
       try {
-        const home = process.env.OPENCLAW_HOME ?? join(homedir(), ".openclaw-acaclaw");
+        const home = process.env.OPENCLAW_HOME ?? join(homedir(), ".openclaw");
         const configPath = join(home, "openclaw.json");
         const raw = JSON.parse(readFileSync(configPath, "utf-8"));
         return raw?.gateway?.auth?.token ?? "";

@@ -230,18 +230,18 @@ For transparency, here is exactly what the install script does:
 |---|---|---|
 | 1 | Installs OpenClaw via npm | Global (`npm install -g openclaw`) |
 | 2 | Installs Miniforge (Conda) | `~/.acaclaw/miniforge3/` |
-| 3 | Copies AcaClaw plugins | `~/.openclaw-acaclaw/extensions/` (isolated profile) |
-| 4 | Installs academic skills from ClawHub | `~/.openclaw-acaclaw/skills/` |
-| 5 | Writes AcaClaw config | `~/.openclaw-acaclaw/openclaw.json` (copies existing API keys) |
+| 3 | Copies AcaClaw plugins | `~/.openclaw/extensions/` |
+| 4 | Installs academic skills from ClawHub | `~/.openclaw/skills/` |
+| 5 | Writes AcaClaw config | `~/.openclaw/openclaw.json` (copies existing API keys) |
 | 6 | Registers systemd user service | `~/.config/systemd/user/acaclaw-gateway.service` |
-| 7 | Starts gateway, opens browser wizard | `openclaw --profile acaclaw gateway run` → `http://localhost:2090/` |
+| 7 | Starts gateway, opens browser wizard | `openclaw gateway run` → `http://localhost:2090/` |
 
 The browser wizard then:
 
 | Step | Action | Location |
 |---|---|---|
 | 8 | Creates Conda environment for your discipline | `~/.acaclaw/miniforge3/envs/acaclaw-*` |
-| 9 | Saves discipline + provider config | `~/.openclaw-acaclaw/openclaw.json` (via gateway API) |
+| 9 | Saves discipline + provider config | `~/.openclaw/openclaw.json` (via gateway API) |
 | 10 | Creates workspace directory structure | `~/AcaClaw/` |
 
 Nothing is installed outside these directories. Nothing is sent to the internet (except npm/conda package downloads and the API key test).
@@ -291,7 +291,7 @@ bash ~/github/acaclaw/scripts/uninstall-all.sh
 
 | Item | Path | Removed by |
 |---|---|---|
-| AcaClaw profile (plugins, skills, config, sessions) | `~/.openclaw-acaclaw/` | Both scripts |
+| AcaClaw data (plugins, skills, config, sessions) | `~/.openclaw/` | Both scripts |
 | AcaClaw conda environments (acaclaw, acaclaw-bio, etc.) | conda env list | Both scripts |
 | AcaClaw config and audit data | `~/.acaclaw/` | Both scripts |
 | AcaClaw-installed Miniforge | `~/.acaclaw/miniforge3/` | Both scripts |

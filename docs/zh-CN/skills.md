@@ -79,10 +79,10 @@ AcaClaw 不捆绑社区技能，但在 [acaclaw.com/hub](https://acaclaw.com/hub
 
 ## 技能存放位置 {#where-skills-live}
 
-技能存储在 AcaClaw 网关的工作目录中。AcaClaw 配置文件使用 `~/.openclaw-acaclaw/` 作为主目录，因此从 ClawHub 安装的托管技能会存放到：
+技能存储在 AcaClaw 网关的工作目录中。AcaClaw 使用 `~/.openclaw/` 作为主目录，因此从 ClawHub 安装的托管技能会存放到：
 
 ```
-~/.openclaw-acaclaw/skills/<skill-name>/
+~/.openclaw/skills/<skill-name>/
 ```
 
 ### 存储路径
@@ -93,14 +93,14 @@ AcaClaw 不捆绑社区技能，但在 [acaclaw.com/hub](https://acaclaw.com/hub
 |---|---|---|
 | 1（最低） | 配置中的 `skills.load.extraDirs` | 额外的技能文件夹 |
 | 2 | `<openclaw-package>/skills/` | 随 OpenClaw 捆绑（基础技能） |
-| 3 | **`~/.openclaw-acaclaw/skills/`** | 托管技能 — **ClawHub 安装落在此目录** |
+| 3 | **`~/.openclaw/skills/`** | 托管技能 — **ClawHub 安装落在此目录** |
 | 4 | `~/.agents/skills/` | 个人智能体技能 |
 | 5 | `<workspace>/.agents/skills/` | 按项目的智能体技能 |
 | 6（最高） | `<workspace>/skills/` | 工作区技能 |
 
 ### 对 AcaClaw 的含义
 
-- **通过 Staff 面板或 `clawhub install` 安装的技能会存入 `~/.openclaw-acaclaw/skills/`**
+- **通过 Staff 面板或 `clawhub install` 安装的技能会存入 `~/.openclaw/skills/`**
 - 基础技能（捆绑）不会写入磁盘 — 始终从 OpenClaw 包中加载
 - 若仅为 AcaClaw 覆盖某项技能，请放在 `~/AcaClaw/skills/<skill>/`（工作区级覆盖）
 
@@ -283,7 +283,7 @@ AcaClaw 使用来自 ClawHub 的已验证技能。当前跨学科技能列表由
 AcaClaw 始终通过以下命令安装 ClawHub 托管技能的最新版本：
 
 ```sh
-clawhub --workdir ~/.openclaw-acaclaw --no-input install --force <skill>
+clawhub --workdir ~/.openclaw --no-input install --force <skill>
 ```
 
 `install.sh` 脚本在全新安装时固定核心技能：

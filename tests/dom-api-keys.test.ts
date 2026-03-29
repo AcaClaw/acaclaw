@@ -101,4 +101,39 @@ describe("ApiKeysView DOM", () => {
     expect(mockCall).toHaveBeenCalledWith("config.get");
     cleanup(el);
   });
+
+  it("saving LLM keys uses simple config.set key/value", async () => {
+    const el = await createElement();
+
+    // Simulate entering a key for the selected provider
+    const llmKeys = (el as unknown as { _llmKeys: Map<string, { id: string; label: string; value: string; visible: boolean; saved: boolean }[]> })._llmKeys;
+    llmKeys.set("openrouter", [
+      { id: "k1", label: "Default", value: "sk-or-test-12345", visible: false, saved: false },
+    ]);
+
+    // Capture all config.set calls
+    const configSetCalls: { key: string; value: unknown }[] = [];
+    mockCall.mockImplementation(async (method: string, params?: Record<string, unknown>) => {
+      if (method === "config.get") return { config: {}, hash: "abc" };
+      if (method === "config.set") {
+        configSetCalls.push({ key: params?.key as string, value: params?.value });
+        return {};
+      }
+      return undefined;
+    });
+
+    // Call _saveKeys directly
+    await (el as unknown as { _saveKeys: (c: string) => Promise<void> })._saveKeys("llm");
+
+    // Should use simple key/value config.set (same as onboarding)
+    expect(configSetCalls).toEqual([
+      { key: "models.providers.openrouter.apiKey", value: "sk-or-test-12345" },
+    ]);
+
+    // Should NOT use raw JSON config rewrite
+    const rawCalls = configSetCalls.filter((c) => !c.key);
+    expect(rawCalls).toHaveLength(0);
+
+    cleanup(el);
+  });
 });

@@ -74,7 +74,7 @@ AcaClaw runs alongside an existing OpenClaw installation without modifying it. T
 │   skills/                   ← user's existing skills
 │   sessions/                 ← user's existing sessions
 │
-~/.openclaw-acaclaw/          ← AcaClaw profile (created by installer)
+~/.openclaw/                      ← OpenClaw directory (used by AcaClaw)
 │   openclaw.json             ← AcaClaw config ($include → ~/.openclaw/openclaw.json)
 │   plugins/                  ← AcaClaw-only plugins (backup, security, env, ui, etc.)
 │   skills/                   ← academic skills from ClawHub
@@ -89,7 +89,7 @@ AcaClaw runs alongside an existing OpenClaw installation without modifying it. T
 
 **How config inheritance works:**
 
-AcaClaw's config at `~/.openclaw-acaclaw/openclaw.json` uses OpenClaw's `$include` directive to inherit the user's existing settings:
+AcaClaw's config at `~/.openclaw/openclaw.json` uses OpenClaw's `$include` directive to inherit the user's existing settings:
 
 ```json
 {
@@ -98,7 +98,7 @@ AcaClaw's config at `~/.openclaw-acaclaw/openclaw.json` uses OpenClaw's `$includ
     "port": 2090,
     "controlUi": {
       "basePath": "/",
-      "root": "~/.openclaw-acaclaw/ui"
+      "root": "~/.openclaw/ui"
     }
   },
   "agents": {
@@ -117,7 +117,7 @@ Deep merge behavior: AcaClaw's values (workspace, security, plugins) override. T
 |---|---|
 | User has existing OpenClaw | AcaClaw inherits API keys via `$include`, never writes to `~/.openclaw/` |
 | User updates OpenClaw | `npm install -g openclaw@latest` — AcaClaw unaffected |
-| User uninstalls AcaClaw | `rm -rf ~/.openclaw-acaclaw ~/.acaclaw` — OpenClaw unaffected |
+| User uninstalls AcaClaw | `rm -rf ~/.acaclaw` and remove AcaClaw entries from `~/.openclaw/openclaw.json` |
 | User runs both | OpenClaw gateway on default port, AcaClaw gateway on 2090 (separate profiles = separate processes) |
 | User installs AcaClaw first | AcaClaw creates standalone config, OpenClaw installed later is separate |
 
@@ -175,7 +175,7 @@ http://localhost:18789          → OpenClaw UI (channels, debug, cron — uncha
 
 ### How It Works
 
-AcaClaw runs a dedicated gateway process (`acaclaw-gateway.service`) on port 2090. The gateway's `controlUi` middleware serves the AcaClaw SPA from `~/.openclaw-acaclaw/ui/`. OpenClaw's default gateway (`openclaw-gateway.service`) runs separately on port 18789 with its own built-in control dashboard.
+AcaClaw runs a dedicated gateway process (`acaclaw-gateway.service`) on port 2090. The gateway's `controlUi` middleware serves the AcaClaw SPA from `~/.openclaw/ui/`. OpenClaw's default gateway (`openclaw-gateway.service`) runs separately on port 18789 with its own built-in control dashboard.
 
 AcaClaw's config:
 
@@ -184,7 +184,7 @@ AcaClaw's config:
   "gateway": {
     "controlUi": {
       "basePath": "/",
-      "root": "~/.openclaw-acaclaw/ui"
+      "root": "~/.openclaw/ui"
     }
   }
 }
@@ -1091,11 +1091,11 @@ Opening a browser page avoids all of these. The browser is already installed and
 | Install OpenClaw | `npm install -g openclaw` | No |
 | Install Miniforge | Downloads and installs silently | No |
 | Create base Conda env | Python + R + core scientific stack | No |
-| Copy AcaClaw plugins | To `~/.openclaw-acaclaw/plugins/` (isolated profile) | No |
-| Install academic skills | From ClawHub into `~/.openclaw-acaclaw/skills/` | No |
-| Apply AcaClaw config | Writes `~/.openclaw-acaclaw/openclaw.json` with `$include` | No |
+| Copy AcaClaw plugins | To `~/.openclaw/plugins/` | No |
+| Install academic skills | From ClawHub into `~/.openclaw/skills/` | No |
+| Apply AcaClaw config | Writes `~/.openclaw/openclaw.json` with `$include` | No |
 | Create workspace dirs | `~/AcaClaw/` structure | No |
-| Start gateway + open browser | `openclaw --profile acaclaw gateway run` → `http://localhost:2090/` | No |
+| Start gateway + open browser | `openclaw gateway run` → `http://localhost:2090/` | No |
 
 ### What the browser wizard does (user choices)
 
@@ -1268,11 +1268,11 @@ acaclaw/
 ```
 OpenClaw update (npm install -g openclaw@latest)
   └── Updates: gateway binary, built-in skills, core plugins, admin UI at :18789
-  └── Does NOT touch: ~/.openclaw-acaclaw/, AcaClaw UI, AcaClaw plugins, AcaClaw skills
+  └── Does NOT touch: ~/.openclaw/, AcaClaw UI, AcaClaw plugins, AcaClaw skills
 
 AcaClaw update (install.sh --upgrade)
   └── Updates: AcaClaw UI build at /, AcaClaw plugins, AcaClaw skills
-  └── Writes to: ~/.openclaw-acaclaw/plugins/, ~/.openclaw-acaclaw/skills/
+  └── Writes to: ~/.openclaw/plugins/, ~/.openclaw/skills/
   └── Does NOT touch: ~/.openclaw/ (OpenClaw's config, plugins, sessions)
 ```
 

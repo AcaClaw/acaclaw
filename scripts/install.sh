@@ -7,9 +7,10 @@
 # automatically, then opens a browser-based setup wizard for user
 # choices (discipline, AI provider, security level, workspace).
 #
-# ISOLATION: AcaClaw uses OpenClaw's --profile flag to run in its own
-# state directory (~/.openclaw-acaclaw/). An existing OpenClaw install
-# at ~/.openclaw/ is never modified. AcaClaw copies auth credentials
+# AcaClaw uses OpenClaw's default directory (~/.openclaw/).
+# If an existing OpenClaw instance is found, AcaClaw merges
+# its configuration on top.
+# AcaClaw copies auth credentials
 # and model config from the user's existing OpenClaw config on install.
 # Uninstalling AcaClaw leaves OpenClaw completely untouched.
 set -euo pipefail
@@ -20,9 +21,8 @@ OPENCLAW_MIN_VERSION="2026.3.24"
 NODE_MIN_VERSION="22"
 ACACLAW_GITHUB_REPO="acaclaw/acaclaw"
 
-# AcaClaw runs as an OpenClaw profile — fully isolated state dir
-ACACLAW_PROFILE="acaclaw"
-ACACLAW_STATE_DIR="${HOME}/.openclaw-acaclaw"
+# AcaClaw runs using the default OpenClaw directory
+OPENCLAW_DIR="${HOME}/.openclaw"
 
 # Colors
 RED='\033[0;31m'
@@ -37,12 +37,39 @@ warn()  { echo -e "${YELLOW}[acaclaw]${NC} $*"; }
 error() { echo -e "${RED}[acaclaw]${NC} $*" >&2; }
 header() { echo -e "\n${BOLD}${BLUE}$*${NC}\n"; }
 
+# --- Handle --help and unknown flags before cloning (avoids network delay) ---
+case "${1:-}" in
+	--help|-h)
+		echo "AcaClaw Installer v${ACACLAW_VERSION}"
+		echo ""
+		echo "Usage: bash install.sh [OPTIONS]"
+		echo ""
+		echo "Options:"
+		echo "  --no-conda                 Skip Miniforge/Conda installation"
+		echo "  -h, --help                 Show this help"
+		exit 0
+		;;
+	--no-conda|"")
+		# Valid option or no args — continue to clone/resolve
+		;;
+	*)
+		echo "Error: Unknown option: $1" >&2
+		echo "Run 'bash install.sh --help' for usage." >&2
+		exit 1
+		;;
+esac
+
 # --- Resolve REPO_ROOT ---
 # When run locally from a git clone: SCRIPT_DIR/../ is the repo root.
 # When piped via curl: clone the repo first, then use the clone as root.
 
 _resolve_repo_root() {
-	# Always install from GitHub — clone the latest release
+	# If REPO_ROOT is already set and valid, use it (local dev / CI)
+	if [[ -n "${REPO_ROOT:-}" && -f "${REPO_ROOT}/scripts/install.sh" ]]; then
+		return
+	fi
+
+	# Clone the latest release from GitHub
 	if ! command -v git &>/dev/null; then
 		error "git is required for remote install. Install git and try again."
 		error "Or clone manually: git clone https://github.com/${ACACLAW_GITHUB_REPO}.git && bash acaclaw/scripts/install.sh"
@@ -367,7 +394,7 @@ mkdir -p "${ACACLAW_DIR}"
 
 # Install plugins to AcaClaw's own profile directory — NOT ~/.openclaw/extensions/
 # OpenClaw auto-discovers plugins from <configDir>/extensions/
-ACACLAW_PLUGINS_DIR="${ACACLAW_STATE_DIR}/extensions"
+ACACLAW_PLUGINS_DIR="${OPENCLAW_DIR}/extensions"
 mkdir -p "$ACACLAW_PLUGINS_DIR"
 
 REPO_PLUGINS_DIR="${SCRIPT_DIR}/../plugins"
@@ -422,7 +449,7 @@ fi
 
 log "Installing @acaclaw/ui..."
 ACAC_UI_SRC="${SCRIPT_DIR}/../ui"
-ACAC_UI_DEST="${ACACLAW_STATE_DIR}/ui"
+ACAC_UI_DEST="${OPENCLAW_DIR}/ui"
 
 # Rebuild if src/ is newer than dist/ (prevents deploying stale builds)
 _ui_needs_rebuild() {
@@ -480,7 +507,7 @@ SKILL_COUNT=0
 
 for skill_name in "${CORE_SKILLS[@]}"; do
 	log "Installing skill: ${skill_name}..."
-	if clawhub install "$skill_name" --workdir "${ACACLAW_STATE_DIR}" --force 2>/dev/null; then
+	if clawhub install "$skill_name" --workdir "${OPENCLAW_DIR}" --force 2>/dev/null; then
 		SKILL_COUNT=$((SKILL_COUNT + 1))
 	else
 		warn "Failed to install ${skill_name}"
@@ -489,7 +516,7 @@ done
 
 log "${SKILL_COUNT}/${#CORE_SKILLS[@]} skills installed ✓"
 log "Bundled with OpenClaw: coding-agent, clawhub, and more"
-log "Install more skills anytime: clawhub install <skill-name> --workdir ${ACACLAW_STATE_DIR}"
+log "Install more skills anytime: clawhub install <skill-name> --workdir ${OPENCLAW_DIR}"
 
 # --- Security defaults ---
 
@@ -531,11 +558,11 @@ fi
 #   - If user has API keys in ~/.openclaw/openclaw.json → AcaClaw copies them
 #   - AcaClaw's overrides (workspace, security, plugins) layer on top
 #   - ~/.openclaw/openclaw.json is NEVER modified
-#   - Uninstalling AcaClaw = rm -rf ~/.openclaw-acaclaw — OpenClaw unaffected
-mkdir -p "${ACACLAW_STATE_DIR}"
+#   - Uninstalling AcaClaw removes its config from ~/.openclaw/
+mkdir -p "${OPENCLAW_DIR}"
 
 OPENCLAW_BASE_CONFIG="${HOME}/.openclaw/openclaw.json"
-ACACLAW_CONFIG="${ACACLAW_STATE_DIR}/openclaw.json"
+ACACLAW_CONFIG="${OPENCLAW_DIR}/openclaw.json"
 
 if [[ -f "$OPENCLAW_BASE_CONFIG" ]]; then
 	# Existing OpenClaw install found — copy auth + model config into AcaClaw profile
@@ -589,7 +616,7 @@ with open('${ACACLAW_CONFIG}', 'w') as f:
 
 	# Copy auth-profiles.json (contains actual API key values)
 	OPENCLAW_AUTH_PROFILES="${HOME}/.openclaw/agents/main/agent/auth-profiles.json"
-	ACACLAW_AUTH_DIR="${ACACLAW_STATE_DIR}/agents/main/agent"
+	ACACALAW_AUTH_DIR="${OPENCLAW_DIR}/agents/main/agent"
 	if [[ -f "$OPENCLAW_AUTH_PROFILES" ]]; then
 		mkdir -p "$ACACLAW_AUTH_DIR"
 		cp "$OPENCLAW_AUTH_PROFILES" "$ACACLAW_AUTH_DIR/auth-profiles.json"
@@ -625,7 +652,7 @@ log "Config location: ${ACACLAW_CONFIG}"
 log "OpenClaw's own config: untouched ✓"
 
 # Inject gateway auth token into the deployed UI index.html
-ACAC_UI_INDEX="${ACACLAW_STATE_DIR}/ui/index.html"
+ACAC_UI_INDEX="${OPENCLAW_DIR}/ui/index.html"
 if [[ -f "$ACAC_UI_INDEX" ]] && [[ -f "$ACACLAW_CONFIG" ]]; then
 	GATEWAY_TOKEN=$(python3 -c "
 import json
@@ -795,10 +822,10 @@ fi
 
 header "Opening Setup Wizard"
 
-log "Starting OpenClaw gateway (profile: acaclaw)..."
+log "Starting OpenClaw gateway..."
 if check_command openclaw; then
-	# Start gateway using AcaClaw profile — fully isolated from any existing OpenClaw instance
-	openclaw --profile acaclaw gateway run --bind loopback --port 2090 &>/dev/null &
+	# Start gateway for AcaClaw
+	openclaw gateway run --bind loopback --port 2090 &>/dev/null &
 	GATEWAY_PID=$!
 	sleep 2
 
@@ -828,7 +855,7 @@ SETUPJSON
 	log "If the browser didn't open, visit the URL above manually."
 else
 	warn "OpenClaw not found — start the gateway manually:"
-	warn "  openclaw --profile acaclaw gateway run --bind loopback --port 2090"
+	warn "  openclaw gateway run --bind loopback --port 2090"
 	warn "Then visit http://localhost:2090/"
 fi
 

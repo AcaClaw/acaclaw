@@ -537,9 +537,9 @@ export class OnboardingView extends LitElement {
 
       this._installProgress = 100;
 
-      // Redirect to dashboard after brief delay
+      // Redirect to API keys page after brief delay
       setTimeout(() => {
-        location.hash = "overview";
+        location.hash = "api-keys";
       }, 1000);
     } catch {
       this._installing = false;

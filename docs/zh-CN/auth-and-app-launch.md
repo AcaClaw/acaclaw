@@ -37,7 +37,7 @@ AcaClaw 是本地 Web 应用。网关（OpenClaw 进程）在 `localhost` 上运
 ┌─────────────────────────── Install time ───────────────────────────┐
 │                                                                     │
 │  install.sh  ──generates──▶  token (48 hex chars)                   │
-│              ──writes──▶     ~/.openclaw-acaclaw/openclaw.json      │
+│              ──writes──▶     ~/.openclaw/openclaw.json              │
 │              ──injects──▶    <meta name="oc-token"> in index.html   │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
@@ -85,7 +85,7 @@ cfg['gateway']['auth'] = {
 令牌位于 AcaClaw 配置文件的 OpenClaw 配置中：
 
 ```
-~/.openclaw-acaclaw/openclaw.json
+~/.openclaw/openclaw.json
 ```
 
 ```json
@@ -214,7 +214,7 @@ Gateway: safeEqualSecret(provided_token, config_token) ──▶ match? → acce
        ├── Is gateway already running?
        │   ├── Yes → skip to browser launch
        │   └── No  → start gateway in background
-       │            ├── openclaw --profile acaclaw gateway run
+       │            ├── openclaw gateway run
        │            ├── Save PID to ~/.acaclaw/gateway.pid
        │            └── Wait for /health endpoint (up to 15s)
        │
@@ -358,7 +358,7 @@ AcaClaw 的认证面向单机单用户本地访问：
    ```
 3. 若插件加载失败，`start.sh` 中的 `ensure_token_in_html()` 应已注入标签。检查 HTML 文件：
    ```bash
-   grep "oc-token" ~/.openclaw-acaclaw/ui/index.html
+   grep "oc-token" ~/.openclaw/ui/index.html
    ```
 
 ---

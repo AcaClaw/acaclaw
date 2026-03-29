@@ -36,6 +36,46 @@ AcaClaw is designed for **scientists who are not software engineers**: chemists,
 6. **Security-first** — Stricter defaults than upstream. Workspace-restricted by default.
 7. **Contribute, don't diverge** — Every skill is published to ClawHub. We never maintain a parallel ecosystem.
 8. **Environment compatibility** — Every pre-shipped skill is tested together in a single curated environment.
+9. **Don't re-implement** — Never re-implement what OpenClaw already provides. Use it, display it, configure it through OpenClaw's APIs.
+
+---
+
+## Responsibility Boundary
+
+AcaClaw is a distribution layer — it builds on top of OpenClaw, not alongside it. The following table defines what each layer owns:
+
+| Responsibility | Owner | AcaClaw's Role |
+|---|---|---|
+| **LLM handling** (model routing, streaming, tool calls) | OpenClaw | Use as-is — never re-implement |
+| **API key storage** | OpenClaw config (`~/.openclaw/openclaw.json`) | Read and display; write via `config.set key/value` |
+| **Model discovery** (provider catalogs, model lists) | OpenClaw extensions | Query via `models.list` — never maintain a separate catalog |
+| **Provider URLs and auth** | OpenClaw extensions | Never hardcode — OpenClaw resolves these automatically |
+| **Chat, sessions, message history** | OpenClaw gateway | Use via WebSocket RPC |
+| **Plugin SDK, skill system, CLI** | OpenClaw | Use as-is |
+| **Web GUI** | AcaClaw | AcaClaw's own research-focused UI |
+| **Workspace and project system** | AcaClaw plugin | AcaClaw value-add |
+| **Security policies** | AcaClaw plugin | Stricter defaults than OpenClaw |
+| **Data backup** | AcaClaw plugin | AcaClaw value-add |
+| **Academic skills** | AcaClaw + ClawHub | Curated discipline-specific skills |
+| **Computing environment** | AcaClaw | Conda environments for each discipline |
+
+### The Golden Rule
+
+> **If OpenClaw already does it, don't re-implement it. AcaClaw's UI and OpenClaw's UI are both frontends to the same OpenClaw backend. The functionality is implemented once — in OpenClaw. Both UIs just use and display it.**
+
+### Configuration
+
+AcaClaw writes to OpenClaw's config using `openclaw config set` (CLI) or `config.set` (WebSocket RPC). The correct way to set a provider API key:
+
+```bash
+# Via CLI
+openclaw config set models.providers.openrouter.apiKey "sk-or-..."
+
+# Via environment variable
+export OPENROUTER_API_KEY="sk-or-..."
+```
+
+AcaClaw's UI uses the same simple `config.set key/value` RPC that the onboarding wizard uses. It never reads the full config, mutates it, and writes it back. OpenClaw handles schema validation, default values, URL resolution, and model discovery.
 
 ---
 
@@ -77,6 +117,56 @@ AcaClaw is designed for **scientists who are not software engineers**: chemists,
 | **Plugin registration** | AcaClaw plugins register via the standard `OpenClawPluginApi` |
 | **Config overlay** | AcaClaw writes to `openclaw.json` using `openclaw config set` |
 | **GUI wraps CLI** | The GUI (L6) calls OpenClaw/AcaClaw commands underneath |
+
+---
+
+## Directory Layout
+
+AcaClaw uses two directories at runtime. Each has a clear purpose:
+
+```
+~/.openclaw/                      ← OpenClaw directory (config + managed state)
+├── openclaw.json                 ← Single source of truth for ALL config
+│   ├── models.providers.*        ← API keys, provider auth (OpenClaw handles)
+│   ├── agents.*                  ← Agent definitions, default model (OpenClaw)
+│   └── (future) acaclaw.*       ← AcaClaw plugin config (via config.set)
+├── extensions/                   ← Installed OpenClaw extensions
+├── skills/                       ← Installed skills
+├── agents/                       ← Agent session data
+├── ui/                           ← AcaClaw web UI (served by gateway)
+├── memory/, logs/, completions/  ← OpenClaw runtime data
+└── identity/                     ← Gateway identity
+
+~/.acaclaw/                       ← AcaClaw runtime DATA only (not config)
+├── backups/                      ← Versioned file backups (large data)
+├── audit/                        ← Security audit logs (append-only)
+├── config/                       ← [MIGRATION PENDING] → openclaw.json
+│   ├── plugins.json              ← → acaclaw.* in openclaw.json
+│   ├── security-mode.txt         ← → agents.defaults.sandbox.mode
+│   └── setup-pending.json        ← → acaclaw.setup.* in openclaw.json
+├── gateway.log                   ← Gateway runtime log
+├── start.sh, stop.sh             ← Runtime scripts
+└── browser-app/                  ← Electron/browser app data
+```
+
+### Design Principles
+
+| Principle | Rule |
+|---|---|
+| **Config in OpenClaw** | All configuration lives in `openclaw.json`, written via `config.set`. AcaClaw never maintains a parallel config system. |
+| **Data in AcaClaw** | Large files (backups), append-only logs (audit), and runtime artifacts (scripts, Electron cache) live in `~/.acaclaw/`. |
+| **Shared directory** | AcaClaw uses the default `~/.openclaw/` directory. If the user already has a standalone OpenClaw install, AcaClaw inherits its API keys via `$include` and adds its own config on top. |
+| **No direct file writes** | AcaClaw never writes directly to `~/.openclaw/` — always through OpenClaw's `config.set` API or plugin registration. |
+
+### Migration Plan
+
+`~/.acaclaw/config/` currently holds AcaClaw plugin settings that should migrate into `openclaw.json`. Until migration is complete:
+
+- `plugins.json` settings will move to `acaclaw.*` namespace in `openclaw.json`
+- `security-mode.txt` will use `agents.defaults.sandbox.mode`
+- `setup-pending.json` will use `acaclaw.setup.*` namespace
+- After migration, `~/.acaclaw/config/` will be removed
+- `~/.acaclaw/` will contain only runtime data: backups, audit logs, gateway log, scripts
 
 ---
 

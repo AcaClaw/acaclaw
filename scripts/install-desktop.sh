@@ -113,7 +113,7 @@ install_linux() {
 Type=Application
 Name=AcaClaw
 Comment=AI Co-Scientist — your dedicated AI research partner
-Exec=bash ${SCRIPT_DIR}/start.sh
+Exec=bash ${ACACLAW_DATA_DIR}/start.sh
 Icon=${icon_path:-utilities-terminal}
 Terminal=false
 Categories=Science;Education;Development;
@@ -143,7 +143,7 @@ DESKTOP
 install_macos() {
     local app_dir="${HOME}/Applications"
     local app_bundle="${app_dir}/AcaClaw.app"
-    local start_script="${SCRIPT_DIR}/start.sh"
+    local start_script="${ACACLAW_DATA_DIR}/start.sh"
     local acaclaw_url="http://localhost:2090/"
 
     if [[ "$REMOVE" == "true" ]]; then
@@ -238,12 +238,12 @@ install_wsl2() {
 
     if ! command -v powershell.exe &>/dev/null; then
         error "powershell.exe not available — cannot create Windows shortcut"
-        warn "You can still start AcaClaw manually: bash ${SCRIPT_DIR}/start.sh"
+        warn "You can still start AcaClaw manually: bash ${ACACLAW_DATA_DIR}/start.sh"
         exit 1
     fi
 
     # Convert WSL path to Windows path for the script
-    local wsl_script="${SCRIPT_DIR}/start.sh"
+    local wsl_script="${ACACLAW_DATA_DIR}/start.sh"
     local win_script
     if command -v wslpath &>/dev/null; then
         win_script="$(wslpath -w "$wsl_script")"
@@ -269,7 +269,7 @@ install_wsl2() {
         log "Double-click 'AcaClaw' on your Windows Desktop to launch"
     else
         error "Failed to create Windows shortcut"
-        warn "Start manually: bash ${SCRIPT_DIR}/start.sh"
+        warn "Start manually: bash ${ACACLAW_DATA_DIR}/start.sh"
     fi
 }
 

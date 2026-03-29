@@ -111,6 +111,9 @@ export class AcaClawApp extends LitElement {
   @state() private _sidebarCollapsed = false;
   @state() private _brandName = localStorage.getItem("acaclaw-brand-name") ?? "AcaClaw";
   @state() private _editingBrand = false;
+  /** True once we've confirmed at least one LLM API key is configured. */
+  @state() private _keysConfigured = true; // assume true until checked to avoid flash
+  private _keysChecked = false;
 
   static override styles = css`
     :host {
@@ -280,6 +283,17 @@ export class AcaClawApp extends LitElement {
       height: 16px;
       background: var(--ac-accent);
       border-radius: 0 4px 4px 0;
+    }
+
+    .nav-item.locked {
+      opacity: 0.45;
+      pointer-events: none;
+      cursor: not-allowed;
+    }
+    .lock-icon {
+      margin-left: auto;
+      font-size: 12px;
+      flex-shrink: 0;
     }
 .icon {
       flex-shrink: 0;
@@ -470,11 +484,19 @@ export class AcaClawApp extends LitElement {
     window.addEventListener("hashchange", () => this._routeFromHash());
     gateway.addEventListener("state-change", ((e: CustomEvent) => {
       this._gatewayState = e.detail.state;
+      if (e.detail.state === "connected" && !this._keysChecked) {
+        this._checkKeysConfigured();
+      }
     }) as EventListener);
     gateway.addEventListener("status-update", ((e: CustomEvent) => {
       this._agentStatus = e.detail.agentStatus ?? this._agentStatus;
       this._tokenCount = e.detail.tokenCount ?? this._tokenCount;
     }) as EventListener);
+
+    // Lift the API-key gate when the api-keys view saves a key
+    window.addEventListener("keys-saved", () => {
+      this._keysConfigured = true;
+    });
 
     // Navigate to Chat when an agent "💬 Chat" button is clicked
     window.addEventListener("open-agent-chat", ((e: CustomEvent) => {
@@ -503,15 +525,61 @@ export class AcaClawApp extends LitElement {
     gateway.connect();
   }
 
+  private async _checkKeysConfigured() {
+    this._keysChecked = true;
+    try {
+      const snapshot = await gateway.call<Record<string, unknown>>("config.get");
+      if (!snapshot) { this._keysConfigured = false; this._enforceKeyGate(); return; }
+      const cfg = (snapshot.config as Record<string, unknown>) ?? snapshot;
+      const auth = cfg.auth as Record<string, unknown> | undefined;
+      const models = cfg.models as Record<string, unknown> | undefined;
+
+      let found = false;
+      // Check auth.profiles for any configured provider
+      if (auth?.profiles && typeof auth.profiles === "object") {
+        found = Object.values(auth.profiles as Record<string, Record<string, unknown>>)
+          .some(p => !!p?.provider);
+      }
+      // Check models.providers for any with an apiKey
+      if (!found && models?.providers && typeof models.providers === "object") {
+        found = Object.values(models.providers as Record<string, Record<string, unknown>>)
+          .some(p => !!p?.apiKey);
+      }
+      this._keysConfigured = found;
+      if (!found) this._enforceKeyGate();
+    } catch {
+      this._keysConfigured = false;
+      this._enforceKeyGate();
+    }
+  }
+
+  private _enforceKeyGate() {
+    if (this._route !== "api-keys" && this._route !== "setup") {
+      this._navigate("api-keys");
+    }
+  }
+
   private _routeFromHash() {
     const hash = location.hash.slice(1) || "api-keys";
     if (NAV_GROUPS.some(g => g.items.some(n => n.id === hash)) || hash === "setup") {
+      // Block navigation away from api-keys when no keys are configured
+      if (!this._keysConfigured && hash !== "api-keys" && hash !== "setup") {
+        this._navigate("api-keys");
+        return;
+      }
       this._route = hash as Route;
       this._ensureViewLoaded(hash);
     }
   }
 
   private _navigate(route: Route) {
+    // Block navigation away from api-keys when no keys are configured
+    if (!this._keysConfigured && route !== "api-keys" && route !== "setup") {
+      location.hash = "api-keys";
+      this._route = "api-keys";
+      this._ensureViewLoaded("api-keys");
+      return;
+    }
     location.hash = route;
     this._route = route;
     this._ensureViewLoaded(route);
@@ -622,18 +690,23 @@ export class AcaClawApp extends LitElement {
               (group) => html`
                 <div class="nav-group-title">${group.title}</div>
                 ${group.items.map(
-                  (item) => html`
+                  (item) => {
+                    const locked = !this._keysConfigured && item.id !== "api-keys";
+                    return html`
                     <div
-                      class="nav-item ${this._route === item.id ? "active" : ""}"
+                      class="nav-item ${this._route === item.id ? "active" : ""} ${locked ? "locked" : ""}"
                       @click=${() => this._navigate(item.id)}
+                      title=${locked ? t("nav.locked") : ""}
                     >
                       <span class="icon">${NAV_ICONS[item.id]}</span>
                       <div class="label-group">
                         <span class="label">${t("nav." + item.id)}</span>
                         <span class="desc">${t("nav." + item.id + ".desc")}</span>
                       </div>
+                      ${locked ? html`<span class="lock-icon">🔒</span>` : ""}
                     </div>
-                  `
+                  `;
+                  }
                 )}
               `
             )}

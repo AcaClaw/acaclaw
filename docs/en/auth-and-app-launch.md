@@ -37,7 +37,7 @@ AcaClaw is a local web app. The gateway (an OpenClaw process) runs on `localhost
 ┌─────────────────────────── Install time ───────────────────────────┐
 │                                                                     │
 │  install.sh  ──generates──▶  token (48 hex chars)                   │
-│              ──writes──▶     ~/.openclaw-acaclaw/openclaw.json      │
+│              ──writes──▶     ~/.openclaw/openclaw.json              │
 │              ──injects──▶    <meta name="oc-token"> in index.html   │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
@@ -85,7 +85,7 @@ The token is written once and never rotated automatically (users can regenerate 
 The token lives in the OpenClaw config file under the AcaClaw profile:
 
 ```
-~/.openclaw-acaclaw/openclaw.json
+~/.openclaw/openclaw.json
 ```
 
 ```json
@@ -214,7 +214,7 @@ The user clicks a desktop icon or runs `start.sh`. No terminal interaction requi
        ├── Is gateway already running?
        │   ├── Yes → skip to browser launch
        │   └── No  → start gateway in background
-       │            ├── openclaw --profile acaclaw gateway run
+       │            ├── openclaw gateway run
        │            ├── Save PID to ~/.acaclaw/gateway.pid
        │            └── Wait for /health endpoint (up to 15s)
        │
@@ -358,7 +358,7 @@ If `resolveAuthToken()` logs "no token found":
    ```
 3. If the plugin failed to load, `start.sh`'s `ensure_token_in_html()` should have injected the tag. Check the HTML file:
    ```bash
-   grep "oc-token" ~/.openclaw-acaclaw/ui/index.html
+   grep "oc-token" ~/.openclaw/ui/index.html
    ```
 
 ---

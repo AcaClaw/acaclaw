@@ -76,6 +76,33 @@ export class ApiKeysView extends LitElement {
       display: block;
     }
 
+    /* ── Setup gate banner ── */
+    .setup-gate-banner {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 16px 20px;
+      margin-bottom: 24px;
+      background: var(--ac-warning-bg, #fef3cd);
+      border: 1px solid var(--ac-warning-border, #ffc107);
+      border-radius: 12px;
+      color: var(--ac-warning-text, #856404);
+    }
+    .setup-gate-icon {
+      font-size: 28px;
+      flex-shrink: 0;
+    }
+    .setup-gate-text {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .setup-gate-text strong {
+      font-size: 16px;
+    }
+
     /* ── Page header ── */
     h1 {
       font-size: 32px;
@@ -485,16 +512,20 @@ export class ApiKeysView extends LitElement {
           const providerName = String(profile.provider).toLowerCase();
           const mapped = this._mapProviderName(providerName);
           if (mapped && !this._llmKeys.has(mapped)) {
-            // Profile exists — key is configured (value is in auth-profiles.json, redacted here)
-            this._llmKeys.set(mapped, [
-              {
-                id: genId(),
-                label: profileId,
-                value: "••••••••••••••••",
-                visible: false,
-                saved: true,
-              },
-            ]);
+            // Verify an actual API key exists in models.providers
+            const provObj = (models?.providers as Record<string, Record<string, unknown>> | undefined)?.[providerName];
+            const realKey = provObj?.apiKey;
+            if (realKey && realKey !== "__OPENCLAW_REDACTED__") {
+              this._llmKeys.set(mapped, [
+                {
+                  id: genId(),
+                  label: profileId,
+                  value: "••••••••••••••••",
+                  visible: false,
+                  saved: true,
+                },
+              ]);
+            }
           }
         }
       }
@@ -564,62 +595,32 @@ export class ApiKeysView extends LitElement {
         }
       }
 
-      // ── Build model list from configured providers ──
-      // First try models.providers in config, then fall back to models.list
+      // ── Build model list from gateway (OpenClaw handles model discovery) ──
       const configuredModels: ModelOption[] = [];
-      if (models?.providers && typeof models.providers === "object") {
-        for (const [pid, pval] of Object.entries(
-          models.providers as Record<string, Record<string, unknown>>,
-        )) {
-          const providerModels = pval?.models as Array<Record<string, unknown>> | undefined;
-          const providerName = LLM_PROVIDERS.find((p) => p.id === this._mapProviderName(pid))?.name ?? pid;
-          if (providerModels && Array.isArray(providerModels)) {
-            for (const m of providerModels) {
-              const mid = m.id as string;
-              const mname = (m.name as string) ?? mid;
-              if (mid) {
-                configuredModels.push({
-                  id: `${pid}/${mid}`,
-                  name: mname,
-                  provider: pid,
-                  providerName,
-                });
-              }
-            }
+      try {
+        const modelsResult = await gateway.call<Record<string, unknown>>("models.list");
+        const payload = (modelsResult as Record<string, unknown>)?.models
+          ?? (modelsResult as Record<string, unknown>)?.payload;
+        const allModels = Array.isArray(payload)
+          ? payload
+          : (payload as Record<string, unknown>)?.models;
+        if (Array.isArray(allModels)) {
+          for (const m of allModels) {
+            const mid = m.id as string;
+            const mprovider = m.provider as string;
+            const mname = (m.name as string) ?? mid;
+            if (!mid || !mprovider) continue;
+            const providerDef = LLM_PROVIDERS.find((p) => p.id === this._mapProviderName(mprovider));
+            configuredModels.push({
+              id: `${mprovider}/${mid}`,
+              name: mname,
+              provider: mprovider,
+              providerName: providerDef?.name ?? mprovider,
+            });
           }
         }
-      }
-
-      // If no models from config, fetch from gateway and filter by configured providers
-      if (configuredModels.length === 0 && this._llmKeys.size > 0) {
-        try {
-          const modelsResult = await gateway.call<Record<string, unknown>>("models.list");
-          const allModels = Array.isArray(modelsResult) ? modelsResult : (modelsResult as Record<string, unknown>)?.models;
-          if (Array.isArray(allModels)) {
-            const configuredProviderIds = new Set<string>();
-            for (const key of this._llmKeys.keys()) {
-              configuredProviderIds.add(key);
-            }
-            for (const m of allModels) {
-              const mid = m.id as string;
-              const mprovider = m.provider as string;
-              const mname = (m.name as string) ?? mid;
-              if (!mid || !mprovider) continue;
-              const mapped = this._mapProviderName(mprovider);
-              if (mapped && configuredProviderIds.has(mapped)) {
-                const providerName = LLM_PROVIDERS.find((p) => p.id === mapped)?.name ?? mprovider;
-                configuredModels.push({
-                  id: `${mprovider}/${mid}`,
-                  name: mname,
-                  provider: mprovider,
-                  providerName,
-                });
-              }
-            }
-          }
-        } catch {
-          // models.list not available — keep empty
-        }
+      } catch {
+        // models.list not available — keep empty
       }
       this._configuredModels = configuredModels;
 
@@ -685,8 +686,18 @@ export class ApiKeysView extends LitElement {
   override render() {
     const llmCount = this._countActiveKeys(this._llmKeys);
     const browserCount = this._countActiveKeys(this._browserKeys);
+    const needsSetup = this._keysLoaded && llmCount === 0;
 
     return html`
+      ${needsSetup ? html`
+        <div class="setup-gate-banner">
+          <div class="setup-gate-icon">🔑</div>
+          <div class="setup-gate-text">
+            <strong>${t("apikeys.gate.title")}</strong>
+            <span>${t("apikeys.gate.desc")}</span>
+          </div>
+        </div>
+      ` : ""}
       <h1>${t("apikeys.title")}</h1>
       <p class="subtitle">${t("apikeys.subtitle")}</p>
 
@@ -1040,25 +1051,11 @@ export class ApiKeysView extends LitElement {
 
   private async _saveDefaultModel() {
     try {
-      const snapshot = await gateway.call<Record<string, unknown>>("config.get");
-      if (!snapshot) throw new Error("Could not load config");
-
-      const baseHash = snapshot.hash as string | undefined;
-      const cfg = snapshot.config as Record<string, unknown> | undefined;
-      if (!cfg) throw new Error("Config not available");
-
-      // Deep clone to avoid mutating the original
-      const config = JSON.parse(JSON.stringify(cfg)) as Record<string, unknown>;
-
-      // Ensure agents.defaults path exists
-      if (!config.agents) config.agents = {};
-      const agents = config.agents as Record<string, unknown>;
-      if (!agents.defaults) agents.defaults = {};
-      const defaults = agents.defaults as Record<string, unknown>;
-
-      defaults.model = this._defaultModel;
-
-      await gateway.call("config.set", { raw: JSON.stringify(config, null, 2), baseHash });
+      // Use simple key/value config.set — OpenClaw handles the rest
+      await gateway.call("config.set", {
+        key: "agents.defaults.model",
+        value: this._defaultModel,
+      });
       this._savedModel = this._defaultModel;
       this._changingModel = false;
       this._saveMessage = t("apikeys.savedModel");
@@ -1072,67 +1069,40 @@ export class ApiKeysView extends LitElement {
     const map = category === "llm" ? this._llmKeys : this._browserKeys;
 
     try {
-      // Get current config
-      const snapshot = await gateway.call<Record<string, unknown>>("config.get");
-      if (!snapshot) throw new Error("Could not load config");
-
-      const baseHash = snapshot.hash as string | undefined;
-      const cfgObj = snapshot.config as Record<string, unknown> | undefined;
-      if (!cfgObj) throw new Error("Config not available");
-
-      const config = JSON.parse(JSON.stringify(cfgObj)) as Record<string, unknown>;
-
+      // Use simple key/value config.set — same approach as onboarding.
+      // OpenClaw handles baseUrl, model discovery, and auth resolution.
       if (category === "llm") {
-        // Update auth profiles with new keys
-        const auth = (config.auth ?? {}) as Record<string, unknown>;
-        const profiles = (auth.profiles ?? {}) as Record<string, unknown>;
-
         for (const [providerId, keys] of map.entries()) {
           const primaryKey = keys[0]?.value;
           if (!primaryKey || primaryKey === "••••••••••••••••") continue;
-
-          const profileId = `${providerId}:default`;
-          profiles[profileId] = {
-            provider: providerId,
-            mode: "api_key",
-          };
+          await gateway.call("config.set", {
+            key: `models.providers.${providerId}.apiKey`,
+            value: primaryKey,
+          });
         }
-
-        auth.profiles = profiles;
-        config.auth = auth;
       } else {
-        // Update browser search config
-        const tools = (config.tools ?? {}) as Record<string, unknown>;
-        const web = (tools.web ?? {}) as Record<string, unknown>;
-        const search = (web.search ?? {}) as Record<string, unknown>;
-
-        // Use the first browser provider that has a key
         for (const [providerId, keys] of map.entries()) {
           const primaryKey = keys[0]?.value;
           if (!primaryKey || primaryKey === "••••••••••••••••") continue;
-
           const providerName = providerId === "brave-search" ? "brave" : providerId;
-          search.provider = providerName;
-          search.enabled = true;
-
-          // Brave uses the top-level apiKey; other providers use a nested sub-object
-          if (providerName === "brave") {
-            search.apiKey = primaryKey;
-          } else {
-            const sub = (search[providerName] ?? {}) as Record<string, unknown>;
-            sub.apiKey = primaryKey;
-            search[providerName] = sub;
-          }
+          await gateway.call("config.set", {
+            key: "tools.web.search.provider",
+            value: providerName,
+          });
+          await gateway.call("config.set", {
+            key: "tools.web.search.enabled",
+            value: true,
+          });
+          const keyPath = providerName === "brave"
+            ? "tools.web.search.apiKey"
+            : `tools.web.search.${providerName}.apiKey`;
+          await gateway.call("config.set", {
+            key: keyPath,
+            value: primaryKey,
+          });
           break;
         }
-
-        web.search = search;
-        tools.web = web;
-        config.tools = tools;
       }
-
-      // Save via config.set (takes {raw: string, baseHash: string})
-      await gateway.call("config.set", { raw: JSON.stringify(config, null, 2), baseHash });
 
       // Mark saved
       for (const keys of map.values()) {
@@ -1147,6 +1117,11 @@ export class ApiKeysView extends LitElement {
         this._saveMessage = "";
         this.requestUpdate();
       }, 3000);
+
+      // Notify the app shell that keys have been saved (lifts the API-key gate)
+      if (category === "llm") {
+        window.dispatchEvent(new CustomEvent("keys-saved"));
+      }
     } catch {
       this._saveMessage = t("apikeys.saveFailed");
       this.requestUpdate();
