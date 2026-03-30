@@ -151,7 +151,7 @@ describe("SettingsView DOM", () => {
     (uninstallTab as HTMLElement).click();
     await el.updateComplete;
     const dangerBtn = q(el, ".btn-danger");
-    expect(dangerBtn?.textContent?.trim()).toBe("Remove everything");
+    expect(dangerBtn?.textContent?.trim()).toBe("Uninstall AcaClaw");
     cleanup(el);
   });
 
@@ -166,7 +166,7 @@ describe("SettingsView DOM", () => {
     await el.updateComplete;
     const confirm = q(el, ".uninstall-confirm");
     expect(confirm).toBeTruthy();
-    expect(confirm?.textContent).toContain("AcaClaw AND OpenClaw");
+    expect(confirm?.textContent).toContain("AcaClaw and OpenClaw");
     cleanup(el);
   });
 
