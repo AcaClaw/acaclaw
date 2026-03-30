@@ -1110,9 +1110,18 @@ export class ApiKeysView extends LitElement {
   }
 
   private _renderModelOptions() {
+    // Only show models from providers that have a configured API key
+    const activeProviders = new Set<string>();
+    for (const [providerId, entries] of this._llmKeys.entries()) {
+      if (entries.some((k) => k.value.length > 0)) activeProviders.add(providerId);
+    }
+    const filteredModels = activeProviders.size > 0
+      ? this._configuredModels.filter((m) => activeProviders.has(m.provider))
+      : this._configuredModels;
+
     // Group models by provider
     const groups = new Map<string, ModelOption[]>();
-    for (const m of this._configuredModels) {
+    for (const m of filteredModels) {
       const list = groups.get(m.providerName) ?? [];
       list.push(m);
       groups.set(m.providerName, list);
