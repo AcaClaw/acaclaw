@@ -295,6 +295,21 @@ class GatewayController extends EventTarget {
 /** Singleton gateway instance */
 export const gateway = new GatewayController();
 
+/**
+ * Deep-merge a partial config object into the current OpenClaw config.
+ * Fetches baseHash via config.get, then calls config.patch.
+ */
+export async function patchConfig(partial: Record<string, unknown>): Promise<void> {
+  const snapshot = await gateway.call<Record<string, unknown>>("config.get");
+  if (!snapshot) throw new Error("config.get returned no data");
+  const baseHash = (snapshot.baseHash ?? snapshot.hash) as string;
+  if (!baseHash) throw new Error("config.get returned no baseHash");
+  await gateway.call("config.patch", {
+    raw: JSON.stringify(partial),
+    baseHash,
+  });
+}
+
 // ── Auto-reconnect on tab focus / network recovery ──
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && gateway.state === "disconnected") {

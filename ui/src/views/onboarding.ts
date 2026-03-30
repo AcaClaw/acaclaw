@@ -1,6 +1,6 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
-import { gateway } from "../controllers/gateway.js";
+import { gateway, patchConfig } from "../controllers/gateway.js";
 import { t, LocaleController } from "../i18n.js";
 
 interface DisciplineOption {
@@ -501,22 +501,29 @@ export class OnboardingView extends LitElement {
     this._installing = true;
     this._installProgress = 0;
 
+    const PROVIDER_BASE_URLS: Record<string, string> = {
+      anthropic: "https://api.anthropic.com",
+      openai: "https://api.openai.com/v1",
+      google: "https://generativelanguage.googleapis.com/v1beta",
+    };
+
     try {
-      // Save API key
-      if (this._apiKey) {
+      // Save API key + workspace in a single config.patch
+      if (this._apiKey && this._provider !== "web") {
         this._installProgress = 20;
-        await gateway.call("config.set", {
-          key: `models.providers.${this._provider}.apiKey`,
-          value: this._apiKey,
+        const baseUrl = PROVIDER_BASE_URLS[this._provider];
+        const providerObj: Record<string, unknown> = { apiKey: this._apiKey, models: [] };
+        if (baseUrl) providerObj.baseUrl = baseUrl;
+        await patchConfig({
+          models: { providers: { [this._provider]: providerObj } },
+          agents: { defaults: { workspace: this._workspacePath } },
+        });
+      } else {
+        this._installProgress = 20;
+        await patchConfig({
+          agents: { defaults: { workspace: this._workspacePath } },
         });
       }
-
-      // Set workspace
-      this._installProgress = 40;
-      await gateway.call("config.set", {
-        key: "agents.defaults.workspace",
-        value: this._workspacePath,
-      });
 
       // Install discipline environments
       this._installProgress = 60;
@@ -529,9 +536,8 @@ export class OnboardingView extends LitElement {
       // Set security
       this._installProgress = 80;
       if (this._securityLevel === "maximum") {
-        await gateway.call("config.set", {
-          key: "agents.defaults.sandbox.mode",
-          value: "docker",
+        await patchConfig({
+          agents: { defaults: { sandbox: { mode: "docker" } } },
         });
       }
 

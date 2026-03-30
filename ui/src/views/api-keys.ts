@@ -1,6 +1,6 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
-import { gateway } from "../controllers/gateway.js";
+import { gateway, patchConfig } from "../controllers/gateway.js";
 import { t, LocaleController } from "../i18n.js";
 
 interface KeyEntry {
@@ -1052,11 +1052,7 @@ export class ApiKeysView extends LitElement {
 
   private async _saveDefaultModel() {
     try {
-      // Use simple key/value config.set — OpenClaw handles the rest
-      await gateway.call("config.set", {
-        key: "agents.defaults.model",
-        value: this._defaultModel,
-      });
+      await patchConfig({ agents: { defaults: { model: this._defaultModel } } });
       this._savedModel = this._defaultModel;
       this._changingModel = false;
       this._saveMessage = t("apikeys.savedModel");
@@ -1070,40 +1066,35 @@ export class ApiKeysView extends LitElement {
     const map = category === "llm" ? this._llmKeys : this._browserKeys;
 
     try {
-      // Set the full provider object — OpenClaw validates that baseUrl + models
-      // are present alongside apiKey.
+      // Build a partial config and deep-merge via config.patch.
       if (category === "llm") {
+        const providers: Record<string, unknown> = {};
         for (const [providerId, keys] of map.entries()) {
           const primaryKey = keys[0]?.value;
           if (!primaryKey || primaryKey === "••••••••••••••••") continue;
           const def = LLM_PROVIDERS.find((p) => p.id === providerId);
           const providerObj: Record<string, unknown> = { apiKey: primaryKey, models: [] };
           if (def?.baseUrl) providerObj.baseUrl = def.baseUrl;
-          await gateway.call("config.set", {
-            key: `models.providers.${providerId}`,
-            value: providerObj,
-          });
+          providers[providerId] = providerObj;
+        }
+        if (Object.keys(providers).length > 0) {
+          await patchConfig({ models: { providers } });
         }
       } else {
         for (const [providerId, keys] of map.entries()) {
           const primaryKey = keys[0]?.value;
           if (!primaryKey || primaryKey === "••••••••••••••••") continue;
           const providerName = providerId === "brave-search" ? "brave" : providerId;
-          await gateway.call("config.set", {
-            key: "tools.web.search.provider",
-            value: providerName,
-          });
-          await gateway.call("config.set", {
-            key: "tools.web.search.enabled",
-            value: true,
-          });
-          const keyPath = providerName === "brave"
-            ? "tools.web.search.apiKey"
-            : `tools.web.search.${providerName}.apiKey`;
-          await gateway.call("config.set", {
-            key: keyPath,
-            value: primaryKey,
-          });
+          const searchPatch: Record<string, unknown> = {
+            provider: providerName,
+            enabled: true,
+          };
+          if (providerName === "brave") {
+            searchPatch.apiKey = primaryKey;
+          } else {
+            searchPatch[providerName] = { apiKey: primaryKey };
+          }
+          await patchConfig({ tools: { web: { search: searchPatch } } });
           break;
         }
       }

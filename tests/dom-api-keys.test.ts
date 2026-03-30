@@ -18,6 +18,7 @@ vi.mock("../ui/src/controllers/gateway.js", () => ({
     addEventListener: mockAddEventListener,
     removeEventListener: mockRemoveEventListener,
   },
+  patchConfig: async (partial: unknown) => mockCall("config.patch:helper", partial),
 }));
 
 const { ApiKeysView } = await import("../ui/src/views/api-keys.js");
@@ -102,7 +103,7 @@ describe("ApiKeysView DOM", () => {
     cleanup(el);
   });
 
-  it("saving LLM keys uses simple config.set key/value", async () => {
+  it("saving LLM keys uses config.patch with provider object", async () => {
     const el = await createElement();
 
     // Simulate entering a key for the selected provider
@@ -111,12 +112,12 @@ describe("ApiKeysView DOM", () => {
       { id: "k1", label: "Default", value: "sk-or-test-12345", visible: false, saved: false },
     ]);
 
-    // Capture all config.set calls
-    const configSetCalls: { key: string; value: unknown }[] = [];
-    mockCall.mockImplementation(async (method: string, params?: Record<string, unknown>) => {
+    // Capture all patchConfig calls
+    const patchCalls: unknown[] = [];
+    mockCall.mockImplementation(async (method: string, params?: unknown) => {
       if (method === "config.get") return { config: {}, hash: "abc" };
-      if (method === "config.set") {
-        configSetCalls.push({ key: params?.key as string, value: params?.value });
+      if (method === "config.patch:helper") {
+        patchCalls.push(params);
         return {};
       }
       return undefined;
@@ -125,17 +126,16 @@ describe("ApiKeysView DOM", () => {
     // Call _saveKeys directly
     await (el as unknown as { _saveKeys: (c: string) => Promise<void> })._saveKeys("llm");
 
-    // Should use full provider object config.set (OpenClaw validates baseUrl + models)
-    expect(configSetCalls).toEqual([
+    // Should use config.patch with nested provider object
+    expect(patchCalls).toEqual([
       {
-        key: "models.providers.openrouter",
-        value: { apiKey: "sk-or-test-12345", baseUrl: "https://openrouter.ai/api/v1", models: [] },
+        models: {
+          providers: {
+            openrouter: { apiKey: "sk-or-test-12345", baseUrl: "https://openrouter.ai/api/v1", models: [] },
+          },
+        },
       },
     ]);
-
-    // Should NOT use raw JSON config rewrite
-    const rawCalls = configSetCalls.filter((c) => !c.key);
-    expect(rawCalls).toHaveLength(0);
 
     cleanup(el);
   });
