@@ -215,7 +215,7 @@ export class SettingsView extends LitElement {
   @state() private _gwState: "healthy" | "error" = "error";
   @state() private _gwLatency = 0;
   @state() private _dirty = false;
-  @state() private _uninstallState: "idle" | "confirm-acaclaw" | "confirm-all" | "running" | "done" | "failed" = "idle";
+  @state() private _uninstallState: "idle" | "confirm" | "running" | "done" | "failed" = "idle";
   @state() private _uninstallLog: string[] = [];
   private _uninstallCleanup: (() => void) | null = null;
 
@@ -574,8 +574,8 @@ export class SettingsView extends LitElement {
     setTimeout(() => { this._copyState = { ...this._copyState, [key]: false }; }, 2000);
   }
 
-  private _startUninstall(mode: "acaclaw" | "all") {
-    this._uninstallState = mode === "all" ? "confirm-all" : "confirm-acaclaw";
+  private _startUninstall() {
+    this._uninstallState = "confirm";
   }
 
   private _cancelUninstall() {
@@ -583,7 +583,7 @@ export class SettingsView extends LitElement {
   }
 
   private async _confirmUninstall() {
-    const mode = this._uninstallState === "confirm-all" ? "all" : "acaclaw";
+    const mode = "all";
     this._uninstallState = "running";
     this._uninstallLog = [];
 
@@ -613,10 +613,9 @@ export class SettingsView extends LitElement {
   }
 
   private _renderUninstall() {
-    const acaclawCmd = "bash ~/github/acaclaw/scripts/uninstall.sh";
     const fullCmd = "bash ~/github/acaclaw/scripts/uninstall-all.sh";
     const running = this._uninstallState === "running";
-    const confirming = this._uninstallState === "confirm-acaclaw" || this._uninstallState === "confirm-all";
+    const confirming = this._uninstallState === "confirm";
     return html`
       <div class="uninstall-warning">
         <span class="uninstall-warning-icon">⚠️</span>
@@ -635,26 +634,12 @@ export class SettingsView extends LitElement {
       </div>
 
       <div class="section">
-        <div class="section-title">${t("settings.uninstall.keeps.title")}</div>
-        <div class="section-desc">${t("settings.uninstall.keeps.desc")}</div>
-        <ul class="keeps-list">
-          <li>${t("settings.uninstall.keeps.openclaw")}</li>
-          <li>${t("settings.uninstall.keeps.research")}</li>
-          <li>${t("settings.uninstall.keeps.conda")}</li>
-        </ul>
-      </div>
-
-      <div class="section">
         <div class="section-title">${t("settings.uninstall.section.title")}</div>
         <div class="section-desc">${t("settings.uninstall.section.desc")}</div>
 
         <div class="uninstall-actions">
-          <button class="btn-danger-outline" ?disabled=${running || confirming}
-            @click=${() => this._startUninstall("acaclaw")}>
-            ${t("settings.uninstall.removeAcaclaw")}
-          </button>
           <button class="btn-danger" ?disabled=${running || confirming}
-            @click=${() => this._startUninstall("all")}>
+            @click=${() => this._startUninstall()}>
             ${t("settings.uninstall.removeAll")}
           </button>
         </div>
@@ -662,9 +647,7 @@ export class SettingsView extends LitElement {
         ${confirming ? html`
           <div class="uninstall-confirm">
             <div class="uninstall-confirm-text">
-              ${this._uninstallState === "confirm-all"
-                ? t("settings.uninstall.confirmAll")
-                : t("settings.uninstall.confirmAcaclaw")}
+              ${t("settings.uninstall.confirmAll")}
             </div>
             <div class="confirm-actions">
               <button class="btn-danger" @click=${this._confirmUninstall}>${t("settings.uninstall.yes")}</button>
@@ -699,16 +682,7 @@ export class SettingsView extends LitElement {
         <div class="section-title">${t("settings.uninstall.manual.title")}</div>
         <div class="section-desc">${t("settings.uninstall.manual.desc")}</div>
 
-        <div class="cmd-label">${t("settings.uninstall.manual.acaclawOnly")}</div>
-        <div class="cmd-box">
-          <code class="cmd-code">${acaclawCmd}</code>
-          <button class="btn-copy ${this._copyState["acaclaw"] ? "copied" : ""}"
-            @click=${() => this._copyCmd("acaclaw", acaclawCmd)}>
-            ${this._copyState["acaclaw"] ? t("settings.uninstall.copied") : t("settings.uninstall.copy")}
-          </button>
-        </div>
-
-        <div class="cmd-label" style="margin-top:16px">${t("settings.uninstall.manual.everything")}</div>
+        <div class="cmd-label">${t("settings.uninstall.manual.everything")}</div>
         <div class="cmd-box">
           <code class="cmd-code">${fullCmd}</code>
           <button class="btn-copy ${this._copyState["full"] ? "copied" : ""}"

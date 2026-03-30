@@ -118,7 +118,7 @@ describe("SettingsView DOM", () => {
     cleanup(el);
   });
 
-  it("uninstall tab shows removal and keep lists", async () => {
+  it("uninstall tab shows removal list", async () => {
     const el = await createElement();
     const tabs = qa(el, ".tab");
     const uninstallTab = Array.from(tabs).find((t) => t.textContent?.trim() === "Uninstall");
@@ -126,52 +126,32 @@ describe("SettingsView DOM", () => {
     await el.updateComplete;
     const removeItems = qa(el, ".removes-list li");
     expect(removeItems.length).toBe(4);
-    const keepItems = qa(el, ".keeps-list li");
-    expect(keepItems.length).toBe(3);
     cleanup(el);
   });
 
-  it("uninstall tab shows two command boxes with copy buttons", async () => {
+  it("uninstall tab shows command box with copy button", async () => {
     const el = await createElement();
     const tabs = qa(el, ".tab");
     const uninstallTab = Array.from(tabs).find((t) => t.textContent?.trim() === "Uninstall");
     (uninstallTab as HTMLElement).click();
     await el.updateComplete;
     const cmdBoxes = qa(el, ".cmd-box");
-    expect(cmdBoxes.length).toBe(2);
+    expect(cmdBoxes.length).toBe(1);
     const copyBtns = qa(el, ".btn-copy");
-    expect(copyBtns.length).toBe(2);
+    expect(copyBtns.length).toBe(1);
     const codes = qa(el, ".cmd-code");
-    expect(codes[0]?.textContent).toContain("uninstall.sh");
-    expect(codes[1]?.textContent).toContain("uninstall-all.sh");
+    expect(codes[0]?.textContent).toContain("uninstall-all.sh");
     cleanup(el);
   });
 
-  it("uninstall tab shows action buttons", async () => {
+  it("uninstall tab shows action button", async () => {
     const el = await createElement();
     const tabs = qa(el, ".tab");
     const uninstallTab = Array.from(tabs).find((t) => t.textContent?.trim() === "Uninstall");
     (uninstallTab as HTMLElement).click();
     await el.updateComplete;
     const dangerBtn = q(el, ".btn-danger");
-    const outlineBtn = q(el, ".btn-danger-outline");
     expect(dangerBtn?.textContent?.trim()).toBe("Remove everything");
-    expect(outlineBtn?.textContent?.trim()).toBe("Remove AcaClaw only");
-    cleanup(el);
-  });
-
-  it("clicking 'Remove AcaClaw only' shows confirmation", async () => {
-    const el = await createElement();
-    const tabs = qa(el, ".tab");
-    const uninstallTab = Array.from(tabs).find((t) => t.textContent?.trim() === "Uninstall");
-    (uninstallTab as HTMLElement).click();
-    await el.updateComplete;
-    const outlineBtn = q(el, ".btn-danger-outline") as HTMLButtonElement;
-    outlineBtn.click();
-    await el.updateComplete;
-    const confirm = q(el, ".uninstall-confirm");
-    expect(confirm).toBeTruthy();
-    expect(confirm?.textContent).toContain("OpenClaw stays");
     cleanup(el);
   });
 
@@ -196,7 +176,7 @@ describe("SettingsView DOM", () => {
     const uninstallTab = Array.from(tabs).find((t) => t.textContent?.trim() === "Uninstall");
     (uninstallTab as HTMLElement).click();
     await el.updateComplete;
-    (q(el, ".btn-danger-outline") as HTMLButtonElement).click();
+    (q(el, ".btn-danger") as HTMLButtonElement).click();
     await el.updateComplete;
     expect(q(el, ".uninstall-confirm")).toBeTruthy();
     (q(el, ".btn-action") as HTMLButtonElement).click();
