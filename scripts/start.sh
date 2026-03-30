@@ -281,12 +281,15 @@ fi
 # --- Service detection ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Detect the actual gateway service (OpenClaw-managed profile service takes priority)
+# Detect the actual gateway service (skip legacy --profile services)
 detect_gateway_service() {
     if command -v systemctl &>/dev/null; then
-        for unit in "openclaw-gateway-acaclaw.service" "acaclaw-gateway.service"; do
+        for unit in "acaclaw-gateway.service" "openclaw-gateway-acaclaw.service"; do
+            local unit_path="${HOME}/.config/systemd/user/${unit}"
+            # Skip service files with --profile (causes wrong config dir)
+            [[ -f "$unit_path" ]] && grep -q -- "--profile" "$unit_path" 2>/dev/null && continue
             if systemctl --user is-active "$unit" &>/dev/null 2>&1 || \
-               [[ -f "${HOME}/.config/systemd/user/${unit}" ]]; then
+               [[ -f "$unit_path" ]]; then
                 echo "$unit"
                 return 0
             fi

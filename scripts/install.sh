@@ -640,6 +640,22 @@ with open('${ACACLAW_CONFIG}', 'w') as f:
 	log "AcaClaw standalone config created ✓"
 fi
 
+# Sanitize: ensure controlUi is disabled (AcaClaw's plugin handles UI serving)
+# and remove any stale controlUi.root that might point to old paths.
+python3 -c "
+import json
+with open('${ACACLAW_CONFIG}') as f:
+    cfg = json.load(f)
+cui = cfg.setdefault('gateway', {}).setdefault('controlUi', {})
+cui['enabled'] = False
+cui.pop('root', None)
+cui.setdefault('basePath', '/')
+cui.setdefault('dangerouslyDisableDeviceAuth', True)
+with open('${ACACLAW_CONFIG}', 'w') as f:
+    json.dump(cfg, f, indent=2)
+    f.write('\n')
+" 2>/dev/null
+
 log "Config location: ${ACACLAW_CONFIG}"
 log "OpenClaw's own config: untouched ✓"
 
@@ -831,6 +847,28 @@ fi
 # --- Install auto-restart service ---
 
 header "Auto-Restart Service"
+
+# Remove legacy --profile service files that used ~/.openclaw-acaclaw/ isolation.
+# AcaClaw now uses ~/.openclaw/ directly; stale profile services cause the gateway
+# to read the wrong config and serve 503s.
+_cleanup_legacy_services() {
+	local systemd_dir="${HOME}/.config/systemd/user"
+	local legacy_unit="openclaw-gateway-acaclaw.service"
+	if [[ -f "${systemd_dir}/${legacy_unit}" ]]; then
+		systemctl --user stop "${legacy_unit}" 2>/dev/null || true
+		systemctl --user disable "${legacy_unit}" 2>/dev/null || true
+		rm -f "${systemd_dir}/${legacy_unit}"
+		log "Removed legacy service: ${legacy_unit}"
+	fi
+	# Also nuke any acaclaw-gateway.service that has --profile (from older installs)
+	local current_unit="${systemd_dir}/acaclaw-gateway.service"
+	if [[ -f "$current_unit" ]] && grep -q -- "--profile" "$current_unit" 2>/dev/null; then
+		systemctl --user stop acaclaw-gateway.service 2>/dev/null || true
+		rm -f "$current_unit"
+		log "Removed stale service with --profile flag"
+	fi
+}
+_cleanup_legacy_services
 
 SERVICE_SCRIPT="${SCRIPT_DIR}/acaclaw-service.sh"
 if [[ -f "$SERVICE_SCRIPT" ]]; then

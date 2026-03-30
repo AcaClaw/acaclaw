@@ -205,6 +205,7 @@ UNIT
 			expect(content).toContain("--port 2090");
 			expect(content).toContain("Restart=on-failure");
 			expect(content).toContain("[Install]");
+			expect(content).not.toContain("--profile");
 		});
 
 		it("includes rate limiting settings", async () => {
