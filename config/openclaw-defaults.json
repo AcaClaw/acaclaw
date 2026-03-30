@@ -4,8 +4,8 @@
     "port": 2090,
     "mode": "local",
     "controlUi": {
+      "enabled": false,
       "basePath": "/",
-      "root": "~/.openclaw/ui",
       "dangerouslyDisableDeviceAuth": true
     }
   },

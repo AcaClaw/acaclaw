@@ -262,6 +262,14 @@ else
 		rm -f "$SYSTEMD_UNIT"
 		systemctl --user daemon-reload 2>/dev/null || true
 	fi
+	# Also remove OpenClaw profile-based service
+	OC_PROFILE_UNIT="${HOME}/.config/systemd/user/openclaw-gateway-acaclaw.service"
+	if [[ -f "$OC_PROFILE_UNIT" ]] && command -v systemctl &>/dev/null; then
+		systemctl --user stop openclaw-gateway-acaclaw.service 2>/dev/null || true
+		systemctl --user disable openclaw-gateway-acaclaw.service 2>/dev/null || true
+		rm -f "$OC_PROFILE_UNIT"
+		systemctl --user daemon-reload 2>/dev/null || true
+	fi
 fi
 
 # Remove OpenClaw's own gateway service (if installed separately)

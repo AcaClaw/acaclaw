@@ -29,8 +29,16 @@ const MIME_TYPES: Record<string, string> = {
   ".woff": "font/woff",
 };
 
-// Gateway paths that must not be intercepted by the SPA
-const RESERVED_PREFIXES = ["/health", "/ready", "/api/", "/plugins/", "/admin"];
+// OpenClaw's prefixMatchPath for path "/" only matches exact "/" (not "/foo"),
+// so we register explicit prefix routes for static asset dirs and SPA pages.
+// Static asset directories under UI_DIST
+const ASSET_PREFIXES = ["/assets", "/fonts", "/logo"];
+// SPA fallback paths — any path the app-e2e tests or bookmarks may hit directly
+const SPA_ROUTES = [
+  "/chat", "/api-keys", "/settings", "/agents", "/sessions", "/workspace",
+  "/monitor", "/debug", "/logs", "/staff", "/skills", "/onboarding",
+  "/backup", "/environment", "/usage", "/command-palette",
+];
 
 const uiPlugin = {
   id: "acaclaw-ui",
@@ -44,7 +52,6 @@ const uiPlugin = {
 
   register(api: OpenClawPluginApi) {
     const resolveToken = (): string => {
-      // Read the gateway auth token from the resolved OpenClaw config
       const token = (api.config as Record<string, unknown> & { gateway?: { auth?: { token?: string } } })
         ?.gateway?.auth?.token;
       return token ?? "";
@@ -54,7 +61,6 @@ const uiPlugin = {
       const token = resolveToken();
       if (!token) return Buffer.isBuffer(html) ? html : Buffer.from(html);
       let str = Buffer.isBuffer(html) ? html.toString("utf-8") : html;
-      // Replace existing oc-token meta tag if present, otherwise append before </head>
       if (/<meta\s+name="oc-token"[^>]*>/i.test(str)) {
         str = str.replace(/<meta\s+name="oc-token"[^>]*>/i, `<meta name="oc-token" content="${token}">`);
       } else {
@@ -63,58 +69,57 @@ const uiPlugin = {
       return Buffer.from(str);
     };
 
-    api.registerHttpRoute({
-      path: "/",
-      match: "prefix",
-      auth: "plugin",
-      handler: async (req, res, next) => {
-        // Pass through reserved gateway paths
-        if (RESERVED_PREFIXES.some((p) => req.url!.startsWith(p))) {
-          return next();
-        }
+    const handler = async (req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse) => {
+      const urlPath = (req.url ?? "/").split("?")[0];
+      const safePath = urlPath.replaceAll("..", "");
 
-        // Strip query string for file resolution
-        const urlPath = req.url!.split("?")[0];
-        const safePath = urlPath.replaceAll("..", "");
-
-        // Try to serve the exact file first
-        const filePath = join(UI_DIST, safePath === "/" ? "index.html" : safePath);
-
-        try {
-          const fileStat = await stat(filePath);
-          if (fileStat.isFile()) {
-            const ext = extname(filePath);
-            let content = await readFile(filePath);
-            // Inject auth token into HTML pages so the UI can authenticate
-            if (ext === ".html") content = injectToken(content);
-            res.writeHead(200, {
-              "Content-Type": MIME_TYPES[ext] ?? "application/octet-stream",
-              "Content-Length": content.byteLength,
-              "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=31536000, immutable",
-            });
-            res.end(content);
-            return;
-          }
-        } catch {
-          // File not found — fall through to SPA fallback
-        }
-
-        // SPA fallback: serve index.html for client-side routing
-        try {
-          const indexPath = join(UI_DIST, "index.html");
-          const content = injectToken(await readFile(indexPath));
+      // Try to serve the exact file first
+      const filePath = join(UI_DIST, safePath === "/" ? "index.html" : safePath);
+      try {
+        const fileStat = await stat(filePath);
+        if (fileStat.isFile()) {
+          const ext = extname(filePath);
+          let content = await readFile(filePath);
+          if (ext === ".html") content = injectToken(content);
           res.writeHead(200, {
-            "Content-Type": "text/html; charset=utf-8",
-            "Cache-Control": "no-cache",
+            "Content-Type": MIME_TYPES[ext] ?? "application/octet-stream",
+            "Content-Length": content.byteLength,
+            "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=31536000, immutable",
           });
           res.end(content);
-        } catch {
-          // UI not built yet
-          res.writeHead(503, { "Content-Type": "text/plain" });
-          res.end("AcaClaw UI not built. Run: cd ui && npm run build");
+          return;
         }
-      },
-    });
+      } catch {
+        // File not found — fall through to SPA fallback
+      }
+
+      // SPA fallback: serve index.html for client-side routing
+      try {
+        const indexPath = join(UI_DIST, "index.html");
+        const content = injectToken(await readFile(indexPath));
+        res.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-cache",
+        });
+        res.end(content);
+      } catch {
+        res.writeHead(503, { "Content-Type": "text/plain" });
+        res.end("AcaClaw UI not built. Run: cd ui && npm run build");
+      }
+    };
+
+    // Root route (exact match)
+    api.registerHttpRoute({ path: "/", match: "exact", auth: "plugin", handler });
+
+    // Static asset directories (prefix match)
+    for (const prefix of ASSET_PREFIXES) {
+      api.registerHttpRoute({ path: prefix, match: "prefix", auth: "plugin", handler });
+    }
+
+    // SPA fallback routes (prefix match) — serves index.html for client-side routing
+    for (const route of SPA_ROUTES) {
+      api.registerHttpRoute({ path: route, match: "prefix", auth: "plugin", handler });
+    }
   },
 };
 

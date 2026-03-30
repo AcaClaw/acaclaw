@@ -72,6 +72,11 @@ fi
 
 SYSTEMD_DIR="${HOME}/.config/systemd/user"
 SYSTEMD_UNIT="acaclaw-gateway.service"
+# If OpenClaw's own profile service exists, use that instead
+OC_PROFILE_UNIT="openclaw-gateway-acaclaw.service"
+if [[ -f "${SYSTEMD_DIR}/${OC_PROFILE_UNIT}" ]]; then
+    SYSTEMD_UNIT="${OC_PROFILE_UNIT}"
+fi
 
 install_systemd() {
     if [[ -z "$OPENCLAW_BIN" ]]; then

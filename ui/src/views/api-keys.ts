@@ -16,6 +16,7 @@ interface ProviderDef {
   name: string;
   placeholder: string;
   prefix: string;
+  baseUrl?: string;
 }
 
 interface ModelOption {
@@ -26,15 +27,15 @@ interface ModelOption {
 }
 
 const LLM_PROVIDERS: ProviderDef[] = [
-  { id: "anthropic", name: "Anthropic", placeholder: "sk-ant-api03-...", prefix: "sk-ant-" },
-  { id: "openai", name: "OpenAI", placeholder: "sk-...", prefix: "sk-" },
-  { id: "google", name: "Google AI", placeholder: "AIza...", prefix: "AIza" },
-  { id: "moonshot", name: "Moonshot / Kimi", placeholder: "sk-...", prefix: "sk-" },
-  { id: "openrouter", name: "OpenRouter", placeholder: "sk-or-...", prefix: "sk-or-" },
+  { id: "anthropic", name: "Anthropic", placeholder: "sk-ant-api03-...", prefix: "sk-ant-", baseUrl: "https://api.anthropic.com" },
+  { id: "openai", name: "OpenAI", placeholder: "sk-...", prefix: "sk-", baseUrl: "https://api.openai.com/v1" },
+  { id: "google", name: "Google AI", placeholder: "AIza...", prefix: "AIza", baseUrl: "https://generativelanguage.googleapis.com/v1beta" },
+  { id: "moonshot", name: "Moonshot / Kimi", placeholder: "sk-...", prefix: "sk-", baseUrl: "https://api.moonshot.ai/v1" },
+  { id: "openrouter", name: "OpenRouter", placeholder: "sk-or-...", prefix: "sk-or-", baseUrl: "https://openrouter.ai/api/v1" },
   { id: "azure", name: "Azure OpenAI", placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", prefix: "" },
-  { id: "ollama", name: "Ollama (local)", placeholder: "http://localhost:11434", prefix: "" },
-  { id: "mistral", name: "Mistral", placeholder: "...", prefix: "" },
-  { id: "deepseek", name: "DeepSeek", placeholder: "sk-...", prefix: "sk-" },
+  { id: "ollama", name: "Ollama (local)", placeholder: "http://localhost:11434", prefix: "", baseUrl: "http://localhost:11434" },
+  { id: "mistral", name: "Mistral", placeholder: "...", prefix: "", baseUrl: "https://api.mistral.ai/v1" },
+  { id: "deepseek", name: "DeepSeek", placeholder: "sk-...", prefix: "sk-", baseUrl: "https://api.deepseek.com" },
 ];
 
 const BROWSER_PROVIDERS: ProviderDef[] = [
@@ -1069,15 +1070,18 @@ export class ApiKeysView extends LitElement {
     const map = category === "llm" ? this._llmKeys : this._browserKeys;
 
     try {
-      // Use simple key/value config.set — same approach as onboarding.
-      // OpenClaw handles baseUrl, model discovery, and auth resolution.
+      // Set the full provider object — OpenClaw validates that baseUrl + models
+      // are present alongside apiKey.
       if (category === "llm") {
         for (const [providerId, keys] of map.entries()) {
           const primaryKey = keys[0]?.value;
           if (!primaryKey || primaryKey === "••••••••••••••••") continue;
+          const def = LLM_PROVIDERS.find((p) => p.id === providerId);
+          const providerObj: Record<string, unknown> = { apiKey: primaryKey, models: [] };
+          if (def?.baseUrl) providerObj.baseUrl = def.baseUrl;
           await gateway.call("config.set", {
-            key: `models.providers.${providerId}.apiKey`,
-            value: primaryKey,
+            key: `models.providers.${providerId}`,
+            value: providerObj,
           });
         }
       } else {

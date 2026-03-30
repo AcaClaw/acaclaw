@@ -125,9 +125,12 @@ describe("ApiKeysView DOM", () => {
     // Call _saveKeys directly
     await (el as unknown as { _saveKeys: (c: string) => Promise<void> })._saveKeys("llm");
 
-    // Should use simple key/value config.set (same as onboarding)
+    // Should use full provider object config.set (OpenClaw validates baseUrl + models)
     expect(configSetCalls).toEqual([
-      { key: "models.providers.openrouter.apiKey", value: "sk-or-test-12345" },
+      {
+        key: "models.providers.openrouter",
+        value: { apiKey: "sk-or-test-12345", baseUrl: "https://openrouter.ai/api/v1", models: [] },
+      },
     ]);
 
     // Should NOT use raw JSON config rewrite

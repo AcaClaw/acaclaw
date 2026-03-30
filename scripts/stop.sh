@@ -6,7 +6,21 @@ set -euo pipefail
 
 ACACLAW_DATA_DIR="${HOME}/.acaclaw"
 ACACLAW_PID_FILE="${ACACLAW_DATA_DIR}/gateway.pid"
-SYSTEMD_UNIT="acaclaw-gateway.service"
+
+# Detect the actual gateway service (OpenClaw-managed profile service takes priority)
+detect_gateway_service() {
+    if command -v systemctl &>/dev/null; then
+        for unit in "openclaw-gateway-acaclaw.service" "acaclaw-gateway.service"; do
+            if systemctl --user is-active "$unit" &>/dev/null 2>&1 || \
+               [[ -f "${HOME}/.config/systemd/user/${unit}" ]]; then
+                echo "$unit"
+                return 0
+            fi
+        done
+    fi
+    return 1
+}
+SYSTEMD_UNIT="$(detect_gateway_service 2>/dev/null)" || SYSTEMD_UNIT=""
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -18,7 +32,7 @@ warn()  { echo -e "${YELLOW}[acaclaw]${NC} $*"; }
 error() { echo -e "${RED}[acaclaw]${NC} $*" >&2; }
 
 # --- Stop systemd service first (if active) ---
-if command -v systemctl &>/dev/null; then
+if [[ -n "$SYSTEMD_UNIT" ]] && command -v systemctl &>/dev/null; then
     if systemctl --user is-active "${SYSTEMD_UNIT}" &>/dev/null; then
         log "Stopping systemd service..."
         systemctl --user stop "${SYSTEMD_UNIT}" 2>/dev/null || true

@@ -201,12 +201,16 @@ gateway_pid() {
     fi
 
     # Fallback: check if systemd service is running (Node.js rewrites process titles)
-    if command -v systemctl &>/dev/null && systemctl --user is-active acaclaw-gateway.service &>/dev/null 2>&1; then
-        pid="$(systemctl --user show acaclaw-gateway.service --property=MainPID --value 2>/dev/null)" || true
-        if [[ -n "$pid" && "$pid" != "0" ]]; then
-            echo "$pid"
-            return 0
-        fi
+    if command -v systemctl &>/dev/null; then
+        for _unit in "openclaw-gateway-acaclaw.service" "acaclaw-gateway.service"; do
+            if systemctl --user is-active "$_unit" &>/dev/null 2>&1; then
+                pid="$(systemctl --user show "$_unit" --property=MainPID --value 2>/dev/null)" || true
+                if [[ -n "$pid" && "$pid" != "0" ]]; then
+                    echo "$pid"
+                    return 0
+                fi
+            fi
+        done
     fi
 
     return 1
@@ -324,9 +328,24 @@ fi
 
 # --- Service detection ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SYSTEMD_UNIT="${HOME}/.config/systemd/user/acaclaw-gateway.service"
+
+# Detect the actual gateway service (OpenClaw-managed profile service takes priority)
+detect_gateway_service() {
+    if command -v systemctl &>/dev/null; then
+        for unit in "openclaw-gateway-acaclaw.service" "acaclaw-gateway.service"; do
+            if systemctl --user is-active "$unit" &>/dev/null 2>&1 || \
+               [[ -f "${HOME}/.config/systemd/user/${unit}" ]]; then
+                echo "$unit"
+                return 0
+            fi
+        done
+    fi
+    return 1
+}
+GATEWAY_SERVICE="$(detect_gateway_service 2>/dev/null)" || GATEWAY_SERVICE=""
+SYSTEMD_UNIT="${HOME}/.config/systemd/user/${GATEWAY_SERVICE:-acaclaw-gateway.service}"
 USE_SERVICE=false
-if [[ -f "$SYSTEMD_UNIT" ]] && command -v systemctl &>/dev/null; then
+if [[ -n "$GATEWAY_SERVICE" ]] && [[ -f "$SYSTEMD_UNIT" ]] && command -v systemctl &>/dev/null; then
     USE_SERVICE=true
 fi
 _tlog "service detection done"
@@ -341,10 +360,10 @@ elif is_gateway_running; then
     log "Gateway already running (PID $pid)"
 elif [[ "$USE_SERVICE" == "true" ]]; then
     log "Starting AcaClaw gateway via systemd service..."
-    if systemctl --user start acaclaw-gateway.service 2>/dev/null; then
+    if systemctl --user start "${GATEWAY_SERVICE}" 2>/dev/null; then
         if wait_for_gateway 90; then
             log "Gateway ready on port ${ACACLAW_PORT} ✓ (managed by systemd)"
-        elif systemctl --user is-active acaclaw-gateway.service &>/dev/null; then
+        elif systemctl --user is-active "${GATEWAY_SERVICE}" &>/dev/null; then
             log "Gateway service is starting (managed by systemd) — may need a moment"
         else
             warn "systemd service stopped unexpectedly — falling back to direct start"
