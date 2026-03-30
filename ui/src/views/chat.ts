@@ -2297,30 +2297,9 @@ export class ChatView extends LitElement {
         gateway.call<Record<string, unknown>>("config.get"),
       ]);
 
-      // Determine which providers have configured API keys
-      const configuredProviders = new Set<string>();
-      const cfg = (configSnapshot?.config ?? configSnapshot) as Record<string, unknown> | undefined;
-      if (cfg) {
-        const auth = cfg.auth as Record<string, unknown> | undefined;
-        if (auth?.profiles && typeof auth.profiles === "object") {
-          for (const profile of Object.values(auth.profiles as Record<string, Record<string, unknown>>)) {
-            if (profile?.provider) configuredProviders.add(String(profile.provider).toLowerCase());
-          }
-        }
-        const models = cfg.models as Record<string, unknown> | undefined;
-        if (models?.providers && typeof models.providers === "object") {
-          for (const [pid, pval] of Object.entries(models.providers as Record<string, Record<string, unknown>>)) {
-            if (pval?.apiKey) configuredProviders.add(pid.toLowerCase());
-          }
-        }
-      }
-
+      // Use models.list as-is — OpenClaw handles provider filtering
       const raw = modelsResult?.models ?? [];
-      // Filter to only show models from providers with configured API keys
-      const filtered = configuredProviders.size > 0
-        ? raw.filter((m) => m.provider && configuredProviders.has(m.provider.toLowerCase()))
-        : raw;
-      this._availableModels = filtered.map((m) => ({
+      this._availableModels = raw.map((m) => ({
         id: m.id,
         label: m.provider ? `${m.name} · ${m.provider}` : m.name,
         provider: m.provider,
@@ -2329,26 +2308,22 @@ export class ChatView extends LitElement {
       const dp = sessionsResult?.defaults?.modelProvider ?? "";
 
       // Prefer user-configured default model from config
+      const cfg = (configSnapshot?.config ?? configSnapshot) as Record<string, unknown> | undefined;
       const agents = cfg?.agents as Record<string, unknown> | undefined;
       const defaults = agents?.defaults as Record<string, unknown> | undefined;
       const userModel = defaults?.model;
       if (typeof userModel === "string" && userModel) {
-        // User has explicitly set a default model (e.g. "openrouter/auto")
         const parts = userModel.split("/");
         if (parts.length >= 2) {
           this._defaultModelName = `${parts.slice(1).join("/")} · ${parts[0]}`;
         } else {
           this._defaultModelName = userModel;
         }
-      } else if (dm && dp && configuredProviders.has(dp.toLowerCase())) {
-        // Session default provider is actually configured
-        this._defaultModelName = `${dm} · ${dp}`;
-      } else if (filtered.length > 0) {
-        // Use first available model from configured providers
-        const first = filtered[0];
-        this._defaultModelName = first.provider ? `${first.name} · ${first.provider}` : first.name;
       } else if (dm) {
         this._defaultModelName = dp ? `${dm} · ${dp}` : dm;
+      } else if (raw.length > 0) {
+        const first = raw[0];
+        this._defaultModelName = first.provider ? `${first.name} · ${first.provider}` : first.name;
       }
     } catch {
       this._availableModels = [];

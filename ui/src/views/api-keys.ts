@@ -597,6 +597,7 @@ export class ApiKeysView extends LitElement {
       }
 
       // ── Build model list from gateway (OpenClaw handles model discovery) ──
+      // Build model list from OpenClaw — no local filtering
       const configuredModels: ModelOption[] = [];
       try {
         const modelsResult = await gateway.call<Record<string, unknown>>("models.list");
@@ -611,12 +612,11 @@ export class ApiKeysView extends LitElement {
             const mprovider = m.provider as string;
             const mname = (m.name as string) ?? mid;
             if (!mid || !mprovider) continue;
-            const providerDef = LLM_PROVIDERS.find((p) => p.id === this._mapProviderName(mprovider));
             configuredModels.push({
               id: `${mprovider}/${mid}`,
               name: mname,
               provider: mprovider,
-              providerName: providerDef?.name ?? mprovider,
+              providerName: mprovider,
             });
           }
         }
