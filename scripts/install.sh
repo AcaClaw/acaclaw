@@ -565,56 +565,54 @@ OPENCLAW_BASE_CONFIG="${HOME}/.openclaw/openclaw.json"
 ACACLAW_CONFIG="${OPENCLAW_DIR}/openclaw.json"
 
 if [[ -f "$OPENCLAW_BASE_CONFIG" ]]; then
-	# Existing OpenClaw install found — copy auth + model config into AcaClaw profile
-	log "Found existing OpenClaw config — copying auth and model settings"
+	# Existing config found — preserve user settings, only overlay AcaClaw defaults
+	log "Found existing config — preserving user settings (API keys, models, etc.)"
 
 	python3 -c "
-import json, sys, secrets
+import json, copy
 
-# Load AcaClaw defaults template
-with open('${CONFIG_TEMPLATE}') as f:
+# Load existing config as the base — preserve ALL user settings
+with open('${OPENCLAW_BASE_CONFIG}') as f:
     cfg = json.load(f)
 
-# Load existing OpenClaw config and copy auth + models sections
-try:
-    with open('${OPENCLAW_BASE_CONFIG}') as f:
-        oc = json.load(f)
-    # Copy auth profiles (API credentials)
-    if 'auth' in oc:
-        cfg['auth'] = oc['auth']
-    # Copy model provider config
-    if 'models' in oc:
-        cfg['models'] = oc['models']
-    # Copy browser/search API keys (tools.web.search)
-    if 'tools' in oc and 'web' in oc.get('tools', {}):
-        web_cfg = oc['tools']['web']
-        cfg.setdefault('tools', {})['web'] = web_cfg
-except Exception:
-    pass
+# Load AcaClaw template for defaults only
+with open('${CONFIG_TEMPLATE}') as f:
+    tpl = json.load(f)
 
-# Auth mode: none (gateway binds loopback only, external access impossible)
-cfg['gateway'].setdefault('auth', {})['mode'] = 'none'
+# --- Overlay AcaClaw-required settings (don't clobber user data) ---
+
+# Gateway settings
+gw = cfg.setdefault('gateway', {})
+gw.setdefault('port', tpl['gateway']['port'])
+gw.setdefault('mode', tpl['gateway']['mode'])
+gw.setdefault('auth', {})['mode'] = 'none'
+
+# Agent list and workspace defaults (from template, but preserve user model choice)
+user_model = cfg.get('agents', {}).get('defaults', {}).get('model')
+cfg['agents'] = copy.deepcopy(tpl.get('agents', {}))
+if user_model:
+    cfg['agents'].setdefault('defaults', {})['model'] = user_model
+
+# Tool restrictions (from template, but preserve user pathPrepend/web config)
+user_web = cfg.get('tools', {}).get('web')
+user_path = cfg.get('tools', {}).get('exec', {}).get('pathPrepend')
+cfg['tools'] = copy.deepcopy(tpl.get('tools', {}))
+if user_web:
+    cfg['tools']['web'] = user_web
 
 # Update conda path if available
 miniforge = '${MINIFORGE_DIR:-}'
 if miniforge:
     cfg.setdefault('tools', {}).setdefault('exec', {})['pathPrepend'] = [miniforge + '/bin']
+elif user_path:
+    cfg.setdefault('tools', {}).setdefault('exec', {})['pathPrepend'] = user_path
 
 with open('${ACACLAW_CONFIG}', 'w') as f:
     json.dump(cfg, f, indent=2)
     f.write('\n')
 " 2>/dev/null
 
-	log "AcaClaw config created with auth from existing OpenClaw ✓"
-
-	# Copy auth-profiles.json (contains actual API key values)
-	OPENCLAW_AUTH_PROFILES="${HOME}/.openclaw/agents/main/agent/auth-profiles.json"
-	ACACALAW_AUTH_DIR="${OPENCLAW_DIR}/agents/main/agent"
-	if [[ -f "$OPENCLAW_AUTH_PROFILES" ]]; then
-		mkdir -p "$ACACLAW_AUTH_DIR"
-		cp "$OPENCLAW_AUTH_PROFILES" "$ACACLAW_AUTH_DIR/auth-profiles.json"
-		log "Copied API key credentials from existing OpenClaw ✓"
-	fi
+	log "Config updated — user settings preserved ✓"
 else
 	# No existing OpenClaw install — standalone config
 	log "No existing OpenClaw config found — creating standalone config"

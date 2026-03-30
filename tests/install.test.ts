@@ -575,19 +575,20 @@ PLUGINJSON
 	// Config merge (existing OpenClaw install)
 	// ---------------------------------------------------------------
 	describe("config merge with existing OpenClaw", () => {
-		it("copies auth from existing OpenClaw config", async () => {
+		it("preserves user settings from existing config", async () => {
 			const acaclawDir = join(fakeHome, ".acaclaw");
 			const openclawDir = join(fakeHome, ".openclaw");
 			const stateDir = join(fakeHome, ".openclaw");
 			const configSource = resolve(__dirname, "../config");
 
-			// Create fake existing OpenClaw config with auth
+			// Create fake existing OpenClaw config with auth, models, and default model
 			await runBash(`
 				mkdir -p "${openclawDir}"
 				cat > "${openclawDir}/openclaw.json" <<'EOF'
 {
   "auth": { "provider": "openai", "apiKey": "sk-test-key" },
-  "models": { "default": "gpt-4" },
+  "models": { "default": "gpt-4", "providers": { "openrouter": { "apiKey": "sk-or-test" } } },
+  "agents": { "defaults": { "model": "openrouter/moonshotai/kimi-k2.5" } },
   "gateway": { "auth": { "mode": "token", "token": "existing-token" } }
 }
 EOF
@@ -597,22 +598,23 @@ EOF
 				set -euo pipefail
 				mkdir -p "${stateDir}"
 				python3 -c "
-import json
+import json, copy
 
-with open('${configSource}/openclaw-defaults.json') as f:
+with open('${openclawDir}/openclaw.json') as f:
     cfg = json.load(f)
 
-try:
-    with open('${openclawDir}/openclaw.json') as f:
-        oc = json.load(f)
-    if 'auth' in oc:
-        cfg['auth'] = oc['auth']
-    if 'models' in oc:
-        cfg['models'] = oc['models']
-except Exception:
-    pass
+with open('${configSource}/openclaw-defaults.json') as f:
+    tpl = json.load(f)
 
-cfg['gateway'].setdefault('auth', {})['mode'] = 'none'
+gw = cfg.setdefault('gateway', {})
+gw.setdefault('port', tpl['gateway']['port'])
+gw.setdefault('mode', tpl['gateway']['mode'])
+gw.setdefault('auth', {})['mode'] = 'none'
+
+user_model = cfg.get('agents', {}).get('defaults', {}).get('model')
+cfg['agents'] = copy.deepcopy(tpl.get('agents', {}))
+if user_model:
+    cfg['agents'].setdefault('defaults', {})['model'] = user_model
 
 with open('${stateDir}/openclaw.json', 'w') as f:
     json.dump(cfg, f, indent=2)
@@ -624,9 +626,16 @@ with open('${stateDir}/openclaw.json', 'w') as f:
 			const merged = JSON.parse(
 				await readFile(join(stateDir, "openclaw.json"), "utf-8"),
 			);
+			// User's auth, models, and default model are preserved
 			expect(merged.auth.provider).toBe("openai");
 			expect(merged.models.default).toBe("gpt-4");
+			expect(merged.models.providers.openrouter.apiKey).toBe("sk-or-test");
+			expect(merged.agents.defaults.model).toBe("openrouter/moonshotai/kimi-k2.5");
+			// AcaClaw overrides are applied
 			expect(merged.gateway.auth.mode).toBe("none");
+			// Agent list comes from template
+			expect(merged.agents.list).toBeDefined();
+			expect(merged.agents.list[0].name).toBe("Aca");
 		});
 
 		it("creates standalone config with auth.mode=none", async () => {
