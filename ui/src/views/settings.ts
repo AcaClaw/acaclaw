@@ -452,7 +452,8 @@ export class SettingsView extends LitElement {
   }
 
   private _openOpenClawUI() {
-    window.open("http://localhost:18789/", "_blank", "noopener");
+    // Open OpenClaw's built-in control UI served at /openclaw/ sub-path
+    window.open(`${location.origin}/openclaw/`, "_blank", "noopener");
   }
 
   private _renderConnection() {
