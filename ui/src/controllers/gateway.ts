@@ -2,6 +2,9 @@
  * WebSocket client for communicating with the OpenClaw gateway.
  * Uses the OpenClaw gateway protocol (type/id/method frames, NOT JSON-RPC).
  * Shared by all views — import `gateway` singleton.
+ *
+ * Auth: gateway.auth.mode is "none" (loopback-only binding).
+ * No token resolution or injection needed.
  */
 
 export type GatewayState = "connected" | "connecting" | "disconnected";
@@ -15,55 +18,6 @@ function uuid(): string {
   return crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/** Read gateway auth token from the meta tag injected into index.html at deploy time. */
-function resolveAuthToken(): string | undefined {
-  // Primary: meta tag injected by install.sh / start.sh into the served HTML.
-  // This is always current because the gateway reads index.html from disk on each request.
-  const meta = document.querySelector<HTMLMetaElement>('meta[name="oc-token"]')
-    ?? document.querySelector<HTMLMetaElement>('meta[name="gateway-token"]');
-  if (meta?.content) {
-    console.log("[gateway] auth: resolved from meta tag");
-    return meta.content;
-  }
-  // Fallback: URL hash (e.g. opened via start.sh with #token=...)
-  const hash = location.hash;
-  if (hash.includes("token=")) {
-    const match = hash.match(/token=([^&]+)/);
-    if (match) {
-      console.log("[gateway] auth: resolved from URL hash");
-      return match[1];
-    }
-  }
-  // Fallback: sessionStorage (set by gateway control-ui bootstrap)
-  const stored = sessionStorage.getItem("openclaw.control.token");
-  if (stored) {
-    console.log("[gateway] auth: resolved from sessionStorage");
-    return stored;
-  }
-  console.warn("[gateway] auth: no token found");
-  return undefined;
-}
-
-/**
- * Re-fetch the HTML page to get a fresh auth token after a mismatch.
- * Updates the meta tag in-place so subsequent resolveAuthToken() calls use it.
- */
-async function refreshAuthToken(): Promise<string | undefined> {
-  try {
-    const res = await fetch(location.href, { cache: "no-store" });
-    if (!res.ok) return undefined;
-    const html = await res.text();
-    const match = html.match(/name="oc-token"\s+content="([^"]*)"/);
-    if (match?.[1]) {
-      const meta = document.querySelector<HTMLMetaElement>('meta[name="oc-token"]');
-      if (meta) meta.content = match[1];
-      console.log("[gateway] auth: refreshed token from server");
-      return match[1];
-    }
-  } catch { /* network failure — keep old token */ }
-  return undefined;
-}
-
 class GatewayController extends EventTarget {
   private _ws: WebSocket | null = null;
   private _state: GatewayState = "disconnected";
@@ -75,7 +29,6 @@ class GatewayController extends EventTarget {
   private _connectSent = false;
   private _challengeTimer: ReturnType<typeof setTimeout> | null = null;
   private _reconnectAttempts = 0;
-  private _tokenRefreshPending: Promise<void> | null = null;
 
   get state(): GatewayState {
     return this._state;
@@ -180,9 +133,6 @@ class GatewayController extends EventTarget {
 
   /** Send the mandatory connect handshake as first frame. */
   private _sendConnectFrame() {
-    const token = resolveAuthToken();
-    console.log(`[gateway] connect: token=${token ? token.slice(0, 8) + "..." + token.slice(-4) + " (len=" + token.length + ")" : "NONE"}`);
-
     const connectParams = {
       minProtocol: 3,
       maxProtocol: 3,
@@ -200,7 +150,6 @@ class GatewayController extends EventTarget {
         "operator.approvals",
         "operator.pairing",
       ],
-      auth: token ? { token } : undefined,
     };
 
     const id = uuid();
@@ -222,19 +171,6 @@ class GatewayController extends EventTarget {
         this._reconnectAttempts++;
         this._setState("disconnected");
         this._ws?.close();
-
-        // On token mismatch, re-fetch token from server before next reconnect
-        if (msg.includes("token mismatch") || msg.includes("token_mismatch")) {
-          // After 3 consecutive mismatches, force full page reload to get new JS+token
-          if (this._reconnectAttempts >= 3) {
-            console.warn("[gateway] persistent token mismatch — reloading page");
-            location.reload();
-            return;
-          }
-          this._tokenRefreshPending = refreshAuthToken().then(() => {}).catch(() => {}).finally(() => {
-            this._tokenRefreshPending = null;
-          });
-        }
       },
     });
   }
@@ -328,12 +264,8 @@ class GatewayController extends EventTarget {
     // Exponential backoff: 2s, 4s, 8s, 16s, 30s max
     const delay = Math.min(2000 * Math.pow(2, this._reconnectAttempts), 30_000);
     console.log(`[gateway] reconnect in ${delay}ms (attempt ${this._reconnectAttempts + 1})`);
-    this._reconnectTimer = setTimeout(async () => {
+    this._reconnectTimer = setTimeout(() => {
       this._reconnectTimer = null;
-      // Wait for any in-flight token refresh to finish before reconnecting
-      if (this._tokenRefreshPending) {
-        await this._tokenRefreshPending;
-      }
       this.connect();
     }, delay);
   }

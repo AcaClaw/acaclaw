@@ -197,22 +197,15 @@ measure_ws_handshake() {
         return
     fi
 
-    # Extract auth token before node call to avoid quoting issues
-    local auth_token=""
-    if [[ -f "${OPENCLAW_DIR}/ui/index.html" ]]; then
-        auth_token="$(grep -oP '(?<=oc-token" content=")[^"]+' "${OPENCLAW_DIR}/ui/index.html" | head -1)" || true
-    fi
-
     local start end
     start=$(_now_ms)
 
     # Use node to measure WS handshake
     local ws_result
-    ws_result="$(ACACLAW_PORT="${ACACLAW_PORT}" OC_TOKEN="${auth_token}" node -e '
+    ws_result="$(ACACLAW_PORT="${ACACLAW_PORT}" node -e '
 const WebSocket = require("ws");
 const {randomUUID} = require("crypto");
 const port = process.env.ACACLAW_PORT || 2090;
-const token = process.env.OC_TOKEN || "";
 const t0 = Date.now();
 const ws = new WebSocket("ws://localhost:" + port + "/");
 let t_open, t_challenge, t_connected;
@@ -227,8 +220,7 @@ ws.on("message", (data) => {
                 minProtocol: 3, maxProtocol: 3,
                 client: { id: "openclaw-control-ui", version: "acaclaw-1.0.0", platform: "linux", mode: "ui" },
                 role: "operator",
-                scopes: ["operator.admin","operator.read","operator.write","operator.approvals","operator.pairing"],
-                auth: token ? { token } : undefined
+                scopes: ["operator.admin","operator.read","operator.write","operator.approvals","operator.pairing"]
             }
         }));
     } else if (msg.type === "res") {

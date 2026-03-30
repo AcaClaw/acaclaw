@@ -597,7 +597,7 @@ EOF
 				set -euo pipefail
 				mkdir -p "${stateDir}"
 				python3 -c "
-import json, secrets
+import json
 
 with open('${configSource}/openclaw-defaults.json') as f:
     cfg = json.load(f)
@@ -609,16 +609,10 @@ try:
         cfg['auth'] = oc['auth']
     if 'models' in oc:
         cfg['models'] = oc['models']
-    oc_token = oc.get('gateway', {}).get('auth', {}).get('token', '')
-    if oc_token:
-        cfg['gateway'].setdefault('auth', {})['mode'] = 'token'
-        cfg['gateway']['auth']['token'] = oc_token
 except Exception:
     pass
 
-if not cfg.get('gateway', {}).get('auth', {}).get('token'):
-    cfg['gateway'].setdefault('auth', {})['mode'] = 'token'
-    cfg['gateway']['auth']['token'] = secrets.token_hex(24)
+cfg['gateway'].setdefault('auth', {})['mode'] = 'none'
 
 with open('${stateDir}/openclaw.json', 'w') as f:
     json.dump(cfg, f, indent=2)
@@ -632,10 +626,10 @@ with open('${stateDir}/openclaw.json', 'w') as f:
 			);
 			expect(merged.auth.provider).toBe("openai");
 			expect(merged.models.default).toBe("gpt-4");
-			expect(merged.gateway.auth.token).toBe("existing-token");
+			expect(merged.gateway.auth.mode).toBe("none");
 		});
 
-		it("generates fresh token when no existing OpenClaw config", async () => {
+		it("creates standalone config with auth.mode=none", async () => {
 			const stateDir = join(fakeHome, ".openclaw");
 			const configSource = resolve(__dirname, "../config");
 
@@ -643,13 +637,12 @@ with open('${stateDir}/openclaw.json', 'w') as f:
 				set -euo pipefail
 				mkdir -p "${stateDir}"
 				python3 -c "
-import json, secrets
+import json
 
 with open('${configSource}/openclaw-defaults.json') as f:
     cfg = json.load(f)
 
-cfg['gateway'].setdefault('auth', {})['mode'] = 'token'
-cfg['gateway']['auth']['token'] = secrets.token_hex(24)
+cfg['gateway'].setdefault('auth', {})['mode'] = 'none'
 
 with open('${stateDir}/openclaw.json', 'w') as f:
     json.dump(cfg, f, indent=2)
@@ -661,8 +654,7 @@ with open('${stateDir}/openclaw.json', 'w') as f:
 			const config = JSON.parse(
 				await readFile(join(stateDir, "openclaw.json"), "utf-8"),
 			);
-			expect(config.gateway.auth.mode).toBe("token");
-			expect(config.gateway.auth.token).toHaveLength(48); // hex(24) = 48 chars
+			expect(config.gateway.auth.mode).toBe("none");
 		});
 	});
 

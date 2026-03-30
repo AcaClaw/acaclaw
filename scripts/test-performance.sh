@@ -93,30 +93,20 @@ _perf() {
     fi
 }
 
-# --- Auth token ---
-_get_token() {
-    if [[ -f "${OPENCLAW_DIR}/ui/index.html" ]]; then
-        grep -oP '(?<=oc-token" content=")[^"]+' "${OPENCLAW_DIR}/ui/index.html" 2>/dev/null | head -1 || true
-    fi
-}
-
 # --- Node.js WebSocket helper (shared) ---
 # Runs a Node.js script that connects to the gateway, optionally calls a method,
 # and returns JSON result with timing info. Payload is written to a temp file
 # to avoid stdout truncation for large responses (e.g. models.list ~114KB).
 _ws_call() {
     local method=$1 params=${2:-"{}"}
-    local token
-    token="$(_get_token)"
     local payload_file
     payload_file="$(mktemp /tmp/ws_payload_XXXXXX.json)"
 
-    ACACLAW_PORT="${ACACLAW_PORT}" OC_TOKEN="${token}" WS_METHOD="${method}" WS_PARAMS="${params}" WS_PAYLOAD_FILE="${payload_file}" node -e '
+    ACACLAW_PORT="${ACACLAW_PORT}" WS_METHOD="${method}" WS_PARAMS="${params}" WS_PAYLOAD_FILE="${payload_file}" node -e '
 const WebSocket = require("ws");
 const {randomUUID} = require("crypto");
 const fs = require("fs");
 const port = process.env.ACACLAW_PORT || 2090;
-const token = process.env.OC_TOKEN || "";
 const METHOD = process.env.WS_METHOD;
 const PARAMS = JSON.parse(process.env.WS_PARAMS || "{}");
 const PAYLOAD_FILE = process.env.WS_PAYLOAD_FILE;
@@ -133,8 +123,7 @@ ws.on("message", (data) => {
                 minProtocol: 3, maxProtocol: 3,
                 client: { id: "openclaw-control-ui", version: "acaclaw-1.0.0", platform: "linux", mode: "ui" },
                 role: "operator",
-                scopes: ["operator.admin","operator.read","operator.write","operator.approvals","operator.pairing"],
-                auth: token ? { token } : undefined
+                scopes: ["operator.admin","operator.read","operator.write","operator.approvals","operator.pairing"]
             }
         }));
     } else if (msg.type === "res" && !t_connected) {
@@ -175,14 +164,11 @@ _ws_payload_file() {
 # --- Chat call with streaming (waits for final response) ---
 _ws_chat() {
     local message=$1 session_key=${2:-"perf-test"}
-    local token
-    token="$(_get_token)"
 
-    ACACLAW_PORT="${ACACLAW_PORT}" OC_TOKEN="${token}" WS_MESSAGE="${message}" WS_SESSION="${session_key}" node -e '
+    ACACLAW_PORT="${ACACLAW_PORT}" WS_MESSAGE="${message}" WS_SESSION="${session_key}" node -e '
 const WebSocket = require("ws");
 const {randomUUID} = require("crypto");
 const port = process.env.ACACLAW_PORT || 2090;
-const token = process.env.OC_TOKEN || "";
 const MESSAGE = process.env.WS_MESSAGE;
 const SESSION_KEY = process.env.WS_SESSION;
 const t0 = Date.now();
@@ -200,8 +186,7 @@ ws.on("message", (data) => {
                 minProtocol: 3, maxProtocol: 3,
                 client: { id: "openclaw-control-ui", version: "acaclaw-1.0.0", platform: "linux", mode: "ui" },
                 role: "operator",
-                scopes: ["operator.admin","operator.read","operator.write","operator.approvals","operator.pairing"],
-                auth: token ? { token } : undefined
+                scopes: ["operator.admin","operator.read","operator.write","operator.approvals","operator.pairing"]
             }
         }));
     } else if (msg.type === "res" && !t_connected) {
@@ -308,15 +293,11 @@ perf_ws_connect() {
         return
     fi
 
-    local token
-    token="$(_get_token)"
-
     local result
-    result="$(ACACLAW_PORT="${ACACLAW_PORT}" OC_TOKEN="${token}" node -e '
+    result="$(ACACLAW_PORT="${ACACLAW_PORT}" node -e '
 const WebSocket = require("ws");
 const {randomUUID} = require("crypto");
 const port = process.env.ACACLAW_PORT || 2090;
-const token = process.env.OC_TOKEN || "";
 const t0 = Date.now();
 let t_open, t_challenge, t_connected;
 const ws = new WebSocket("ws://localhost:" + port + "/", { origin: "http://localhost:" + port });
@@ -331,8 +312,7 @@ ws.on("message", (data) => {
                 minProtocol: 3, maxProtocol: 3,
                 client: { id: "openclaw-control-ui", version: "acaclaw-1.0.0", platform: "linux", mode: "ui" },
                 role: "operator",
-                scopes: ["operator.admin","operator.read","operator.write","operator.approvals","operator.pairing"],
-                auth: token ? { token } : undefined
+                scopes: ["operator.admin","operator.read","operator.write","operator.approvals","operator.pairing"]
             }
         }));
     } else if (msg.type === "res") {
@@ -370,13 +350,13 @@ setTimeout(() => { console.log(JSON.stringify({error: "timeout"})); process.exit
 
     _perf "WS open" "$ws_open" 100 500
     _perf "WS challenge received" "$((challenge - ws_open))" 50 200
-    _perf "WS auth handshake" "$((connected - challenge))" 100 500
+    _perf "WS handshake" "$((connected - challenge))" 100 500
     _perf "WS total connect" "$connected" 200 1000
 
     if [[ "$auth_ok" == "True" ]]; then
-        _pass "WS auth accepted"
+        _pass "WS connect accepted"
     else
-        _fail "WS auth rejected" "Token may be invalid"
+        _fail "WS connect rejected" "Connect handshake failed"
     fi
 }
 

@@ -331,57 +331,6 @@ describe("start.sh", () => {
 	});
 
 	// ---------------------------------------------------------------
-	// Token injection into UI HTML
-	// ---------------------------------------------------------------
-	describe("token injection into UI HTML", () => {
-		it("injects token into index.html when missing", async () => {
-			const uiDir = join(fakeHome, "ui");
-			await mkdir(uiDir, { recursive: true });
-			await writeFile(
-				join(uiDir, "index.html"),
-				'<html><head><title>AcaClaw</title></head><body></body></html>',
-			);
-
-			const { code } = await runBash(`
-				ui_index="${uiDir}/index.html"
-				token="test-token-abc123"
-				if ! grep -q 'name="oc-token"' "$ui_index"; then
-					if [[ "$OSTYPE" == "darwin"* ]]; then
-						sed -i '' "s|</head>|  <meta name=\\"oc-token\\" content=\\"\${token}\\" />\\
-  </head>|" "$ui_index"
-					else
-						sed -i "s|</head>|  <meta name=\\"oc-token\\" content=\\"\${token}\\" />\\n  </head>|" "$ui_index"
-					fi
-				fi
-			`);
-			expect(code).toBe(0);
-
-			const html = await readFile(join(uiDir, "index.html"), "utf-8");
-			expect(html).toContain('name="oc-token"');
-			expect(html).toContain("test-token-abc123");
-		});
-
-		it("does not double-inject token", async () => {
-			const uiDir = join(fakeHome, "ui");
-			await mkdir(uiDir, { recursive: true });
-			await writeFile(
-				join(uiDir, "index.html"),
-				'<html><head><meta name="oc-token" content="existing" />\n  </head><body></body></html>',
-			);
-
-			const { stdout } = await runBash(`
-				ui_index="${uiDir}/index.html"
-				if ! grep -q 'name="oc-token"' "$ui_index"; then
-					echo "would-inject"
-				else
-					echo "already-present"
-				fi
-			`);
-			expect(stdout.trim()).toBe("already-present");
-		});
-	});
-
-	// ---------------------------------------------------------------
 	// Port configuration
 	// ---------------------------------------------------------------
 	describe("port configuration", () => {

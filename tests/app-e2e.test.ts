@@ -1,7 +1,7 @@
 /**
  * End-to-end tests for the AcaClaw app.
  * Tests the REAL running gateway and UI — verifying health, HTML serving,
- * WebSocket auth handshake, API methods, and the API keys page content.
+ * WebSocket handshake, API methods, and the API keys page content.
  *
  * Prerequisites: gateway running on port 2090 (systemd service or start.sh).
  * These tests are SKIPPED if the gateway is not available.
@@ -30,22 +30,6 @@ async function gatewayIsUp(): Promise<boolean> {
 	}
 }
 
-async function readGatewayToken(): Promise<string | undefined> {
-	// The gateway injects its runtime auth token into the served HTML.
-	// Read it from the HTTP response — the config file may have a different value.
-	try {
-		const res = await fetch(`${GATEWAY_URL}/`, {
-			signal: AbortSignal.timeout(3_000),
-		});
-		if (!res.ok) return undefined;
-		const html = await res.text();
-		const match = html.match(/name="oc-token"\s+content="([^"]*)"/);
-		return match?.[1] ?? undefined;
-	} catch {
-		return undefined;
-	}
-}
-
 type GatewayConnection = {
 	call: <T = unknown>(method: string, params?: unknown) => Promise<T>;
 	onNotification: (
@@ -58,8 +42,9 @@ type GatewayConnection = {
 /**
  * Opens a WebSocket to the gateway, performs the connect handshake,
  * and returns a helper to make RPC calls and listen for notifications.
+ * Auth mode is "none" — no token needed.
  */
-function connectToGateway(token: string): Promise<GatewayConnection> {
+function connectToGateway(): Promise<GatewayConnection> {
 	// Dynamic import for ws (Node.js WebSocket client)
 	return new Promise(async (resolve, reject) => {
 		const { default: WebSocket } = await import("ws");
@@ -87,7 +72,7 @@ function connectToGateway(token: string): Promise<GatewayConnection> {
 
 			// Handle connect.challenge event
 			if (msg.type === "event" && msg.event === "connect.challenge") {
-				// Send connect frame (must match gateway schema exactly)
+				// Send connect frame — no auth needed (auth.mode=none)
 				const id = randomUUID();
 				const frame = {
 					type: "req",
@@ -110,7 +95,6 @@ function connectToGateway(token: string): Promise<GatewayConnection> {
 							"operator.approvals",
 							"operator.pairing",
 						],
-						auth: { token },
 					},
 				};
 				ws.send(JSON.stringify(frame));
@@ -206,16 +190,12 @@ function connectToGateway(token: string): Promise<GatewayConnection> {
 
 describe("AcaClaw App E2E", async () => {
 	let isUp = false;
-	let token: string | undefined;
 	let gw: GatewayConnection | undefined;
 
 	beforeAll(async () => {
 		isUp = await gatewayIsUp();
 		if (isUp) {
-			token = await readGatewayToken();
-			if (token) {
-				try { gw = await connectToGateway(token); } catch { /* skip WS tests */ }
-			}
+			try { gw = await connectToGateway(); } catch { /* skip WS tests */ }
 		}
 	});
 
@@ -233,12 +213,6 @@ describe("AcaClaw App E2E", async () => {
 			const body = await res.json();
 			expect(body).toEqual({ ok: true, status: "live" });
 		});
-
-		it("has a valid auth token in config", () => {
-			if (!isUp) return;
-			expect(token).toBeDefined();
-			expect(token!.length).toBeGreaterThanOrEqual(24);
-		});
 	});
 
 	// --- UI Serving ---
@@ -251,20 +225,6 @@ describe("AcaClaw App E2E", async () => {
 			const html = await res.text();
 			expect(html).toContain("<title>AcaClaw</title>");
 			expect(html).toContain("acaclaw-app");
-			expect(html).toContain('name="oc-token"');
-		});
-
-		it("injects a valid auth token into HTML", async () => {
-			if (!isUp) return;
-			const res = await fetch(`${GATEWAY_URL}/`);
-			const html = await res.text();
-			const match = html.match(
-				/name="oc-token"\s+content="([^"]*)"/,
-			);
-			expect(match).not.toBeNull();
-			// Token should be a non-empty hex string (gateway runtime token)
-			expect(match![1].length).toBeGreaterThanOrEqual(24);
-			expect(match![1]).toBe(token);
 		});
 
 		it("serves index.html with no-cache header", async () => {
@@ -294,11 +254,11 @@ describe("AcaClaw App E2E", async () => {
 		});
 	});
 
-	// --- WebSocket Authentication ---
+	// --- WebSocket Connection ---
 
-	describe("WebSocket auth handshake", () => {
-		it("connects and authenticates with valid token", async () => {
-			if (!isUp || !token) return;
+	describe("WebSocket connect handshake", () => {
+		it("connects successfully without auth token", async () => {
+			if (!isUp) return;
 			expect(gw).toBeDefined();
 			expect(gw!.call).toBeTypeOf("function");
 		}, TIMEOUT_MS);

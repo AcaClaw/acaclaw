@@ -589,10 +589,6 @@ try:
     if 'tools' in oc and 'web' in oc.get('tools', {}):
         web_cfg = oc['tools']['web']
         cfg.setdefault('tools', {})['web'] = web_cfg
-    # Copy existing gateway auth token if present
-    oc_token = oc.get('gateway', {}).get('auth', {}).get('token', '')
-    if oc_token:
-        cfg['gateway'].setdefault('auth', {})['token'] = oc_token
 except Exception:
     pass
 
@@ -624,7 +620,7 @@ else
 	log "No existing OpenClaw config found — creating standalone config"
 
 	python3 -c "
-import json, secrets
+import json
 
 with open('${CONFIG_TEMPLATE}') as f:
     cfg = json.load(f)
@@ -647,29 +643,6 @@ fi
 log "Config location: ${ACACLAW_CONFIG}"
 log "OpenClaw's own config: untouched ✓"
 
-# Inject gateway auth token into the deployed UI index.html
-ACAC_UI_INDEX="${OPENCLAW_DIR}/ui/index.html"
-if [[ -f "$ACAC_UI_INDEX" ]] && [[ -f "$ACACLAW_CONFIG" ]]; then
-	GATEWAY_TOKEN=$(python3 -c "
-import json
-with open('${ACACLAW_CONFIG}') as f:
-    c = json.load(f)
-t = c.get('gateway', {}).get('auth', {}).get('token', '')
-print(t)
-" 2>/dev/null)
-	if [[ -n "$GATEWAY_TOKEN" ]]; then
-		# Remove any existing oc-token meta tag before injecting the correct one
-		if [[ "$OS" == "macos" ]]; then
-			sed -i '' '/<meta name="oc-token"/d' "$ACAC_UI_INDEX"
-			sed -i '' "s|</head>|<meta name=\"oc-token\" content=\"${GATEWAY_TOKEN}\" />\\
-  </head>|" "$ACAC_UI_INDEX"
-		else
-			sed -i '/<meta name="oc-token"/d' "$ACAC_UI_INDEX"
-			sed -i "s|</head>|<meta name=\"oc-token\" content=\"${GATEWAY_TOKEN}\" />\n  </head>|" "$ACAC_UI_INDEX"
-		fi
-		log "Gateway token injected into UI ✓"
-	fi
-fi
 # --- Create directory structure ---
 
 mkdir -p "${ACACLAW_DIR}/backups/files"

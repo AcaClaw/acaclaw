@@ -292,36 +292,18 @@ describe("GatewayController", () => {
     });
   });
 
-  // ── Token resolution ──
+  // ── Connect frame format ──
 
-  describe("token resolution", () => {
-    it("resolves token from meta tag", () => {
-      const meta = document.createElement("meta");
-      meta.name = "oc-token";
-      meta.content = "test-token-12345";
-      document.head.appendChild(meta);
-
+  describe("connect frame", () => {
+    it("sends connect without auth field (auth.mode=none)", () => {
       gateway.connect();
       const ws = lastCreatedWs!;
       ws.simulateOpen();
       ws.simulateMessage({ type: "event", event: "connect.challenge", payload: {} });
       const frame = JSON.parse(ws.sentMessages[0]);
-      expect(frame.params.auth?.token).toBe("test-token-12345");
-
-      document.head.removeChild(meta);
-    });
-
-    it("resolves token from sessionStorage", () => {
-      sessionStorage.setItem("openclaw.control.token", "stored-token");
-
-      gateway.connect();
-      const ws = lastCreatedWs!;
-      ws.simulateOpen();
-      ws.simulateMessage({ type: "event", event: "connect.challenge", payload: {} });
-      const frame = JSON.parse(ws.sentMessages[0]);
-      expect(frame.params.auth?.token).toBe("stored-token");
-
-      sessionStorage.removeItem("openclaw.control.token");
+      expect(frame.method).toBe("connect");
+      expect(frame.params.auth).toBeUndefined();
+      expect(frame.params.client.id).toBe("openclaw-control-ui");
     });
   });
 });

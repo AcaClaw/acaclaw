@@ -452,11 +452,7 @@ export class SettingsView extends LitElement {
   }
 
   private _openOpenClawUI() {
-    const token = document.querySelector<HTMLMetaElement>('meta[name="oc-token"]')?.content ?? "";
-    const url = token
-      ? `http://localhost:18789/#token=${encodeURIComponent(token)}`
-      : "http://localhost:18789/";
-    window.open(url, "_blank", "noopener");
+    window.open("http://localhost:18789/", "_blank", "noopener");
   }
 
   private _renderConnection() {

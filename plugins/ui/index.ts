@@ -51,24 +51,6 @@ const uiPlugin = {
   },
 
   register(api: OpenClawPluginApi) {
-    const resolveToken = (): string => {
-      const token = (api.config as Record<string, unknown> & { gateway?: { auth?: { token?: string } } })
-        ?.gateway?.auth?.token;
-      return token ?? "";
-    };
-
-    const injectToken = (html: Buffer | string): Buffer => {
-      const token = resolveToken();
-      if (!token) return Buffer.isBuffer(html) ? html : Buffer.from(html);
-      let str = Buffer.isBuffer(html) ? html.toString("utf-8") : html;
-      if (/<meta\s+name="oc-token"[^>]*>/i.test(str)) {
-        str = str.replace(/<meta\s+name="oc-token"[^>]*>/i, `<meta name="oc-token" content="${token}">`);
-      } else {
-        str = str.replace("</head>", `<meta name="oc-token" content="${token}">\n</head>`);
-      }
-      return Buffer.from(str);
-    };
-
     const handler = async (req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse) => {
       const urlPath = (req.url ?? "/").split("?")[0];
       const safePath = urlPath.replaceAll("..", "");
@@ -79,8 +61,7 @@ const uiPlugin = {
         const fileStat = await stat(filePath);
         if (fileStat.isFile()) {
           const ext = extname(filePath);
-          let content = await readFile(filePath);
-          if (ext === ".html") content = injectToken(content);
+          const content = await readFile(filePath);
           res.writeHead(200, {
             "Content-Type": MIME_TYPES[ext] ?? "application/octet-stream",
             "Content-Length": content.byteLength,
@@ -96,7 +77,7 @@ const uiPlugin = {
       // SPA fallback: serve index.html for client-side routing
       try {
         const indexPath = join(UI_DIST, "index.html");
-        const content = injectToken(await readFile(indexPath));
+        const content = await readFile(indexPath);
         res.writeHead(200, {
           "Content-Type": "text/html; charset=utf-8",
           "Cache-Control": "no-cache",

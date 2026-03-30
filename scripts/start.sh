@@ -270,54 +270,6 @@ fi
 
 mkdir -p "$ACACLAW_DATA_DIR"
 
-# --- Ensure auth token is baked into the UI HTML ---
-# The built-in control-UI server serves static HTML as-is (no runtime injection).
-# After UI rebuilds the token meta tag may be missing. Re-inject if needed.
-ensure_token_in_html() {
-    local ui_index="${OPENCLAW_DIR}/ui/index.html"
-    [[ -f "$ui_index" ]] || return 0
-    # Inject if meta tag is missing OR present with empty content (after UI rebuild)
-    local needs_inject=false
-    if ! grep -q 'name="oc-token"' "$ui_index"; then
-        needs_inject=true
-    elif grep -q 'name="oc-token" content=""' "$ui_index"; then
-        needs_inject=true
-    fi
-    if [[ "$needs_inject" == "true" ]]; then
-        local token
-        token="$(python3 -c "
-import json
-try:
-    with open('${ACACLAW_CONFIG}') as f:
-        c = json.load(f)
-    print(c.get('gateway', {}).get('auth', {}).get('token', ''))
-except Exception:
-    pass
-" 2>/dev/null)" || true
-        if [[ -n "$token" ]]; then
-            if grep -q 'name="oc-token" content=""' "$ui_index"; then
-                # Replace empty content with token
-                if [[ "$PLATFORM" == "macos" ]]; then
-                    sed -i '' "s|content=\"\"|content=\"${token}\"|" "$ui_index"
-                else
-                    sed -i "s|content=\"\"|content=\"${token}\"|" "$ui_index"
-                fi
-            else
-                # Insert new meta tag
-                if [[ "$PLATFORM" == "macos" ]]; then
-                    sed -i '' "s|</head>|  <meta name=\"oc-token\" content=\"${token}\" />\\
-  </head>|" "$ui_index"
-                else
-                    sed -i "s|</head>|  <meta name=\"oc-token\" content=\"${token}\" />\n  </head>|" "$ui_index"
-                fi
-            fi
-            log "Auth token injected into UI"
-        fi
-    fi
-}
-ensure_token_in_html
-_tlog "token ensured"
-
 # --- Stale lock cleanup (non-fatal) ---
 if [[ -f "$ACACLAW_PID_FILE" ]]; then
     stale_pid="$(cat "$ACACLAW_PID_FILE" 2>/dev/null)" || true
