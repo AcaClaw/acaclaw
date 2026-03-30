@@ -645,8 +645,9 @@ export class ApiKeysView extends LitElement {
         if (primary) this._defaultModel = primary;
       }
 
-      // Auto-select first configured model if no default is set
-      if (!this._defaultModel && configuredModels.length > 0) {
+      // Auto-select first configured model only if a provider has keys
+      const hasAnyKey = Object.values(this._llmKeys).some((v) => v !== "");
+      if (!this._defaultModel && hasAnyKey && configuredModels.length > 0) {
         this._defaultModel = configuredModels[0].id;
       }
       this._savedModel = this._defaultModel;
