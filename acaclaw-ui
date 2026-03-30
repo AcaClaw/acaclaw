@@ -1,17 +1,6 @@
 #!/usr/bin/env bash
 set -e
-CONFIG_PATH="$HOME/.openclaw/openclaw.json"
-
-if [ ! -f "$CONFIG_PATH" ]; then
-    echo "Error: Config not found at $CONFIG_PATH"
-    exit 1
-fi
-
-TOKEN=$(grep -o '"token": "[^"]*"' "$CONFIG_PATH" | head -1 | cut -d '"' -f 4)
 URL="http://localhost:2090/"
-if [ ! -z "$TOKEN" ]; then
-  URL="http://localhost:2090/#token=$TOKEN"
-fi
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS logic
