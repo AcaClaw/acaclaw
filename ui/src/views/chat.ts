@@ -108,9 +108,9 @@ export class ChatView extends LitElement {
   @state() private _activeTabId = GENERAL_TAB_ID;
   @state() private _workdir = "";
 
-  @state() private _availableModels: Array<{id: string; label: string; provider?: string}> = [];
+  @state() private _availableModels: Array<{value: string; label: string}> = [];
   @state() private _selectedModel = "";
-  @state() private _defaultModelName = "";
+  @state() private _defaultModelDisplay = "";
   @state() private _attachments: ChatAttachment[] = [];
   @state() private _isRecording = false;
   @state() private _interimTranscript = "";
@@ -1051,6 +1051,14 @@ export class ChatView extends LitElement {
       background: var(--ac-bg-hover); border: 1px solid var(--ac-border-subtle);
       border-radius: var(--ac-radius); color: var(--ac-text-muted); font-family: inherit;
       max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      cursor: pointer; appearance: none; -webkit-appearance: none;
+      padding-right: 20px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 6px center;
+    }
+    .input-model-select:hover {
+      border-color: var(--ac-border);
+      color: var(--ac-text);
     }
 
     .no-tabs-state {
@@ -1749,6 +1757,7 @@ export class ChatView extends LitElement {
 
   private _switchTab(agentId: string) {
     this._activeTabId = agentId;
+    this._selectedModel = "";
     this._tabs = [...this._tabs];
     this._persistTabs();
     this._fetchWorkdir(agentId);
@@ -2101,9 +2110,14 @@ export class ChatView extends LitElement {
                 </div>
                 <div class="input-bottom-row">
                   <div style="display:flex;align-items:center;gap:6px">
-                    <span class="input-model-select" style="cursor:default">
-                      ${this._defaultModelName ? `${this._defaultModelName}` : t("chat.defaultModel")}
-                    </span>
+                    <select class="input-model-select"
+                      .value=${this._selectedModel}
+                      @change=${this._onModelChange}>
+                      <option value="">${this._defaultModelDisplay ? `Default (${this._defaultModelDisplay})` : t("chat.defaultModel")}</option>
+                      ${this._availableModels.map(m => html`
+                        <option value=${m.value} ?selected=${this._selectedModel === m.value}>${m.label}</option>
+                      `)}
+                    </select>
                     <div class="input-actions">
                       <input type="file" accept="image/*" multiple style="display:none" @change=${this._onFileSelect} />
                       <button title="${t("chat.attach")}" @click=${this._triggerFileInput}>
@@ -2270,60 +2284,45 @@ export class ChatView extends LitElement {
     this._tabs = [...this._tabs];
   }
 
-  private async _onModelChange() {
+  private async _onModelChange(e: Event) {
     const tab = this._getActiveTab();
     if (!tab) return;
+    const value = (e.target as HTMLSelectElement).value;
+    this._selectedModel = value;
     try {
       const sessionKey = this._getSessionKey(tab.agentId);
-      const selected = this._availableModels.find(m => m.id === this._selectedModel);
-      let modelValue: string | null = this._selectedModel || null;
-      if (modelValue && selected?.provider && !modelValue.includes("/")) {
-        modelValue = `${selected.provider}/${modelValue}`;
-      }
       await gateway.call("sessions.patch", {
         key: sessionKey,
-        model: modelValue,
+        model: value || null,
       });
     } catch { /* ignore */ }
   }
 
   private async _loadModels() {
     try {
-      const [modelsResult, sessionsResult, configSnapshot] = await Promise.all([
+      const [modelsResult, sessionsResult] = await Promise.all([
         gateway.call<{ models: Array<{id: string; name: string; provider?: string}> }>("models.list", {}),
         gateway.call<{ defaults?: { model?: string; modelProvider?: string } }>("sessions.list", {
           includeGlobal: true, includeUnknown: true,
         }),
-        gateway.call<Record<string, unknown>>("config.get"),
       ]);
 
-      // Use models.list as-is — OpenClaw handles provider filtering
+      // Build options with "provider/model" values and "model · provider" labels
+      // This matches OpenClaw control UI's oi() format exactly
       const raw = modelsResult?.models ?? [];
       this._availableModels = raw.map((m) => ({
-        id: m.id,
+        value: m.provider ? `${m.provider}/${m.id}` : m.id,
         label: m.provider ? `${m.name} · ${m.provider}` : m.name,
-        provider: m.provider,
       }));
+
+      // Resolve default model display name from session defaults
       const dm = sessionsResult?.defaults?.model ?? "";
       const dp = sessionsResult?.defaults?.modelProvider ?? "";
-
-      // Prefer user-configured default model from config
-      const cfg = (configSnapshot?.config ?? configSnapshot) as Record<string, unknown> | undefined;
-      const agents = cfg?.agents as Record<string, unknown> | undefined;
-      const defaults = agents?.defaults as Record<string, unknown> | undefined;
-      const userModel = defaults?.model;
-      if (typeof userModel === "string" && userModel) {
-        const parts = userModel.split("/");
-        if (parts.length >= 2) {
-          this._defaultModelName = `${parts.slice(1).join("/")} · ${parts[0]}`;
-        } else {
-          this._defaultModelName = userModel;
-        }
-      } else if (dm) {
-        this._defaultModelName = dp ? `${dm} · ${dp}` : dm;
+      if (dm) {
+        this._defaultModelDisplay = dp ? `${dm} · ${dp}` : dm;
       } else if (raw.length > 0) {
         const first = raw[0];
-        this._defaultModelName = first.provider ? `${first.name} · ${first.provider}` : first.name;
+        this._defaultModelDisplay = first.provider ? `${first.name} · ${first.provider}` : first.name;
       }
     } catch {
       this._availableModels = [];
