@@ -2316,13 +2316,17 @@ export class ChatView extends LitElement {
       }));
 
       // Resolve default model display name from session defaults
+      // Only show if the model is actually available (has a configured provider)
       const dm = sessionsResult?.defaults?.model ?? "";
       const dp = sessionsResult?.defaults?.modelProvider ?? "";
-      if (dm) {
+      const defaultId = dp && dm ? `${dp}/${dm}` : dm;
+      if (dm && raw.some((m) => (m.provider ? `${m.provider}/${m.id}` : m.id) === defaultId)) {
         this._defaultModelDisplay = dp ? `${dm} · ${dp}` : dm;
       } else if (raw.length > 0) {
         const first = raw[0];
         this._defaultModelDisplay = first.provider ? `${first.name} · ${first.provider}` : first.name;
+      } else {
+        this._defaultModelDisplay = "";
       }
     } catch {
       this._availableModels = [];
