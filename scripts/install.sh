@@ -592,15 +592,12 @@ try:
     # Copy existing gateway auth token if present
     oc_token = oc.get('gateway', {}).get('auth', {}).get('token', '')
     if oc_token:
-        cfg['gateway'].setdefault('auth', {})['mode'] = 'token'
-        cfg['gateway']['auth']['token'] = oc_token
+        cfg['gateway'].setdefault('auth', {})['token'] = oc_token
 except Exception:
     pass
 
-# Generate gateway auth token if not already set
-if not cfg.get('gateway', {}).get('auth', {}).get('token'):
-    cfg['gateway'].setdefault('auth', {})['mode'] = 'token'
-    cfg['gateway']['auth']['token'] = secrets.token_hex(24)
+# Auth mode: none (gateway binds loopback only, external access impossible)
+cfg['gateway'].setdefault('auth', {})['mode'] = 'none'
 
 # Update conda path if available
 miniforge = '${MINIFORGE_DIR:-}'
@@ -632,9 +629,8 @@ import json, secrets
 with open('${CONFIG_TEMPLATE}') as f:
     cfg = json.load(f)
 
-# Generate gateway auth token
-cfg['gateway'].setdefault('auth', {})['mode'] = 'token'
-cfg['gateway']['auth']['token'] = secrets.token_hex(24)
+# Auth mode: none (gateway binds loopback only, external access impossible)
+cfg['gateway'].setdefault('auth', {})['mode'] = 'none'
 
 miniforge = '${MINIFORGE_DIR:-}'
 if miniforge:

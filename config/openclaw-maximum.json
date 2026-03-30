@@ -3,6 +3,9 @@
   "gateway": {
     "port": 2090,
     "mode": "local",
+    "auth": {
+      "mode": "none"
+    },
     "controlUi": {
       "enabled": false,
       "basePath": "/",
