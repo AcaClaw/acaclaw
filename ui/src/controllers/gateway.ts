@@ -296,16 +296,51 @@ class GatewayController extends EventTarget {
 export const gateway = new GatewayController();
 
 /**
- * Deep-merge a partial config object into the current OpenClaw config.
- * Fetches baseHash via config.get, then calls config.patch.
+ * Set a dotted config path to a value via read-modify-write.
+ * Mirrors OpenClaw's updateConfigFormValue + saveConfig pattern.
  */
-export async function patchConfig(partial: Record<string, unknown>): Promise<void> {
+export async function setConfigValue(
+  path: string[],
+  value: unknown,
+): Promise<void> {
+  await updateConfig((cfg) => {
+    setNestedValue(cfg, path, value);
+    return cfg;
+  });
+}
+
+function setNestedValue(
+  obj: Record<string, unknown>,
+  path: string[],
+  value: unknown,
+): void {
+  let cur: Record<string, unknown> = obj;
+  for (let i = 0; i < path.length - 1; i++) {
+    const key = path[i];
+    if (cur[key] == null || typeof cur[key] !== "object") {
+      cur[key] = {};
+    }
+    cur = cur[key] as Record<string, unknown>;
+  }
+  cur[path[path.length - 1]] = value;
+}
+
+/**
+ * Read-modify-write: fetch the full config, apply a transform, then
+ * replace the entire config via config.set.  Use when you need to
+ * delete keys (config.patch can only add/merge).
+ */
+export async function updateConfig(
+  transform: (cfg: Record<string, unknown>) => Record<string, unknown>,
+): Promise<void> {
   const snapshot = await gateway.call<Record<string, unknown>>("config.get");
   if (!snapshot) throw new Error("config.get returned no data");
+  const cfg = (snapshot.config as Record<string, unknown>) ?? {};
   const baseHash = (snapshot.baseHash ?? snapshot.hash) as string;
   if (!baseHash) throw new Error("config.get returned no baseHash");
-  await gateway.call("config.patch", {
-    raw: JSON.stringify(partial),
+  const updated = transform(structuredClone(cfg));
+  await gateway.call("config.set", {
+    raw: JSON.stringify(updated, null, 2),
     baseHash,
   });
 }

@@ -1,6 +1,6 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
-import { gateway, patchConfig } from "../controllers/gateway.js";
+import { gateway, updateConfig, setConfigValue } from "../controllers/gateway.js";
 import { t, LocaleController } from "../i18n.js";
 
 interface KeyEntry {
@@ -421,6 +421,15 @@ export class ApiKeysView extends LitElement {
       border-color: var(--ac-border-strong);
       color: var(--ac-text);
     }
+    .btn-danger {
+      background: transparent;
+      border: 1px solid var(--ac-danger, #dc3545);
+      color: var(--ac-danger, #dc3545);
+    }
+    .btn-danger:hover {
+      background: var(--ac-danger, #dc3545);
+      color: #fff;
+    }
 
     .save-msg {
       font-size: 13px;
@@ -808,6 +817,9 @@ export class ApiKeysView extends LitElement {
           ${allSaved
             ? html`<button class="btn btn-outline" @click=${() => this._addKey(this._llmProvider, "llm", provider.placeholder)}>${t("apikeys.addAnother")}</button>`
             : ""}
+          ${allSaved
+            ? html`<button class="btn btn-danger" @click=${() => this._removeProvider(this._llmProvider, "llm")}>${t("apikeys.removeProvider")}</button>`
+            : ""}
           ${this._saveMessage ? html`<span class="save-msg">${this._saveMessage}</span>` : ""}
         </div>
       </div>
@@ -927,6 +939,9 @@ export class ApiKeysView extends LitElement {
           ${allSaved
             ? html`<button class="btn btn-outline" @click=${() => this._addKey(this._browserProvider, "browser", provider.placeholder)}>${t("apikeys.addAnother")}</button>`
             : ""}
+          ${allSaved
+            ? html`<button class="btn btn-danger" @click=${() => this._removeProvider(this._browserProvider, "browser")}>${t("apikeys.removeProvider")}</button>`
+            : ""}
           ${this._saveMessage ? html`<span class="save-msg">${this._saveMessage}</span>` : ""}
         </div>
       </div>
@@ -1023,6 +1038,69 @@ export class ApiKeysView extends LitElement {
     this.requestUpdate();
   }
 
+  private async _removeProvider(providerId: string, category: "llm" | "browser") {
+    const providerDef = (category === "llm" ? LLM_PROVIDERS : BROWSER_PROVIDERS).find(
+      (p) => p.id === providerId,
+    );
+    const name = providerDef?.name ?? providerId;
+    if (!confirm(t("apikeys.removeProvider.confirm", name))) return;
+
+    try {
+      await updateConfig((cfg) => {
+        if (category === "llm") {
+          const providers = (cfg.models as Record<string, unknown>)?.providers as
+            | Record<string, unknown>
+            | undefined;
+          if (providers) delete providers[providerId];
+          // Also clean auth.profiles that reference this provider
+          const profiles = (cfg.auth as Record<string, unknown>)?.profiles as
+            | Record<string, unknown>
+            | undefined;
+          if (profiles) {
+            for (const [key, val] of Object.entries(profiles)) {
+              if ((val as Record<string, unknown>)?.provider === providerId) {
+                delete profiles[key];
+              }
+            }
+          }
+        } else {
+          const search = ((cfg.tools as Record<string, unknown>)?.web as Record<string, unknown>)
+            ?.search as Record<string, unknown> | undefined;
+          if (search) {
+            const providerName = providerId === "brave-search" ? "brave" : providerId;
+            if (search.provider === providerName) {
+              delete search.provider;
+              delete search.enabled;
+              delete search.apiKey;
+              delete search[providerName];
+            }
+          }
+        }
+        return cfg;
+      });
+
+      const map = category === "llm" ? this._llmKeys : this._browserKeys;
+      map.delete(providerId);
+      this._saveMessage = t("apikeys.removedProvider", name);
+      this.requestUpdate();
+      setTimeout(() => {
+        this._saveMessage = "";
+        this.requestUpdate();
+      }, 3000);
+
+      if (category === "llm") {
+        window.dispatchEvent(new CustomEvent("keys-saved"));
+      }
+    } catch {
+      this._saveMessage = t("apikeys.saveFailed");
+      this.requestUpdate();
+      setTimeout(() => {
+        this._saveMessage = "";
+        this.requestUpdate();
+      }, 4000);
+    }
+  }
+
   private _countActiveKeys(map: Map<string, KeyEntry[]>): number {
     let count = 0;
     for (const entries of map.values()) {
@@ -1052,7 +1130,7 @@ export class ApiKeysView extends LitElement {
 
   private async _saveDefaultModel() {
     try {
-      await patchConfig({ agents: { defaults: { model: this._defaultModel } } });
+      await setConfigValue(["agents", "defaults", "model"], this._defaultModel);
       this._savedModel = this._defaultModel;
       this._changingModel = false;
       this._saveMessage = t("apikeys.savedModel");
@@ -1066,37 +1144,48 @@ export class ApiKeysView extends LitElement {
     const map = category === "llm" ? this._llmKeys : this._browserKeys;
 
     try {
-      // Build a partial config and deep-merge via config.patch.
+      // Save via read-modify-write (same pattern as OpenClaw's config.set).
       if (category === "llm") {
-        const providers: Record<string, unknown> = {};
-        for (const [providerId, keys] of map.entries()) {
-          const primaryKey = keys[0]?.value;
-          if (!primaryKey || primaryKey === "••••••••••••••••") continue;
-          const def = LLM_PROVIDERS.find((p) => p.id === providerId);
-          const providerObj: Record<string, unknown> = { apiKey: primaryKey, models: [] };
-          if (def?.baseUrl) providerObj.baseUrl = def.baseUrl;
-          providers[providerId] = providerObj;
-        }
-        if (Object.keys(providers).length > 0) {
-          await patchConfig({ models: { providers } });
-        }
-      } else {
-        for (const [providerId, keys] of map.entries()) {
-          const primaryKey = keys[0]?.value;
-          if (!primaryKey || primaryKey === "••••••••••••••••") continue;
-          const providerName = providerId === "brave-search" ? "brave" : providerId;
-          const searchPatch: Record<string, unknown> = {
-            provider: providerName,
-            enabled: true,
-          };
-          if (providerName === "brave") {
-            searchPatch.apiKey = primaryKey;
-          } else {
-            searchPatch[providerName] = { apiKey: primaryKey };
+        await updateConfig((cfg) => {
+          const models = (cfg.models ?? {}) as Record<string, unknown>;
+          const providers = (models.providers ?? {}) as Record<string, unknown>;
+          for (const [providerId, keys] of map.entries()) {
+            const primaryKey = keys[0]?.value;
+            if (!primaryKey || primaryKey === "••••••••••••••••") continue;
+            const def = LLM_PROVIDERS.find((p) => p.id === providerId);
+            const existing = (providers[providerId] ?? {}) as Record<string, unknown>;
+            existing.apiKey = primaryKey;
+            if (!existing.models) existing.models = [];
+            if (def?.baseUrl && !existing.baseUrl) existing.baseUrl = def.baseUrl;
+            providers[providerId] = existing;
           }
-          await patchConfig({ tools: { web: { search: searchPatch } } });
-          break;
-        }
+          models.providers = providers;
+          cfg.models = models;
+          return cfg;
+        });
+      } else {
+        await updateConfig((cfg) => {
+          const tools = (cfg.tools ?? {}) as Record<string, unknown>;
+          const web = (tools.web ?? {}) as Record<string, unknown>;
+          const search = (web.search ?? {}) as Record<string, unknown>;
+          for (const [providerId, keys] of map.entries()) {
+            const primaryKey = keys[0]?.value;
+            if (!primaryKey || primaryKey === "••••••••••••••••") continue;
+            const providerName = providerId === "brave-search" ? "brave" : providerId;
+            search.provider = providerName;
+            search.enabled = true;
+            if (providerName === "brave") {
+              search.apiKey = primaryKey;
+            } else {
+              search[providerName] = { apiKey: primaryKey };
+            }
+            break;
+          }
+          web.search = search;
+          tools.web = web;
+          cfg.tools = tools;
+          return cfg;
+        });
       }
 
       // Mark saved

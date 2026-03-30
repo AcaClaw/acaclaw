@@ -1,6 +1,6 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
-import { gateway, patchConfig } from "../controllers/gateway.js";
+import { gateway, updateConfig } from "../controllers/gateway.js";
 import { t, LocaleController } from "../i18n.js";
 
 interface DisciplineOption {
@@ -508,22 +508,26 @@ export class OnboardingView extends LitElement {
     };
 
     try {
-      // Save API key + workspace in a single config.patch
-      if (this._apiKey && this._provider !== "web") {
-        this._installProgress = 20;
-        const baseUrl = PROVIDER_BASE_URLS[this._provider];
-        const providerObj: Record<string, unknown> = { apiKey: this._apiKey, models: [] };
-        if (baseUrl) providerObj.baseUrl = baseUrl;
-        await patchConfig({
-          models: { providers: { [this._provider]: providerObj } },
-          agents: { defaults: { workspace: this._workspacePath } },
-        });
-      } else {
-        this._installProgress = 20;
-        await patchConfig({
-          agents: { defaults: { workspace: this._workspacePath } },
-        });
-      }
+      // Save via read-modify-write (same pattern as OpenClaw config.set)
+      this._installProgress = 20;
+      await updateConfig((cfg) => {
+        const agents = (cfg.agents ?? {}) as Record<string, unknown>;
+        const defaults = (agents.defaults ?? {}) as Record<string, unknown>;
+        defaults.workspace = this._workspacePath;
+        agents.defaults = defaults;
+        cfg.agents = agents;
+        if (this._apiKey && this._provider !== "web") {
+          const baseUrl = PROVIDER_BASE_URLS[this._provider];
+          const models = (cfg.models ?? {}) as Record<string, unknown>;
+          const providers = (models.providers ?? {}) as Record<string, unknown>;
+          const providerObj: Record<string, unknown> = { apiKey: this._apiKey, models: [] };
+          if (baseUrl) providerObj.baseUrl = baseUrl;
+          providers[this._provider] = providerObj;
+          models.providers = providers;
+          cfg.models = models;
+        }
+        return cfg;
+      });
 
       // Install discipline environments
       this._installProgress = 60;
@@ -536,8 +540,15 @@ export class OnboardingView extends LitElement {
       // Set security
       this._installProgress = 80;
       if (this._securityLevel === "maximum") {
-        await patchConfig({
-          agents: { defaults: { sandbox: { mode: "docker" } } },
+        await updateConfig((cfg) => {
+          const agents = (cfg.agents ?? {}) as Record<string, unknown>;
+          const defaults = (agents.defaults ?? {}) as Record<string, unknown>;
+          const sandbox = (defaults.sandbox ?? {}) as Record<string, unknown>;
+          sandbox.mode = "docker";
+          defaults.sandbox = sandbox;
+          agents.defaults = defaults;
+          cfg.agents = agents;
+          return cfg;
         });
       }
 

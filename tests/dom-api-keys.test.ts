@@ -18,7 +18,14 @@ vi.mock("../ui/src/controllers/gateway.js", () => ({
     addEventListener: mockAddEventListener,
     removeEventListener: mockRemoveEventListener,
   },
-  patchConfig: async (partial: unknown) => mockCall("config.patch:helper", partial),
+  updateConfig: async (transform: (cfg: Record<string, unknown>) => Record<string, unknown>) => {
+    const cfg = { models: { providers: {} }, auth: { profiles: {} } };
+    const updated = transform(structuredClone(cfg));
+    return mockCall("config.set:helper", updated);
+  },
+  setConfigValue: async (path: string[], value: unknown) => {
+    return mockCall("config.setPath:helper", path, value);
+  },
 }));
 
 const { ApiKeysView } = await import("../ui/src/views/api-keys.js");
@@ -103,7 +110,7 @@ describe("ApiKeysView DOM", () => {
     cleanup(el);
   });
 
-  it("saving LLM keys uses config.patch with provider object", async () => {
+  it("saving LLM keys uses updateConfig with full read-modify-write", async () => {
     const el = await createElement();
 
     // Simulate entering a key for the selected provider
@@ -112,12 +119,12 @@ describe("ApiKeysView DOM", () => {
       { id: "k1", label: "Default", value: "sk-or-test-12345", visible: false, saved: false },
     ]);
 
-    // Capture all patchConfig calls
-    const patchCalls: unknown[] = [];
+    // Capture all config.set calls via updateConfig
+    const setCalls: unknown[] = [];
     mockCall.mockImplementation(async (method: string, params?: unknown) => {
-      if (method === "config.get") return { config: {}, hash: "abc" };
-      if (method === "config.patch:helper") {
-        patchCalls.push(params);
+      if (method === "config.get") return { config: { models: { providers: {} } }, hash: "abc" };
+      if (method === "config.set:helper") {
+        setCalls.push(params);
         return {};
       }
       return undefined;
@@ -126,16 +133,14 @@ describe("ApiKeysView DOM", () => {
     // Call _saveKeys directly
     await (el as unknown as { _saveKeys: (c: string) => Promise<void> })._saveKeys("llm");
 
-    // Should use config.patch with nested provider object
-    expect(patchCalls).toEqual([
-      {
-        models: {
-          providers: {
-            openrouter: { apiKey: "sk-or-test-12345", baseUrl: "https://openrouter.ai/api/v1", models: [] },
-          },
-        },
-      },
-    ]);
+    // Should use updateConfig (config.set) with full config including provider
+    expect(setCalls.length).toBe(1);
+    const saved = setCalls[0] as Record<string, unknown>;
+    const models = saved.models as Record<string, unknown>;
+    const providers = models.providers as Record<string, unknown>;
+    const openrouter = providers.openrouter as Record<string, unknown>;
+    expect(openrouter.apiKey).toBe("sk-or-test-12345");
+    expect(openrouter.baseUrl).toBe("https://openrouter.ai/api/v1");
 
     cleanup(el);
   });
