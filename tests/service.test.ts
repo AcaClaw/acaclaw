@@ -185,7 +185,7 @@ StartLimitBurst=5
 [Service]
 Type=simple
 ExecStart=\${OPENCLAW_BIN} gateway run --bind loopback --port \${ACACLAW_PORT} --force
-Restart=on-failure
+Restart=always
 RestartSec=3
 StandardOutput=append:\${ACACLAW_LOG_FILE}
 StandardError=append:\${ACACLAW_LOG_FILE}
@@ -203,7 +203,7 @@ UNIT
 			expect(content).toContain("ExecStart=/usr/local/bin/openclaw");
 			expect(content).toContain("gateway run --bind loopback");
 			expect(content).toContain("--port 2090");
-			expect(content).toContain("Restart=on-failure");
+			expect(content).toContain("Restart=always");
 			expect(content).toContain("[Install]");
 			expect(content).not.toContain("--profile");
 		});
