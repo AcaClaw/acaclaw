@@ -8,7 +8,7 @@ import { t, LocaleController } from "../i18n.js";
 import { toMarkdownHtml } from "../chat/markdown.js";
 import { isSttSupported, startStt, stopStt, isSttActive, speakText, stopTts, isTtsSpeaking } from "../chat/speech.js";
 import { exportChatMarkdown } from "../chat/export.js";
-import { catalogToConfigProvider } from "../models/provider-mapping.js";
+import { catalogToConfigProvider, LLM_PROVIDERS, providerEnvVar } from "../models/provider-mapping.js";
 
 /* ── Lucide-style SVG icons for quick-actions & UI (14×14) ── */
 const qiBarChart = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg>`;
@@ -2310,6 +2310,16 @@ export class ChatView extends LitElement {
       const cfg = (configResult?.config as Record<string, unknown>) ?? configResult ?? {};
       const providers = (cfg.models as Record<string, unknown>)?.providers as Record<string, unknown> | undefined;
       const configuredProviders = new Set<string>(providers ? Object.keys(providers) : []);
+
+      // Also detect providers configured via env vars (env-only approach)
+      const envCfg = cfg.env as Record<string, string> | undefined;
+      if (envCfg) {
+        for (const p of LLM_PROVIDERS) {
+          if (!configuredProviders.has(p.id) && envCfg[providerEnvVar(p.id)]) {
+            configuredProviders.add(p.id);
+          }
+        }
+      }
 
       // Read the user-saved default model from agents.defaults.model
       const agents = cfg.agents as Record<string, unknown> | undefined;

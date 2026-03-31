@@ -36,18 +36,19 @@ const MOCK_MODELS = [
   { id: "deepseek-r1", name: "DeepSeek R1", provider: "deepseek" },
 ];
 
-function mockConfig(providers: Record<string, unknown>, defaultModel = "") {
+function mockConfig(providers: Record<string, unknown>, defaultModel = "", env?: Record<string, string>) {
   return {
     config: {
       models: { providers },
       agents: { defaults: { model: defaultModel } },
+      ...(env ? { env } : {}),
     },
     hash: "h",
   };
 }
 
-function setupMocks(providers: Record<string, unknown>, defaultModel = "") {
-  const cfg = mockConfig(providers, defaultModel);
+function setupMocks(providers: Record<string, unknown>, defaultModel = "", env?: Record<string, string>) {
+  const cfg = mockConfig(providers, defaultModel, env);
   mockCall.mockImplementation(async (method: string) => {
     if (method === "config.get") return cfg;
     if (method === "models.list") return { models: MOCK_MODELS };
@@ -58,10 +59,10 @@ function setupMocks(providers: Record<string, unknown>, defaultModel = "") {
   });
 }
 
-async function createChat(providers: Record<string, unknown>, defaultModel = ""): Promise<CV> {
+async function createChat(providers: Record<string, unknown>, defaultModel = "", env?: Record<string, string>): Promise<CV> {
   localStorage.removeItem("acaclaw-staff-customizations");
   localStorage.removeItem("acaclaw-staff-added");
-  setupMocks(providers, defaultModel);
+  setupMocks(providers, defaultModel, env);
   const el = document.createElement("acaclaw-chat") as CV;
   document.body.appendChild(el);
   await el.updateComplete;
@@ -167,6 +168,64 @@ describe("Chat model filtering", () => {
       _availableModels: Array<{ value: string; label: string }>;
     };
     expect(view._availableModels.length).toBe(0);
+
+    cleanup(el);
+  });
+
+  it("detects providers from env vars (env-only approach)", async () => {
+    // No models.providers entry — only config.env.MOONSHOT_API_KEY
+    const el = await createChat(
+      {},
+      "",
+      { MOONSHOT_API_KEY: "sk-env-test" },
+    );
+
+    const view = el as unknown as {
+      _availableModels: Array<{ value: string; label: string }>;
+    };
+    const values = view._availableModels.map((m) => m.value);
+
+    // kimi-coding maps to moonshot → detected via env var
+    expect(values).toContain("kimi-coding/kimi-k2-thinking");
+    expect(values).toContain("kimi-coding/k2p5");
+
+    // Other providers still excluded
+    expect(values).not.toContain("anthropic/claude-opus-4.6");
+
+    cleanup(el);
+  });
+
+  it("combines models.providers and env var detection", async () => {
+    const el = await createChat(
+      { anthropic: { apiKey: "sk-ant" } },
+      "",
+      { MOONSHOT_API_KEY: "sk-env-test" },
+    );
+
+    const view = el as unknown as {
+      _availableModels: Array<{ value: string; label: string }>;
+    };
+    const values = view._availableModels.map((m) => m.value);
+
+    // Both providers should be available
+    expect(values).toContain("kimi-coding/kimi-k2-thinking");
+    expect(values).toContain("anthropic/claude-opus-4.6");
+
+    // Unconfigured providers excluded
+    expect(values).not.toContain("openai/gpt-5.4");
+
+    cleanup(el);
+  });
+
+  it("env-var provider sets correct default model", async () => {
+    const el = await createChat(
+      {},
+      "kimi-coding/kimi-k2-thinking",
+      { MOONSHOT_API_KEY: "sk-env-test" },
+    );
+
+    const view = el as unknown as { _defaultModelDisplay: string };
+    expect(view._defaultModelDisplay).toBe("Kimi K2 Thinking · kimi-coding");
 
     cleanup(el);
   });

@@ -539,4 +539,180 @@ describe("AcaClaw App E2E", async () => {
 			expect(result.totalMs).toBeLessThan(30_000);
 		}, 35_000);
 	});
+
+	// --- API Key → Model → Chat verification ---
+
+	describe("Chat uses model from configured provider", () => {
+		const LLM_TIMEOUT = 60_000;
+
+		type ModelEntry = { id: string; name: string; provider?: string };
+		type SessionPatchResult = {
+			entry: { modelOverride?: string; providerOverride?: string };
+			resolved?: { model?: string; modelProvider?: string };
+		};
+
+		/**
+		 * Get configured providers from config (both models.providers and env vars).
+		 * Returns { provider → model[] } for providers that have API keys.
+		 */
+		async function getConfiguredProviderModels(
+			gw: GatewayConnection,
+		): Promise<Map<string, ModelEntry[]>> {
+			const [modelsResult, configResult] = await Promise.all([
+				gw.call<{ models: ModelEntry[] }>("models.list"),
+				gw.call<Record<string, unknown>>("config.get"),
+			]);
+
+			const cfg = (configResult?.config as Record<string, unknown>) ?? configResult ?? {};
+			const providers = (cfg.models as Record<string, unknown>)?.providers as Record<string, unknown> | undefined;
+			const envCfg = cfg.env as Record<string, string> | undefined;
+
+			const configured = new Set<string>(providers ? Object.keys(providers) : []);
+
+			// Detect env-var configured providers
+			if (envCfg) {
+				for (const [key] of Object.entries(envCfg)) {
+					// Match *_API_KEY or known overrides
+					const match = key.match(/^(.+?)_API_KEY$/);
+					if (match) {
+						const pid = match[1].toLowerCase().replace(/_/g, "-");
+						configured.add(pid);
+					}
+					// Known overrides
+					if (key === "GEMINI_API_KEY") configured.add("google");
+					if (key === "GITHUB_TOKEN") configured.add("github-copilot");
+					if (key === "VOLCANO_ENGINE_API_KEY") configured.add("volcengine");
+					if (key === "HF_TOKEN") configured.add("huggingface");
+				}
+			}
+
+			const models = modelsResult?.models ?? [];
+			const result = new Map<string, ModelEntry[]>();
+			for (const m of models) {
+				if (!m.provider) continue;
+				if (configured.has(m.provider) || [...configured].some((p) => m.provider?.startsWith(p))) {
+					const list = result.get(m.provider) ?? [];
+					list.push(m);
+					result.set(m.provider, list);
+				}
+			}
+			return result;
+		}
+
+		it("sessions.patch resolves model from a configured provider", async () => {
+			if (!isUp || !gw) return;
+
+			const providerModels = await getConfiguredProviderModels(gw);
+			if (providerModels.size === 0) {
+				console.log("[model-match] SKIP: no providers configured");
+				return;
+			}
+
+			// Pick the first provider's first model
+			const [provider, models] = [...providerModels.entries()][0];
+			const model = models[0];
+			const fullModelRef = `${model.provider}/${model.id}`;
+
+			const sessionKey = `agent:main:web:model-test-${randomUUID()}`;
+
+			// Patch session with the chosen model
+			const patchResult = await gw.call<SessionPatchResult>(
+				"sessions.patch",
+				{ key: sessionKey, model: fullModelRef },
+			);
+
+			console.log(
+				`[model-match] provider=${provider} ` +
+				`model=${fullModelRef} ` +
+				`resolved=${patchResult?.resolved?.modelProvider}/${patchResult?.resolved?.model}`,
+			);
+
+			// Verify the gateway resolved the model to the correct provider
+			expect(patchResult?.resolved?.model).toBeTruthy();
+			expect(patchResult?.resolved?.modelProvider).toBe(model.provider);
+
+			// Clean up
+			try {
+				await gw.call("sessions.remove", { key: sessionKey });
+			} catch { /* ignore */ }
+		}, 15_000);
+
+		it("chat.send response uses model from configured provider (not 'No API key')", async () => {
+			if (!isUp || !gw) return;
+
+			const providerModels = await getConfiguredProviderModels(gw);
+			if (providerModels.size === 0) {
+				console.log("[model-match] SKIP: no providers configured");
+				return;
+			}
+
+			// Pick the first provider's first model
+			const [provider, models] = [...providerModels.entries()][0];
+			const model = models[0];
+			const fullModelRef = `${model.provider}/${model.id}`;
+			const sessionKey = `agent:main:web:chat-model-${randomUUID()}`;
+
+			// Set the session model
+			await gw.call("sessions.patch", {
+				key: sessionKey,
+				model: fullModelRef,
+			});
+
+			// Send a chat message
+			let text = "";
+			let gotFinal = false;
+			const done = new Promise<void>((resolve, reject) => {
+				const timer = setTimeout(
+					() => reject(new Error(`chat timeout (${LLM_TIMEOUT}ms)`)),
+					LLM_TIMEOUT,
+				);
+				gw.onNotification("chat", (payload: unknown) => {
+					const p = payload as {
+						state: string;
+						sessionKey?: string;
+						message?: { content?: { type: string; text: string }[] };
+						errorMessage?: string;
+					};
+					if (p.sessionKey !== sessionKey) return;
+					if ((p.state === "delta" || p.state === "final") && p.message?.content) {
+						for (const part of p.message.content) {
+							if (part.type === "text") text += part.text;
+						}
+					}
+					if (p.state === "final") {
+						gotFinal = true;
+						clearTimeout(timer);
+						resolve();
+					}
+					if (p.state === "error") {
+						clearTimeout(timer);
+						reject(new Error(p.errorMessage ?? "chat error"));
+					}
+				});
+			});
+
+			await gw.call("chat.send", {
+				sessionKey,
+				message: "Reply with exactly: hello",
+				idempotencyKey: randomUUID(),
+			});
+
+			await done;
+
+			console.log(
+				`[model-match] provider=${provider} model=${fullModelRef} ` +
+				`response=${text.slice(0, 80)} gotFinal=${gotFinal}`,
+			);
+
+			// The response should NOT be an API key error
+			expect(text.toLowerCase()).not.toContain("no api key");
+			expect(text.length).toBeGreaterThan(0);
+			expect(gotFinal).toBe(true);
+
+			// Clean up
+			try {
+				await gw.call("sessions.remove", { key: sessionKey });
+			} catch { /* ignore */ }
+		}, LLM_TIMEOUT + 5_000);
+	});
 });
