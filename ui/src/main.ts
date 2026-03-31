@@ -7,6 +7,7 @@ import "./views/monitor.js";
 import "./views/chat.js";
 import "./views/command-palette.js";
 import type { ChatView } from "./views/chat.js";
+import { LLM_PROVIDERS, providerEnvVar } from "./models/provider-mapping.js";
 
 // Lazy-loaded on first navigation
 const lazyViews: Record<string, () => Promise<unknown>> = {
@@ -531,20 +532,37 @@ export class AcaClawApp extends LitElement {
       const snapshot = await gateway.call<Record<string, unknown>>("config.get");
       if (!snapshot) { this._keysConfigured = false; this._enforceKeyGate(); return; }
       const cfg = (snapshot.config as Record<string, unknown>) ?? snapshot;
-      const auth = cfg.auth as Record<string, unknown> | undefined;
-      const models = cfg.models as Record<string, unknown> | undefined;
 
       let found = false;
-      // Check auth.profiles for any configured provider
-      if (auth?.profiles && typeof auth.profiles === "object") {
-        found = Object.values(auth.profiles as Record<string, Record<string, unknown>>)
-          .some(p => !!p?.provider);
+
+      // Primary: check config.env for any known LLM provider env var
+      const envSection = (cfg.env ?? {}) as Record<string, unknown>;
+      for (const p of LLM_PROVIDERS) {
+        const envVar = providerEnvVar(p.id);
+        if (typeof envSection[envVar] === "string" && (envSection[envVar] as string).trim()) {
+          found = true;
+          break;
+        }
       }
-      // Check models.providers for any with an apiKey
-      if (!found && models?.providers && typeof models.providers === "object") {
-        found = Object.values(models.providers as Record<string, Record<string, unknown>>)
-          .some(p => !!p?.apiKey);
+
+      // Fallback: auth.profiles (OAuth/credential metadata)
+      if (!found) {
+        const auth = cfg.auth as Record<string, unknown> | undefined;
+        if (auth?.profiles && typeof auth.profiles === "object") {
+          found = Object.values(auth.profiles as Record<string, Record<string, unknown>>)
+            .some(p => !!p?.provider);
+        }
       }
+
+      // Fallback: models.providers (legacy direct apiKey config)
+      if (!found) {
+        const models = cfg.models as Record<string, unknown> | undefined;
+        if (models?.providers && typeof models.providers === "object") {
+          found = Object.values(models.providers as Record<string, Record<string, unknown>>)
+            .some(p => !!p?.apiKey);
+        }
+      }
+
       this._keysConfigured = found;
       if (!found) this._enforceKeyGate();
     } catch {
