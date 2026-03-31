@@ -9,6 +9,8 @@ nav:
     url: /zh-CN/getting-started/
   - title: 架构设计
     url: /zh-CN/architecture/
+  - title: 服务商与模型
+    url: /zh-CN/providers-and-models/
   - title: 技能管理
     url: /zh-CN/skills/
   - title: 数字科研助手

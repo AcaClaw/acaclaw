@@ -50,6 +50,9 @@ AcaClaw is a distribution layer — it builds on top of OpenClaw, not alongside 
 | **API key storage** | OpenClaw config (`~/.openclaw/openclaw.json`) | Read and display; write via `config.set key/value` |
 | **Model discovery** (provider catalogs, model lists) | OpenClaw extensions | Query via `models.list` — never maintain a separate catalog |
 | **Provider URLs and auth** | OpenClaw extensions | Never hardcode — OpenClaw resolves these automatically |
+
+> See [Providers & Models](/en/providers-and-models/) for the full provider architecture, model mapping, API reference, and AcaClaw GUI integration method.
+
 | **Chat, sessions, message history** | OpenClaw gateway | Use via WebSocket RPC |
 | **Plugin SDK, skill system, CLI** | OpenClaw | Use as-is |
 | **Web GUI** | AcaClaw | AcaClaw's own research-focused UI |
