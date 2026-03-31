@@ -208,6 +208,10 @@ export class ApiKeysView extends LitElement {
   override connectedCallback() {
     super.connectedCallback();
     gateway.addEventListener("state-change", () => {
+      if (gateway.state === "disconnected") {
+        // Gateway restarted (e.g. env change) — re-load on reconnect.
+        this._loaded = false;
+      }
       if (gateway.state === "connected" && gateway.authenticated) this._loadState();
     });
     if (gateway.state === "connected" && gateway.authenticated) this._loadState();

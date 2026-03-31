@@ -503,7 +503,7 @@ export class OnboardingView extends LitElement {
     this._installProgress = 0;
 
     try {
-      // Save via read-modify-write (same pattern as OpenClaw config.set)
+      // Save workspace (agents.defaults — hot-reloadable, no restart)
       this._installProgress = 20;
       await updateConfig((cfg) => {
         const agents = (cfg.agents ?? {}) as Record<string, unknown>;
@@ -511,19 +511,11 @@ export class OnboardingView extends LitElement {
         defaults.workspace = this._workspacePath;
         agents.defaults = defaults;
         cfg.agents = agents;
-        if (this._apiKey && this._provider !== "web") {
-          // Write only the env var — OpenClaw's plugin catalog discovers keys
-          // via env vars, and the extension handles base URLs and model lists.
-          const envVar = providerEnvVar(this._provider);
-          const env = (cfg.env ?? {}) as Record<string, string>;
-          env[envVar] = this._apiKey;
-          cfg.env = env;
-        }
         return cfg;
       });
 
       // Install discipline environments
-      this._installProgress = 60;
+      this._installProgress = 40;
       for (const d of this._selectedDisciplines) {
         if (d !== "general") {
           await gateway.call("acaclaw.env.install", { discipline: d }, { timeoutMs: 600_000 });
@@ -531,7 +523,7 @@ export class OnboardingView extends LitElement {
       }
 
       // Set security
-      this._installProgress = 80;
+      this._installProgress = 60;
       if (this._securityLevel === "maximum") {
         await updateConfig((cfg) => {
           const agents = (cfg.agents ?? {}) as Record<string, unknown>;
@@ -541,6 +533,20 @@ export class OnboardingView extends LitElement {
           defaults.sandbox = sandbox;
           agents.defaults = defaults;
           cfg.agents = agents;
+          return cfg;
+        });
+      }
+
+      // Save API key LAST — writing config.env triggers a full gateway
+      // restart (OpenClaw has no hot-reload rule for the 'env' prefix).
+      // Doing it after discipline installs avoids killing in-flight RPCs.
+      this._installProgress = 80;
+      if (this._apiKey && this._provider !== "web") {
+        const envVar = providerEnvVar(this._provider);
+        await updateConfig((cfg) => {
+          const env = (cfg.env ?? {}) as Record<string, string>;
+          env[envVar] = this._apiKey;
+          cfg.env = env;
           return cfg;
         });
       }
