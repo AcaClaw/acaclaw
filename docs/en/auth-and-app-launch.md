@@ -18,6 +18,11 @@ permalink: /en/auth-and-app-launch/
 - [Dual UI Architecture](#dual-ui-architecture)
 - [App Launch Flow](#app-launch-flow)
 - [Gateway Lifecycle](#gateway-lifecycle)
+- [OpenClaw Gateway Architecture](#openclaw-gateway-architecture)
+- [Config Reload & Hot Reload](#config-reload--hot-reload)
+- [Gateway Restart Infrastructure](#gateway-restart-infrastructure)
+- [Always-On Gateway Management](#always-on-gateway-management)
+- [Connection Keep-Alive](#connection-keep-alive)
 - [Comparison: AcaClaw vs OpenClaw Defaults](#comparison-acaclaw-vs-openclaw-defaults)
 - [Troubleshooting](#troubleshooting)
 
@@ -389,6 +394,405 @@ openclaw gateway run --bind loopback --port 2090 --force
 | `--bind loopback` | Listen on 127.0.0.1 only (security boundary) |
 | `--port 2090` | Port number (avoids conflict with default OpenClaw 18789) |
 | `--force` | Bypass lock check (safe for single-instance local use) |
+
+---
+
+## OpenClaw Gateway Architecture
+
+The OpenClaw gateway is a long-running Node.js process that provides HTTP, WebSocket, and plugin infrastructure in a single binary. AcaClaw runs it as a local daemon. Understanding the internals helps diagnose issues and make informed config decisions.
+
+### Internal Components
+
+```
+  openclaw gateway run
+       │
+       ├── Config loader ─────────── ~/.openclaw/openclaw.json
+       ├── Secrets runtime ────────── env vars, credential files
+       ├── Auth resolver ──────────── mode: none/token/password/trusted-proxy
+       │
+       ├── HTTP server ────────────── Node http.createServer()
+       │   ├── Control UI ─────────── built-in SPA at /openclaw/
+       │   ├── Plugin HTTP routes ─── AcaClaw UI at /, asset dirs
+       │   ├── OpenAI-compatible API ─ /v1/chat/completions, etc.
+       │   └── REST endpoints ─────── config, sessions, tools, hooks
+       │
+       ├── WebSocket server ───────── ws library, noServer mode
+       │   ├── Upgrade handler ────── HTTP → WS upgrade, auth check
+       │   ├── Message handler ────── JSON-RPC: req/res/event frames
+       │   └── Broadcaster ────────── fan-out events to all clients
+       │
+       ├── Agent runtime ──────────── chat, tools, skills, models
+       ├── Channel plugins ────────── loaded from extensions/*
+       ├── Health monitor ─────────── channel health checks
+       ├── Cron service ───────────── scheduled tasks
+       ├── Config reloader ────────── file watcher (chokidar)
+       └── Browser control ────────── sandbox bridge server
+```
+
+### Startup Sequence
+
+When `openclaw gateway run` executes:
+
+| Step | What Happens |
+|---|---|
+| 1 | Load config snapshot from `~/.openclaw/openclaw.json` |
+| 2 | Migrate legacy config entries if needed |
+| 3 | Auto-enable required plugins |
+| 4 | Initialize secrets runtime and activate auth |
+| 5 | Load Control UI static assets |
+| 6 | Resolve bind address and TLS settings |
+| 7 | Initialize agent registry and default workspace |
+| 8 | Load gateway + channel plugins |
+| 9 | Create HTTP server, bind to `host:port` |
+| 10 | Create WebSocket server (`noServer: true`, 64 KB max preauth payload) |
+| 11 | Attach WebSocket upgrade + message handlers |
+| 12 | Start heartbeat runner, health monitor, cron |
+| 13 | Start sidecars (browser control, Gmail watcher) |
+| 14 | Pin plugin registries |
+| 15 | Start config file watcher |
+| 16 | Recover pending outbound deliveries from crash/restart |
+| 17 | Log startup info (bind host, port, TLS status) |
+
+### Port Binding & Retry
+
+The gateway retries port binding up to 4 times with 500 ms intervals to handle TCP `TIME_WAIT` sockets from a recent crash. Bind modes:
+
+| Mode | Address | Use Case |
+|---|---|---|
+| `loopback` | `127.0.0.1` | Local only (AcaClaw default) |
+| `lan` | `0.0.0.0` | All interfaces |
+| `tailnet` | `100.64.0.0/10` | Tailscale VPN only |
+| `auto` | Prefer loopback, fallback LAN | Auto-detect |
+
+---
+
+## Config Reload & Hot Reload
+
+The gateway watches `~/.openclaw/openclaw.json` for changes and decides whether to hot-reload specific components or perform a full process restart. This is why some config changes take effect instantly while others briefly disconnect all clients.
+
+### Reload Modes
+
+| Mode | Behavior |
+|---|---|
+| `off` | No action on config change |
+| `restart` | Always full process restart |
+| `hot` | Hot-reload compatible changes; log warning and ignore incompatible ones |
+| `hybrid` (default) | Hot-reload what can be hot-reloaded; restart for the rest |
+
+### Config Watcher
+
+- Uses **chokidar** with `ignoreInitial: true`
+- **Debounce**: 300 ms (prevents reload storms from multi-write saves)
+- **Stabilization**: waits 200 ms for write finalization
+- Compares old vs new config using `diffConfigPaths()` to identify changed keys
+- Builds a reload plan mapping each changed prefix to an action
+
+### Reload Rules
+
+Each config prefix maps to one of three actions: **none** (ignore), **hot** (in-process reload), or **restart** (full process restart).
+
+#### Hot-Reloadable (no disconnect)
+
+| Config Prefix | Action | What Restarts |
+|---|---|---|
+| `agents.defaults.model` | hot | Heartbeat runner |
+| `agents.defaults.models` | hot | Heartbeat runner |
+| `agents.defaults.heartbeat` | hot | Heartbeat runner |
+| `models` | hot | Heartbeat runner |
+| `hooks` | hot | Hook handlers |
+| `hooks.gmail.*` | hot | Hook handlers + Gmail watcher |
+| `cron` | hot | Cron scheduler |
+| `browser` | hot | Browser control server |
+| `gateway.channelHealthCheckMinutes` | hot | Health monitor |
+| `gateway.channelStaleEventThresholdMinutes` | hot | Health monitor |
+| `gateway.channelMaxRestartsPerHour` | hot | Health monitor |
+
+#### Full Restart Required (brief disconnect)
+
+| Config Prefix | Why Restart |
+|---|---|
+| `plugins` | Plugin lifecycle cannot be hot-swapped |
+| `gateway.*` (core settings) | Port, bind, auth require server recreation |
+| `discovery` | Discovery service bindings change |
+| `canvasHost` | Canvas rendering server lifecycle |
+| `env.*` | Environment changes (API keys, secrets) — no hot-reload rule |
+
+#### Ignored (no-op)
+
+Changes to these prefixes are consumed on next request without restart:
+
+`gateway.remote`, `gateway.reload`, logging, agents, tools, bindings, audio, routing, messages, sessions, talk, skills, secrets, UI meta, wizard, identity
+
+### Why API Key Changes Cause Restart
+
+The `env` prefix has **no explicit reload rule** in OpenClaw's config reload plan. When no rule matches, the default behavior is `restartGateway = true`. This means any environment variable write (including API key saves) triggers a full gateway restart via SIGUSR1.
+
+AcaClaw mitigates this by performing env writes as the **last** step in any multi-write operation, after all hot-reloadable config changes have settled.
+
+---
+
+## Gateway Restart Infrastructure
+
+### SIGUSR1 Signal Restart
+
+The gateway restarts itself by sending SIGUSR1 to its own process. This triggers a clean shutdown → relaunch cycle managed by the service supervisor (systemd or launchd).
+
+| Parameter | Value |
+|---|---|
+| Signal | `SIGUSR1` |
+| Authorization grace period | 5 seconds |
+| Restart cycle token | Monotonic counter (prevents duplicate restarts) |
+| Spawn timeout | 2,000 ms |
+
+**Authorization flow:**
+
+1. Code calls `autorizeGatewaySigusr1Restart()` — sets a 5-second auth window
+2. Code calls `emitGatewayRestart()` — sends `process.kill(process.pid, 'SIGUSR1')`
+3. Signal handler checks: was restart authorized within the last 5 seconds?
+4. If yes: clean shutdown, exit, supervisor relaunches
+5. If no: log warning, ignore (prevents external processes from triggering restarts)
+
+### Deferred Restart (Wait for Idle)
+
+When a restart is triggered during active work (chat replies, tool calls), the gateway defers the restart until all pending operations complete:
+
+```
+  Config change triggers restart
+       │
+       ├── deferGatewayRestartUntilIdle()
+       │   ├── Poll getPendingCount() every 500 ms
+       │   │   └── Returns: queue size + pending replies + embedded runs
+       │   │
+       │   ├── pendingCount == 0 → proceed with restart
+       │   └── Timeout (5 min) → force restart anyway
+       │
+       └── emitGatewayRestart()
+```
+
+| Parameter | Value |
+|---|---|
+| Poll interval | 500 ms |
+| Default timeout | 5 minutes (300,000 ms) |
+| Configurable via | `gateway.reload.deferralTimeoutMs` |
+
+### Platform-Specific Restart Dispatch
+
+After the gateway process exits, the service supervisor relaunches it. The gateway also knows how to trigger platform-native restarts:
+
+| Platform | Method | Command |
+|---|---|---|
+| Linux | systemd | `systemctl --user restart <unit>` |
+| macOS | launchd | `launchctl kickstart -k gui/<uid>/<label>` |
+| Windows | schtasks | Scheduled task re-execution |
+
+---
+
+## Always-On Gateway Management
+
+AcaClaw delegates gateway lifecycle management to OpenClaw's native `openclaw daemon` CLI, which handles systemd (Linux) and launchd (macOS) natively. This ensures AcaClaw stays in sync with OpenClaw's upstream service configuration without reimplementing platform-specific daemon management.
+
+### Architecture
+
+```
+  ┌─────────────────────────────────────────────────────┐
+  │  AcaClaw scripts (thin wrappers)                    │
+  │  acaclaw-service.sh install → openclaw daemon install│
+  │  start.sh → openclaw daemon start (fallback nohup)  │
+  │  stop.sh → openclaw daemon stop                     │
+  └──────────┬──────────────────────────────────────────┘
+             │ delegates to
+             ▼
+  ┌─────────────────────────────────────────────────────┐
+  │  openclaw daemon install --port 2090                │
+  │  (writes platform-native service config)            │
+  │                                                     │
+  │  Linux: ~/.config/systemd/user/openclaw-gateway.service │
+  │  macOS: ~/Library/LaunchAgents/ai.openclaw.gateway.plist│
+  └──────────┬──────────────────────────────────────────┘
+             │ manages
+             ▼
+  ┌─────────────────────────────────────────────────────┐
+  │         openclaw gateway run                        │
+  │         --bind loopback --port 2090 --force         │
+  │                                                     │
+  │  PID: tracked by supervisor                         │
+  │  Restart: SIGUSR1 (self) or supervisor              │
+  │  Config watch: hybrid mode (hot + restart)          │
+  └─────────────────────────────────────────────────────┘
+```
+
+### Linux: systemd User Service
+
+Created by `openclaw daemon install --port 2090`. OpenClaw writes the service file with upstream-maintained defaults.
+
+**Service file**: `~/.config/systemd/user/openclaw-gateway.service`
+
+```ini
+[Unit]
+Description=OpenClaw Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/path/to/openclaw gateway run --bind loopback --port 2090 --force
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+TimeoutStartSec=30
+SuccessExitStatus=0 143
+KillMode=control-group
+
+[Install]
+WantedBy=default.target
+```
+
+| Setting | Value | Purpose |
+|---|---|---|
+| `Restart=always` | Restart on any exit | Survive crashes and SIGUSR1 restarts |
+| `RestartSec=5` | 5-second delay | Prevent rapid restart loops |
+| `TimeoutStopSec=30` | 30-second stop grace | Allow pending work to drain |
+| `SuccessExitStatus=0 143` | Clean + SIGTERM | Both are normal exits |
+| `KillMode=control-group` | Kill entire tree | Prevent orphan workers |
+
+**User lingering**: AcaClaw's service installer runs `loginctl enable-linger $(whoami)` to ensure the service stays running even when the user is not logged in (important for headless/SSH servers).
+
+**Management commands:**
+
+```bash
+# Install and enable (via AcaClaw wrapper)
+bash scripts/acaclaw-service.sh install
+
+# Or directly via OpenClaw CLI
+openclaw daemon install --port 2090
+
+# Check status
+openclaw daemon status
+systemctl --user status openclaw-gateway
+
+# Restart
+openclaw daemon restart
+
+# View logs
+journalctl --user -u openclaw-gateway -f
+
+# Stop
+openclaw daemon stop
+
+# Remove
+openclaw daemon uninstall
+```
+
+### macOS: launchd User Agent
+
+Created by `openclaw daemon install --port 2090`. OpenClaw writes the plist with upstream-maintained defaults.
+
+**Plist file**: `~/Library/LaunchAgents/ai.openclaw.gateway.plist`
+
+OpenClaw's native plist settings:
+
+| Setting | Value | Purpose |
+|---|---|---|
+| `KeepAlive = true` | Restart on any exit | Keep gateway always running |
+| `RunAtLoad = true` | Auto-start on login | Gateway starts when user logs in |
+| `ThrottleInterval = 1` | Min 1s between relaunches | Fast recovery from crashes |
+| `Umask = 63` (octal 077) | Owner-only files | Security: no group/world access |
+
+**Management commands:**
+
+```bash
+# Install (via AcaClaw wrapper)
+bash scripts/acaclaw-service.sh install
+
+# Or directly via OpenClaw CLI
+openclaw daemon install --port 2090
+
+# Check status
+openclaw daemon status
+
+# Restart (force kill + relaunch)
+openclaw daemon restart
+
+# Stop and unload
+openclaw daemon stop
+
+# View logs
+tail -f ~/.openclaw/logs/gateway.log
+
+# Remove
+openclaw daemon uninstall
+```
+
+### OpenClaw Native Daemon Defaults
+
+Since AcaClaw now delegates to `openclaw daemon install`, the service configuration matches OpenClaw's upstream defaults:
+
+| Setting | Linux (systemd) | macOS (launchd) |
+|---|---|---|
+| Auto-start | `WantedBy=default.target` (enabled) | `RunAtLoad=true` |
+| Auto-restart | `Restart=always` | `KeepAlive=true` |
+| Restart delay | `RestartSec=5` | `ThrottleInterval=1` |
+| Stop timeout | `TimeoutStopSec=30` | SIGTERM (launchd default) |
+| Kill mode | `control-group` (kills process tree) | SIGTERM to main process |
+| Success exits | `0 143` (clean + SIGTERM) | Clean exit = no restart |
+| File permissions | Inherited | `Umask=077` (owner only) |
+
+### PATH Resolution for Service Supervisors
+
+Both systemd and launchd launch processes with a minimal PATH that doesn't include the user's shell profile. AcaClaw's service installer resolves this by:
+
+1. Following `command -v openclaw` to the real binary path (resolving fnm/nvm symlinks)
+2. Building a sanitized PATH that excludes ephemeral dirs (fnm multishell) and dirs with spaces
+3. Injecting the resolved PATH into the service definition
+
+If `openclaw` moves (Node.js version change, package manager update), re-run `bash scripts/acaclaw-service.sh install` to update the service PATH.
+
+---
+
+## Connection Keep-Alive
+
+### WebSocket Heartbeat
+
+The gateway uses the WebSocket protocol's built-in ping/pong mechanism (RFC 6455) plus an application-level tick interval:
+
+| Parameter | Value |
+|---|---|
+| Tick interval | 30,000 ms (30 seconds) |
+| Communicated to client | In `hello-ok` handshake response (`tickIntervalMs`) |
+| Ping/pong | Handled by the `ws` library (RFC 6455 frames) |
+| Preauth timeout | Configurable; closes unconnected sockets with code `1008` |
+
+### Client-Side Reconnection (AcaClaw UI)
+
+The AcaClaw UI implements automatic reconnection with exponential backoff:
+
+| Event | Action |
+|---|---|
+| WebSocket `close` | Start reconnect timer (2s → 4s → 8s → ... → 30s max) |
+| Tab gains focus | Attempt immediate reconnect if disconnected |
+| Network `online` event | Attempt immediate reconnect if disconnected |
+| Reconnect success | Re-run `connect` handshake, refresh all state |
+| API key state | Reset `_loaded` flag on disconnect so keys refresh on reconnect |
+
+### Connection Loss Scenarios
+
+| Scenario | What Happens | Recovery |
+|---|---|---|
+| Gateway crash | systemd/launchd restarts process (3–5s) | UI auto-reconnects after restart |
+| Config restart (SIGUSR1) | Gateway exits, supervisor relaunches | UI sees disconnect, reconnects in ~5s |
+| API key change | Env write → SIGUSR1 → restart | UI reconnects, reloads keys |
+| Network loss | WebSocket closes, no ping/pong | UI retries on network `online` event |
+| Browser tab backgrounded | Browser may throttle WebSocket | UI reconnects on tab focus |
+| OOM kill | Process killed by kernel | systemd/launchd restart (3–5s) |
+
+### Ensuring Continuous Availability
+
+For research workflows that require uninterrupted connectivity:
+
+1. **Use the service supervisor** — always install via `bash scripts/acaclaw-service.sh install` instead of manual `nohup` launches
+2. **Monitor service health** — `systemctl --user status acaclaw-gateway` or `launchctl print gui/$(id -u)/com.acaclaw.gateway`
+3. **Check restart limits** — if the gateway hits the 5-restart-per-60s limit, check logs: `tail -50 ~/.acaclaw/gateway.log`
+4. **Avoid env writes during active chat** — model changes are hot-reloaded instantly; API key changes cause a brief restart
+5. **Keep memory in check** — `NODE_OPTIONS=--max-old-space-size=512` prevents unbounded growth; increase if needed for heavy workloads
 
 ---
 
