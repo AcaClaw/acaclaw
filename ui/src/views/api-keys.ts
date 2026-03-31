@@ -8,6 +8,8 @@ import {
   LLM_PROVIDERS,
   BROWSER_PROVIDERS,
   CATALOG_TO_CONFIG_PROVIDER,
+  PROVIDER_BASE_URLS,
+  PROVIDER_ENV_VARS,
 } from "../models/provider-mapping.js";
 
 @customElement("acaclaw-api-keys")
@@ -532,22 +534,26 @@ export class ApiKeysView extends LitElement {
 
   /* ── Model helpers ── */
 
-  /** Get all models for a config provider ID by checking all matching catalog providers. */
+  /** Get all models for a config provider ID by checking all matching catalog providers.
+   *  When the "native" catalog provider (catalogId === configId) contributes models,
+   *  skip alias catalog providers to avoid duplicates (e.g. kimi-coding when moonshot is active). */
   private _modelsForConfigProvider(configId: string): ModelInfo[] {
-    const result: ModelInfo[] = [];
+    const native: ModelInfo[] = [];
+    const aliases: ModelInfo[] = [];
     for (const [catalogProvider, models] of this._modelsByProvider) {
       const mapped = CATALOG_TO_CONFIG_PROVIDER[catalogProvider] ?? catalogProvider;
-      if (mapped === configId) result.push(...models);
+      if (mapped !== configId) continue;
+      if (catalogProvider === configId) native.push(...models);
+      else aliases.push(...models);
     }
-    return result;
+    return native.length > 0 ? native : aliases;
   }
 
-  /** Flat list of models from configured providers only. */
+  /** Flat list of models from configured providers only (deduped). */
   private get _allModels(): ModelInfo[] {
     const result: ModelInfo[] = [];
-    for (const [catalogProvider, models] of this._modelsByProvider) {
-      const configId = CATALOG_TO_CONFIG_PROVIDER[catalogProvider] ?? catalogProvider;
-      if (this._configuredLlm.has(configId)) result.push(...models);
+    for (const configId of this._configuredLlm) {
+      result.push(...this._modelsForConfigProvider(configId));
     }
     return result;
   }
@@ -555,25 +561,21 @@ export class ApiKeysView extends LitElement {
   /** Render <optgroup>-grouped model options for default model selector. */
   private _renderModelOptions() {
     if (this._configuredLlm.size === 0) return nothing;
-    // Filter to catalog providers that map to a configured config provider
-    const entries = Array.from(this._modelsByProvider.entries())
-      .filter(([catalogProvider]) => {
-        const configId = CATALOG_TO_CONFIG_PROVIDER[catalogProvider] ?? catalogProvider;
-        return this._configuredLlm.has(configId);
-      });
-    if (entries.length === 0) return nothing;
-    return entries.map(([provider, models]) => {
-      const configId = CATALOG_TO_CONFIG_PROVIDER[provider] ?? provider;
+    const groups: Array<{ label: string; models: ModelInfo[] }> = [];
+    for (const configId of this._configuredLlm) {
+      const models = this._modelsForConfigProvider(configId);
+      if (models.length === 0) continue;
       const def = LLM_PROVIDERS.find((p) => p.id === configId);
-      const label = def?.name ?? provider;
-      return html`
-        <optgroup label=${label}>
-          ${models.map((m) => html`
-            <option value=${m.id} ?selected=${m.id === this._defaultModel}>${m.name}</option>
-          `)}
-        </optgroup>
-      `;
-    });
+      groups.push({ label: def?.name ?? configId, models });
+    }
+    if (groups.length === 0) return nothing;
+    return groups.map(({ label, models }) => html`
+      <optgroup label=${label}>
+        ${models.map((m) => html`
+          <option value=${m.id} ?selected=${m.id === this._defaultModel}>${m.name}</option>
+        `)}
+      </optgroup>
+    `);
   }
 
   /* ── Save / Remove actions ── */
@@ -596,10 +598,26 @@ export class ApiKeysView extends LitElement {
         const models = (cfg.models ?? {}) as Record<string, unknown>;
         const providers = (models.providers ?? {}) as Record<string, Record<string, unknown>>;
         const existing = providers[providerId] ?? {};
+        // OpenClaw requires baseUrl + models for every provider entry
+        if (!existing.baseUrl) {
+          const defaultUrl = PROVIDER_BASE_URLS[providerId];
+          if (defaultUrl) existing.baseUrl = defaultUrl;
+        }
+        if (!existing.models) existing.models = [];
         existing.apiKey = key;
         providers[providerId] = existing;
         models.providers = providers;
         cfg.models = models;
+
+        // Also set the env var so OpenClaw's plugin catalog can discover the key
+        // (plugins check env vars / auth profiles, not models.providers.<id>.apiKey)
+        const envVarName = PROVIDER_ENV_VARS[providerId];
+        if (envVarName) {
+          const env = (cfg.env ?? {}) as Record<string, string>;
+          env[envVarName] = key;
+          cfg.env = env;
+        }
+
         return cfg;
       });
 
@@ -629,6 +647,13 @@ export class ApiKeysView extends LitElement {
       await updateConfig((cfg) => {
         const providers = (cfg.models as Record<string, unknown>)?.providers as Record<string, unknown> | undefined;
         if (providers) delete providers[providerId];
+
+        // Clean up the env var set by _saveLlmKey
+        const envVarName = PROVIDER_ENV_VARS[providerId];
+        if (envVarName) {
+          const env = cfg.env as Record<string, unknown> | undefined;
+          if (env) delete env[envVarName];
+        }
 
         // Clean auth profiles referencing this provider
         const profiles = (cfg.auth as Record<string, unknown>)?.profiles as Record<string, Record<string, unknown>> | undefined;

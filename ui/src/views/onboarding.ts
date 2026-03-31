@@ -2,6 +2,7 @@ import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { gateway, updateConfig } from "../controllers/gateway.js";
 import { t, LocaleController } from "../i18n.js";
+import { PROVIDER_BASE_URLS, PROVIDER_ENV_VARS } from "../models/provider-mapping.js";
 
 interface DisciplineOption {
   id: string;
@@ -501,12 +502,6 @@ export class OnboardingView extends LitElement {
     this._installing = true;
     this._installProgress = 0;
 
-    const PROVIDER_BASE_URLS: Record<string, string> = {
-      anthropic: "https://api.anthropic.com",
-      openai: "https://api.openai.com/v1",
-      google: "https://generativelanguage.googleapis.com/v1beta",
-    };
-
     try {
       // Save via read-modify-write (same pattern as OpenClaw config.set)
       this._installProgress = 20;
@@ -525,6 +520,14 @@ export class OnboardingView extends LitElement {
           providers[this._provider] = providerObj;
           models.providers = providers;
           cfg.models = models;
+
+          // Also set env var so plugin catalog discovers the key
+          const envVarName = PROVIDER_ENV_VARS[this._provider];
+          if (envVarName) {
+            const env = (cfg.env ?? {}) as Record<string, string>;
+            env[envVarName] = this._apiKey;
+            cfg.env = env;
+          }
         }
         return cfg;
       });
