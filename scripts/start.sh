@@ -105,7 +105,7 @@ _tlog "proxy loaded"
 
 ACACLAW_PORT="${ACACLAW_PORT:-2090}"
 OPENCLAW_DIR="${HOME}/.openclaw"
-ACACALAW_CONFIG="${OPENCLAW_DIR}/openclaw.json"
+ACACLAW_CONFIG="${OPENCLAW_DIR}/openclaw.json"
 ACACLAW_DATA_DIR="${HOME}/.acaclaw"
 ACACLAW_PID_FILE="${ACACLAW_DATA_DIR}/gateway.pid"
 ACACLAW_LOG_FILE="${ACACLAW_DATA_DIR}/gateway.log"
