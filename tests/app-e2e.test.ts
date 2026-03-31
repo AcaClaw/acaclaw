@@ -715,4 +715,151 @@ describe("AcaClaw App E2E", async () => {
 			} catch { /* ignore */ }
 		}, LLM_TIMEOUT + 5_000);
 	});
+
+	// --- Gateway Resilience (disconnect → auto-restart → chat works) ---
+
+	describe("Gateway resilience after config.env change", () => {
+		const RESTART_TIMEOUT = 30_000;
+		const LLM_TIMEOUT = 60_000;
+
+		/**
+		 * Poll the health endpoint until it succeeds or timeout.
+		 */
+		async function waitForHealthy(timeoutMs: number): Promise<boolean> {
+			const start = Date.now();
+			while (Date.now() - start < timeoutMs) {
+				try {
+					const res = await fetch(`${GATEWAY_URL}/health`, {
+						signal: AbortSignal.timeout(2_000),
+					});
+					if (res.ok) return true;
+				} catch { /* not up yet */ }
+				await new Promise((r) => setTimeout(r, 500));
+			}
+			return false;
+		}
+
+		it("gateway restarts after config.env write and chat still works", async () => {
+			if (!isUp || !gw) return;
+
+			// 1. Read current config + write a harmless test env var
+			const snapshot = await gw.call<Record<string, unknown>>("config.get");
+			const cfg = ((snapshot as Record<string, unknown>).config as Record<string, unknown>) ?? {};
+			const baseHash = ((snapshot as Record<string, unknown>).baseHash ?? (snapshot as Record<string, unknown>).hash) as string;
+			if (!baseHash) {
+				console.log("[resilience] SKIP: no baseHash from config.get");
+				return;
+			}
+
+			const env = ((cfg.env ?? {}) as Record<string, string>);
+			const testKey = `ACACLAW_RECONNECT_TEST_${Date.now()}`;
+			env[testKey] = "1";
+			cfg.env = env;
+
+			console.log("[resilience] Writing test env var to trigger restart...");
+			await gw.call("config.set", {
+				raw: JSON.stringify(cfg, null, 2),
+				baseHash,
+			});
+
+			// 2. The old connection should die within a few seconds.
+			//    Wait for health to fail then recover (or just wait for recovery).
+			console.log("[resilience] Waiting for gateway restart...");
+			// Small delay to let the file watcher trigger (300ms debounce + restart time)
+			await new Promise((r) => setTimeout(r, 1_500));
+
+			const healthy = await waitForHealthy(RESTART_TIMEOUT);
+			expect(healthy).toBe(true);
+			console.log("[resilience] Gateway is back up.");
+
+			// 3. Open a fresh WS connection
+			let gw2: GatewayConnection | undefined;
+			try {
+				gw2 = await connectToGateway();
+			} catch (err) {
+				throw new Error(`Failed to reconnect after restart: ${err}`);
+			}
+
+			try {
+				// 4. Verify models.list works
+				const models = await gw2.call<{ models: unknown[] }>("models.list");
+				expect(Array.isArray(models?.models)).toBe(true);
+				console.log(`[resilience] models.list OK (${models.models.length} models)`);
+
+				// 5. Clean up the test env var
+				const snap2 = await gw2.call<Record<string, unknown>>("config.get");
+				const cfg2 = ((snap2 as Record<string, unknown>).config as Record<string, unknown>) ?? {};
+				const hash2 = ((snap2 as Record<string, unknown>).baseHash ?? (snap2 as Record<string, unknown>).hash) as string;
+				const env2 = (cfg2.env ?? {}) as Record<string, string>;
+				delete env2[testKey];
+				cfg2.env = env2;
+				await gw2.call("config.set", {
+					raw: JSON.stringify(cfg2, null, 2),
+					baseHash: hash2,
+				});
+
+				// 6. Quick chat smoke test (if any model is available)
+				const firstModel = (models.models as { id: string; provider: string }[])[0];
+				if (firstModel) {
+					const sessionKey = `agent:main:web:resilience-${randomUUID()}`;
+					await gw2.call("sessions.patch", {
+						key: sessionKey,
+						model: `${firstModel.provider}/${firstModel.id}`,
+					});
+
+					let chatText = "";
+					let chatDone = false;
+					const chatPromise = new Promise<void>((resolve, reject) => {
+						const timer = setTimeout(
+							() => reject(new Error("chat timeout after restart")),
+							LLM_TIMEOUT,
+						);
+						gw2!.onNotification("chat", (payload: unknown) => {
+							const p = payload as {
+								state: string;
+								sessionKey?: string;
+								message?: { content?: { type: string; text: string }[] };
+								errorMessage?: string;
+							};
+							if (p.sessionKey !== sessionKey) return;
+							if ((p.state === "delta" || p.state === "final") && p.message?.content) {
+								for (const part of p.message.content) {
+									if (part.type === "text") chatText += part.text;
+								}
+							}
+							if (p.state === "final") {
+								chatDone = true;
+								clearTimeout(timer);
+								resolve();
+							}
+							if (p.state === "error") {
+								clearTimeout(timer);
+								reject(new Error(p.errorMessage ?? "chat error after restart"));
+							}
+						});
+					});
+
+					await gw2.call("chat.send", {
+						sessionKey,
+						message: "Reply with exactly: hello",
+						idempotencyKey: randomUUID(),
+					});
+
+					await chatPromise;
+					console.log(
+						`[resilience] Chat after restart: "${chatText.slice(0, 60)}" done=${chatDone}`,
+					);
+					expect(chatText.length).toBeGreaterThan(0);
+
+					try {
+						await gw2.call("sessions.remove", { key: sessionKey });
+					} catch { /* ignore */ }
+				} else {
+					console.log("[resilience] SKIP chat: no models available");
+				}
+			} finally {
+				gw2?.close();
+			}
+		}, RESTART_TIMEOUT + LLM_TIMEOUT + 10_000);
+	});
 });
