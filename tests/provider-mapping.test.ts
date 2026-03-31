@@ -9,6 +9,7 @@ import {
   CATALOG_TO_CONFIG_PROVIDER,
   LLM_PROVIDERS,
   BROWSER_PROVIDERS,
+  providerEnvVar,
 } from "../ui/src/models/provider-mapping.js";
 
 describe("provider-mapping", () => {
@@ -84,6 +85,27 @@ describe("provider-mapping", () => {
     it("has unique ids", () => {
       const ids = BROWSER_PROVIDERS.map((p) => p.id);
       expect(new Set(ids).size).toBe(ids.length);
+    });
+  });
+
+  describe("providerEnvVar", () => {
+    it("uses convention for standard providers", () => {
+      expect(providerEnvVar("moonshot")).toBe("MOONSHOT_API_KEY");
+      expect(providerEnvVar("openai")).toBe("OPENAI_API_KEY");
+      expect(providerEnvVar("anthropic")).toBe("ANTHROPIC_API_KEY");
+      expect(providerEnvVar("deepseek")).toBe("DEEPSEEK_API_KEY");
+      expect(providerEnvVar("xai")).toBe("XAI_API_KEY");
+    });
+
+    it("uses overrides for non-standard providers", () => {
+      expect(providerEnvVar("google")).toBe("GEMINI_API_KEY");
+      expect(providerEnvVar("github-copilot")).toBe("GITHUB_TOKEN");
+      expect(providerEnvVar("volcengine")).toBe("VOLCANO_ENGINE_API_KEY");
+      expect(providerEnvVar("huggingface")).toBe("HF_TOKEN");
+    });
+
+    it("handles hyphenated provider IDs", () => {
+      expect(providerEnvVar("amazon-bedrock")).toBe("AMAZON_BEDROCK_API_KEY");
     });
   });
 });

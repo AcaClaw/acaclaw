@@ -8,8 +8,7 @@ import {
   LLM_PROVIDERS,
   BROWSER_PROVIDERS,
   CATALOG_TO_CONFIG_PROVIDER,
-  PROVIDER_BASE_URLS,
-  PROVIDER_ENV_VARS,
+  providerEnvVar,
 } from "../models/provider-mapping.js";
 
 @customElement("acaclaw-api-keys")
@@ -42,6 +41,9 @@ export class ApiKeysView extends LitElement {
   // Feedback
   @state() private _saving = false;
   @state() private _message = "";
+
+  // Region selector for moonshot (.ai international vs .cn China)
+  @state() private _moonshotRegion: "international" | "cn" = "international";
 
   static override styles = css`
     :host { display: block; }
@@ -127,6 +129,16 @@ export class ApiKeysView extends LitElement {
     }
     .icon-btn:hover { background: var(--ac-bg-hover); box-shadow: var(--ac-shadow-sm); }
 
+    /* ── Region selector ── */
+    .region-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+    .region-label { font-size: 13px; font-weight: 500; color: var(--ac-text-secondary); }
+    .region-select {
+      padding: 6px 12px; border: 1px solid var(--ac-border); border-radius: var(--ac-radius-sm);
+      background: var(--ac-bg-surface); color: var(--ac-text); font-size: 13px;
+      cursor: pointer; transition: border-color var(--ac-transition-fast);
+    }
+    .region-select:hover { border-color: var(--ac-primary); }
+
     /* ── Buttons ── */
     .btn-row { display: flex; gap: 10px; margin-top: 20px; align-items: center; }
     .btn { padding: 9px 20px; border-radius: var(--ac-radius-sm); font-size: 13px; font-weight: 500; cursor: pointer; transition: all var(--ac-transition-fast); letter-spacing: 0.01em; }
@@ -211,11 +223,26 @@ export class ApiKeysView extends LitElement {
 
       const cfg = (snapshot.config as Record<string, unknown>) ?? snapshot;
 
-      // ── Detect configured LLM providers from models.providers ──
+      // ── Detect configured LLM providers ──
+      // Primary: env vars in config.env (new approach — plugins discover keys via env)
+      const envSection = (cfg.env ?? {}) as Record<string, unknown>;
+      for (const p of LLM_PROVIDERS) {
+        const envVar = providerEnvVar(p.id);
+        if (typeof envSection[envVar] === "string" && (envSection[envVar] as string).trim()) {
+          this._configuredLlm.add(p.id);
+        }
+      }
+      // Legacy: models.providers entries with apiKey (backward compat)
       const models = cfg.models as Record<string, unknown> | undefined;
       const providers = (models?.providers ?? {}) as Record<string, Record<string, unknown>>;
       for (const [pid, pval] of Object.entries(providers)) {
         if (pval?.apiKey) this._configuredLlm.add(pid);
+      }
+
+      // Detect moonshot region from existing base URL
+      const moonshotCfg = providers.moonshot;
+      if (typeof moonshotCfg?.baseUrl === "string" && moonshotCfg.baseUrl.includes("moonshot.cn")) {
+        this._moonshotRegion = "cn";
       }
 
       // ── Detect configured browser/search provider ──
@@ -375,6 +402,17 @@ export class ApiKeysView extends LitElement {
             </button>
           </div>
         `}
+
+        ${this._selectedLlmProvider === "moonshot" && !isConfigured ? html`
+          <div class="region-row">
+            <label class="region-label">${t("apikeys.region")}</label>
+            <select class="region-select" .value=${this._moonshotRegion}
+              @change=${(e: Event) => { this._moonshotRegion = (e.target as HTMLSelectElement).value as "international" | "cn"; }}>
+              <option value="international">${t("apikeys.region.international")}</option>
+              <option value="cn">${t("apikeys.region.cn")}</option>
+            </select>
+          </div>
+        ` : nothing}
 
         <div class="btn-row">
           ${!isConfigured && this._keyInput ? html`
@@ -594,28 +632,27 @@ export class ApiKeysView extends LitElement {
 
     this._saving = true;
     try {
+      // Write ONLY the env var — OpenClaw's plugin catalog discovers keys via
+      // env vars, and the extension handles base URLs, API type, and model lists.
+      // On gateway restart, applyConfigEnvVars copies config.env into process.env,
+      // so the plugin finds the key and creates the implicit provider config.
+      const envVar = providerEnvVar(providerId);
       await updateConfig((cfg) => {
-        const models = (cfg.models ?? {}) as Record<string, unknown>;
-        const providers = (models.providers ?? {}) as Record<string, Record<string, unknown>>;
-        const existing = providers[providerId] ?? {};
-        // OpenClaw requires baseUrl + models for every provider entry
-        if (!existing.baseUrl) {
-          const defaultUrl = PROVIDER_BASE_URLS[providerId];
-          if (defaultUrl) existing.baseUrl = defaultUrl;
-        }
-        if (!existing.models) existing.models = [];
-        existing.apiKey = key;
-        providers[providerId] = existing;
-        models.providers = providers;
-        cfg.models = models;
+        const env = (cfg.env ?? {}) as Record<string, string>;
+        env[envVar] = key;
+        cfg.env = env;
 
-        // Also set the env var so OpenClaw's plugin catalog can discover the key
-        // (plugins check env vars / auth profiles, not models.providers.<id>.apiKey)
-        const envVarName = PROVIDER_ENV_VARS[providerId];
-        if (envVarName) {
-          const env = (cfg.env ?? {}) as Record<string, string>;
-          env[envVarName] = key;
-          cfg.env = env;
+        // For moonshot China region, set an explicit base URL override
+        // (the extension default is .ai international)
+        if (providerId === "moonshot" && this._moonshotRegion === "cn") {
+          const models = (cfg.models ?? {}) as Record<string, unknown>;
+          const providers = (models.providers ?? {}) as Record<string, Record<string, unknown>>;
+          const existing = providers.moonshot ?? {};
+          existing.baseUrl = "https://api.moonshot.cn/v1";
+          if (!existing.models) existing.models = [];
+          providers.moonshot = existing;
+          models.providers = providers;
+          cfg.models = models;
         }
 
         return cfg;
@@ -645,15 +682,14 @@ export class ApiKeysView extends LitElement {
 
     try {
       await updateConfig((cfg) => {
+        // Remove env var (primary key storage)
+        const envVar = providerEnvVar(providerId);
+        const env = cfg.env as Record<string, unknown> | undefined;
+        if (env) delete env[envVar];
+
+        // Also clean legacy models.providers entry if present
         const providers = (cfg.models as Record<string, unknown>)?.providers as Record<string, unknown> | undefined;
         if (providers) delete providers[providerId];
-
-        // Clean up the env var set by _saveLlmKey
-        const envVarName = PROVIDER_ENV_VARS[providerId];
-        if (envVarName) {
-          const env = cfg.env as Record<string, unknown> | undefined;
-          if (env) delete env[envVarName];
-        }
 
         // Clean auth profiles referencing this provider
         const profiles = (cfg.auth as Record<string, unknown>)?.profiles as Record<string, Record<string, unknown>> | undefined;

@@ -2,7 +2,7 @@ import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { gateway, updateConfig } from "../controllers/gateway.js";
 import { t, LocaleController } from "../i18n.js";
-import { PROVIDER_BASE_URLS, PROVIDER_ENV_VARS } from "../models/provider-mapping.js";
+import { providerEnvVar } from "../models/provider-mapping.js";
 
 interface DisciplineOption {
   id: string;
@@ -512,22 +512,12 @@ export class OnboardingView extends LitElement {
         agents.defaults = defaults;
         cfg.agents = agents;
         if (this._apiKey && this._provider !== "web") {
-          const baseUrl = PROVIDER_BASE_URLS[this._provider];
-          const models = (cfg.models ?? {}) as Record<string, unknown>;
-          const providers = (models.providers ?? {}) as Record<string, unknown>;
-          const providerObj: Record<string, unknown> = { apiKey: this._apiKey, models: [] };
-          if (baseUrl) providerObj.baseUrl = baseUrl;
-          providers[this._provider] = providerObj;
-          models.providers = providers;
-          cfg.models = models;
-
-          // Also set env var so plugin catalog discovers the key
-          const envVarName = PROVIDER_ENV_VARS[this._provider];
-          if (envVarName) {
-            const env = (cfg.env ?? {}) as Record<string, string>;
-            env[envVarName] = this._apiKey;
-            cfg.env = env;
-          }
+          // Write only the env var — OpenClaw's plugin catalog discovers keys
+          // via env vars, and the extension handles base URLs and model lists.
+          const envVar = providerEnvVar(this._provider);
+          const env = (cfg.env ?? {}) as Record<string, string>;
+          env[envVar] = this._apiKey;
+          cfg.env = env;
         }
         return cfg;
       });

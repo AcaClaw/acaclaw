@@ -302,7 +302,7 @@ OpenClaw ships with built-in support for these providers (no config needed if AP
 | `xai` | xAI (Grok) | `openai-completions` | `https://api.x.ai/v1` | `XAI_API_KEY` | `xai` |
 | `modelstudio` | Qwen (Alibaba Cloud Model Studio) | `openai-completions` | `https://coding-intl.dashscope.aliyuncs.com/v1` (Global) / `https://coding.dashscope.aliyuncs.com/v1` (CN) | `MODELSTUDIO_API_KEY` | `modelstudio` |
 | `volcengine` | Volcengine (Doubao / ByteDance) | `openai-completions` | `https://ark.cn-beijing.volces.com/api/v3` | `VOLCANO_ENGINE_API_KEY` | `volcengine`, `volcengine-plan` |
-| `moonshot` | Moonshot / Kimi | `openai-completions` | `https://api.moonshot.cn/v1` | `MOONSHOT_API_KEY` | `moonshot`, `kimi`, `kimi-coding` |
+| `moonshot` | Moonshot / Kimi | `openai-completions` | `https://api.moonshot.ai/v1` (Intl) / `https://api.moonshot.cn/v1` (CN) | `MOONSHOT_API_KEY` | `moonshot`, `kimi`, `kimi-coding` |
 | `qianfan` | Qianfan (Baidu) | `openai-completions` | `https://qianfan.baidubce.com/v2` | `QIANFAN_API_KEY` | `qianfan` |
 | `minimax` | MiniMax | `openai-completions` | `https://api.minimax.io/v1` | `MINIMAX_API_KEY` | `minimax`, `minimax-portal` |
 | `together` | Together AI | `openai-completions` | `https://api.together.xyz/v1` | `TOGETHER_API_KEY` | `together` |
@@ -462,11 +462,15 @@ When a user has `openrouter` configured and the catalog returns 809 models acros
 
 ```
 models.list → 809 models (all providers)
-config.get  → models.providers = { openrouter: { apiKey: "..." } }
+config.get  → env = { OPENROUTER_API_KEY: "..." }
+              models.providers = { openrouter: { apiKey: "..." } }  (legacy)
 
+Detection: check config.env for known env vars, then check models.providers (backward compat)
 Filter: model.provider → catalogToConfigProvider() → check if result is in configuredProviders
 Result: 246 models (only openrouter)
 ```
+
+AcaClaw detects configured providers from **both** `config.env` (env vars, new approach) and `models.providers` (legacy entries with apiKey).
 
 ### Reverse Lookup: Config → Catalog Models
 

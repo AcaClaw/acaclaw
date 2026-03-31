@@ -110,7 +110,7 @@ describe("ApiKeysView DOM", () => {
     cleanup(el);
   });
 
-  it("saving LLM key uses updateConfig with full read-modify-write", async () => {
+  it("saving LLM key writes env var via updateConfig", async () => {
     const el = await createElement();
 
     // Set the selected provider and key input
@@ -137,13 +137,11 @@ describe("ApiKeysView DOM", () => {
     // Call _saveLlmKey directly
     await view._saveLlmKey();
 
-    // Should use updateConfig (config.set) with full config including provider
+    // Should write env var (not models.providers) so OpenClaw's plugin catalog discovers it
     expect(setCalls.length).toBe(1);
     const saved = setCalls[0] as Record<string, unknown>;
-    const models = saved.models as Record<string, unknown>;
-    const providers = models.providers as Record<string, unknown>;
-    const openrouter = providers.openrouter as Record<string, unknown>;
-    expect(openrouter.apiKey).toBe("sk-or-test-12345");
+    const env = saved.env as Record<string, string>;
+    expect(env.OPENROUTER_API_KEY).toBe("sk-or-test-12345");
 
     cleanup(el);
   });

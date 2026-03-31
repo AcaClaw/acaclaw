@@ -68,17 +68,21 @@ AcaClaw is a distribution layer — it builds on top of OpenClaw, not alongside 
 
 ### Configuration
 
-AcaClaw writes to OpenClaw's config using `openclaw config set` (CLI) or `config.set` (WebSocket RPC). The correct way to set a provider API key:
+AcaClaw writes to OpenClaw's config using `config.get` + `config.set` (WebSocket RPC read-modify-write). The correct way to set a provider API key:
 
 ```bash
-# Via CLI
+# Via environment variable (recommended for AcaClaw UI)
+# AcaClaw writes to config.env so OpenClaw's plugin catalog discovers the key
+openclaw config set env.MOONSHOT_API_KEY "sk-..."
+
+# Via CLI (equivalent)
 openclaw config set models.providers.openrouter.apiKey "sk-or-..."
 
-# Via environment variable
+# Via shell environment variable
 export OPENROUTER_API_KEY="sk-or-..."
 ```
 
-AcaClaw's UI uses the same simple `config.set key/value` RPC that the onboarding wizard uses. It never reads the full config, mutates it, and writes it back. OpenClaw handles schema validation, default values, URL resolution, and model discovery.
+AcaClaw's UI saves API keys to `config.env.<ENV_VAR>` (not `models.providers`). OpenClaw's `applyConfigEnvVars` copies these into `process.env` at gateway startup, so the plugin catalog discovers the key and creates the implicit provider config (including base URLs, API type, and model list). This delegates all provider complexity to OpenClaw extensions.
 
 ---
 
