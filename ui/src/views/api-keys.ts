@@ -35,6 +35,7 @@ export class ApiKeysView extends LitElement {
   @state() private _savedModel = "";
   @state() private _changingModel = false;
   @state() private _showAllModels = false;
+  @state() private _showAllProviders = false;
 
   // Feedback
   @state() private _saving = false;
@@ -326,9 +327,9 @@ export class ApiKeysView extends LitElement {
     return html`
       <!-- Provider selector -->
       <div class="card">
-        <h2>${t("apikeys.provider")}</h2>
+        <h2>${t("apikeys.provider")} (${sorted.length})</h2>
         <div class="provider-chips">
-          ${sorted.map((p) => html`
+          ${(this._showAllProviders ? sorted : sorted.slice(0, 5)).map((p) => html`
             <div
               class="provider-chip ${p.id === this._selectedLlmProvider ? "active" : ""} ${this._configuredLlm.has(p.id) ? "configured" : ""}"
               @click=${() => { this._selectedLlmProvider = p.id; this._keyInput = ""; this._keyVisible = false; this._showAllModels = false; }}
@@ -338,6 +339,11 @@ export class ApiKeysView extends LitElement {
             </div>
           `)}
         </div>
+        ${sorted.length > 5 ? html`
+          <span class="expand-link" @click=${() => { this._showAllProviders = !this._showAllProviders; }}>
+            ${this._showAllProviders ? `▲ Show top 5` : `▼ Show all ${sorted.length} providers`}
+          </span>
+        ` : nothing}
       </div>
 
       <!-- API Key card -->
@@ -459,9 +465,9 @@ export class ApiKeysView extends LitElement {
 
     return html`
       <div class="card">
-        <h2>${t("apikeys.searchProvider")}</h2>
+        <h2>${t("apikeys.searchProvider")} (${sorted.length})</h2>
         <div class="provider-chips">
-          ${sorted.map((p) => html`
+          ${(this._showAllProviders ? sorted : sorted.slice(0, 5)).map((p) => html`
             <div
               class="provider-chip ${p.id === this._selectedBrowserProvider ? "active" : ""} ${this._configuredBrowser.has(p.id) ? "configured" : ""}"
               @click=${() => { this._selectedBrowserProvider = p.id; this._keyInput = ""; this._keyVisible = false; }}
@@ -471,6 +477,11 @@ export class ApiKeysView extends LitElement {
             </div>
           `)}
         </div>
+        ${sorted.length > 5 ? html`
+          <span class="expand-link" @click=${() => { this._showAllProviders = !this._showAllProviders; }}>
+            ${this._showAllProviders ? `▲ Show top 5` : `▼ Show all ${sorted.length} providers`}
+          </span>
+        ` : nothing}
       </div>
 
       <div class="card">
