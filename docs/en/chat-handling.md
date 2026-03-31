@@ -19,6 +19,7 @@ permalink: /en/chat-handling/
 - [Skills Integration](#skills-integration)
 - [Session and History](#session-and-history)
 - [AcaClaw UI Integration](#acaclaw-ui-integration)
+- [Chat Latency Analysis](#chat-latency-analysis)
 - [Configuration Reference](#configuration-reference)
 
 ---
@@ -565,6 +566,166 @@ AcaClaw renders chat messages with:
 - **LaTeX** — KaTeX rendering for math equations
 - **Tool calls** — Collapsible panels showing tool inputs and outputs
 - **Thinking** — Expandable reasoning blocks (when thinking is enabled)
+
+---
+
+## Chat Latency Analysis
+
+### First-Token Latency Pipeline
+
+When a user sends a message, the time until the first visible response token (Time-To-First-Token, TTFT) is determined by a pipeline of sequential stages:
+
+```
+User sends "hi"
+  │
+  │  ① WebSocket roundtrip + auth
+  │     (~20 ms)
+  ▼
+Gateway receives chat.send
+  │
+  │  ② Chat ACK returned to UI
+  │     (~10 ms)
+  ▼
+Dispatch pipeline starts
+  │
+  │  ③ Agent startup: load session, resolve model,
+  │     build system prompt, assemble tool bench
+  │     (~500–1,300 ms)
+  ▼
+LLM API call begins
+  │
+  │  ④ Model processes input tokens and returns
+  │     first streaming token
+  │     (variable — depends on input token count)
+  ▼
+First delta event arrives at UI
+```
+
+### Measured Latency Breakdown
+
+The following measurements were taken with **DeepSeek v3.1** via OpenRouter (provider: DeepInfra), on a localhost gateway with `auth.mode: "none"`.
+
+#### Direct API Call (baseline)
+
+Sending a bare 9-token request directly to OpenRouter, bypassing the gateway entirely:
+
+| Metric | Value |
+|---|---|
+| Non-streaming TTFB | 787 ms |
+| Non-streaming total | 1,597 ms |
+| Streaming first SSE | 1,510 ms |
+| Streaming total | 1,560 ms |
+
+This establishes the **baseline model latency** — what the LLM takes with minimal input.
+
+#### Gateway Chat (thinking=off)
+
+Sending "What is 2+2?" via `chat.send` with thinking disabled:
+
+| Stage | Duration | Cumulative |
+|---|---|---|
+| WS connect + auth | 22 ms | 22 ms |
+| Chat ACK | 10 ms | 32 ms |
+| Agent startup | 508 ms | 540 ms |
+| **LLM processing (TTFT)** | **7,832 ms** | **8,372 ms** |
+| Streaming + final | 208 ms | 8,580 ms |
+
+Token usage reported by the gateway:
+
+| Token Type | Count |
+|---|---|
+| New input tokens | 22 |
+| Cached input tokens | 15,109 |
+| Output tokens | 230 |
+| **Total input** | **~15,131** |
+
+#### Gateway Chat (adaptive thinking)
+
+Same message with `thinkingDefault: "adaptive"`:
+
+| Metric | Value |
+|---|---|
+| Total time | ~23,500 ms |
+| Delta events | 0 |
+| Response | Empty (model-specific issue with DeepSeek v3.1 + adaptive thinking via OpenRouter) |
+
+### Where the Time Goes
+
+The TTFT breakdown reveals a clear pattern:
+
+```
+Total TTFT: ~8,400 ms
+  ├── Gateway overhead (WS + ACK + agent startup): ~540 ms  (6%)
+  └── LLM API processing: ~7,800 ms                        (94%)
+```
+
+The **LLM API call dominates** — and the primary factor is the **~15,000 token system prompt** that OpenClaw sends with every request.
+
+### System Prompt Composition
+
+OpenClaw assembles a large system prompt for every chat turn. The system prompt includes:
+
+| Component | Approximate Size | Source |
+|---|---|---|
+| **Agent identity** | ~200 tokens | Agent name, description, personality from `agents.list[]` |
+| **Tool definitions** | ~3,000–5,000 tokens | JSON schemas for all available tools (file ops, bash, MCP, skills) |
+| **Skill documentation** | ~4,000–8,000 tokens | Descriptions and parameters for installed skills |
+| **Workspace context** | ~500–1,000 tokens | Current directory, environment, OS info |
+| **Session history** | Variable | Previous turns in the conversation (up to 200 messages) |
+| **Conversation rules** | ~500–1,000 tokens | Safety, formatting, response style directives |
+
+With a fresh session and AcaClaw's default 6 academic skills + standard tool bench, the total system prompt is approximately **15,000 tokens**.
+
+### Impact on TTFT
+
+LLM providers must process the entire input (system prompt + user message) before generating the first output token. The relationship is roughly linear:
+
+| Input Size | Expected TTFT (DeepSeek v3.1 via OpenRouter) |
+|---|---|
+| ~9 tokens (bare API) | ~800 ms |
+| ~15,000 tokens (gateway) | ~8,000 ms |
+
+The **10× increase in input tokens results in a ~10× increase in TTFT**. Provider-side **prompt caching** (shown as 15,109 cached tokens) helps reduce cost but has a limited effect on latency for the first request in a cache window.
+
+### Gateway Overhead Breakdown
+
+The non-LLM overhead within the gateway is relatively small:
+
+| Component | Time | Notes |
+|---|---|---|
+| WebSocket connect | ~15 ms | Localhost, includes `connect.challenge` + `connect` handshake |
+| Auth check | ~5 ms | `auth.mode: "none"` — minimal |
+| Chat ACK | ~10 ms | Immediate acknowledgment returned to UI |
+| Session load | ~50–100 ms | Load JSONL history from disk |
+| Model resolution | ~5 ms | Walk the priority chain |
+| System prompt assembly | ~200–500 ms | Build prompt, skill docs, tool bench |
+| Skill snapshot | ~100–200 ms | Resolve available skills for this agent |
+| **Total gateway overhead** | **~500–1,300 ms** | Varies by session size and skill count |
+
+### Plugin Load Overhead
+
+During gateway startup (not per-request), AcaClaw's 6 plugins are loaded. In testing, plugins were loaded **4+ times redundantly** during gateway initialization. This does not affect per-message latency but adds to cold-start time.
+
+Observed startup timings:
+
+| RPC | Duration |
+|---|---|
+| `config.get` | ~1,400 ms |
+| `chat.history` | ~765 ms |
+| `models.list` | ~750 ms |
+
+### Optimization Strategies
+
+To reduce TTFT, consider these approaches:
+
+| Strategy | Expected Impact | Implementation |
+|---|---|---|
+| **Use a faster model** | High | Switch to a model with lower TTFT (e.g., Anthropic Haiku, GPT-4o-mini) |
+| **Reduce skill count** | Medium | Use `agents.<id>.skillFilter[]` to limit skills per agent |
+| **Minimize tool bench** | Medium | Disable unused tool categories (MCP servers, LSP) |
+| **Use provider caching** | Medium | Anthropic and OpenAI support system prompt caching natively |
+| **Shorter system prompt** | Medium | Trim agent description, reduce conversation rules |
+| **Local model** | Variable | Ollama/vLLM eliminates network round-trip but depends on hardware |
 
 ---
 
