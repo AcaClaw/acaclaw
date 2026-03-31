@@ -64,17 +64,11 @@ esac
 # When piped via curl: clone the repo first, then use the clone as root.
 
 _resolve_repo_root() {
-	# If REPO_ROOT is already set and valid, use it (local dev / CI)
+	# Only use a local source when REPO_ROOT is explicitly exported (dev/CI).
+	# Running `bash install.sh` from a checkout should still fetch the latest
+	# release from GitHub so the installer always behaves like a real install.
 	if [[ -n "${REPO_ROOT:-}" && -f "${REPO_ROOT}/scripts/install.sh" ]]; then
-		return
-	fi
-
-	# Detect if we're already inside a local clone/checkout
-	local _script_path
-	_script_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-	if [[ -f "${_script_path}/install.sh" && -f "${_script_path}/../package.json" ]]; then
-		REPO_ROOT="$(cd "${_script_path}/.." && pwd)"
-		log "Using local source at ${REPO_ROOT}"
+		log "Using local source at ${REPO_ROOT} (REPO_ROOT set)"
 		return
 	fi
 
