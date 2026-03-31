@@ -85,10 +85,10 @@ describe("ApiKeysView DOM", () => {
     cleanup(el);
   });
 
-  it("shows add key button", async () => {
+  it("shows key input for unconfigured provider", async () => {
     const el = await createElement();
-    const btn = q(el, ".btn-outline");
-    expect(btn).toBeTruthy();
+    const input = q(el, ".key-input");
+    expect(input).toBeTruthy();
     cleanup(el);
   });
 
@@ -110,14 +110,17 @@ describe("ApiKeysView DOM", () => {
     cleanup(el);
   });
 
-  it("saving LLM keys uses updateConfig with full read-modify-write", async () => {
+  it("saving LLM key uses updateConfig with full read-modify-write", async () => {
     const el = await createElement();
 
-    // Simulate entering a key for the selected provider
-    const llmKeys = (el as unknown as { _llmKeys: Map<string, { id: string; label: string; value: string; visible: boolean; saved: boolean }[]> })._llmKeys;
-    llmKeys.set("openrouter", [
-      { id: "k1", label: "Default", value: "sk-or-test-12345", visible: false, saved: false },
-    ]);
+    // Set the selected provider and key input
+    const view = el as unknown as {
+      _selectedLlmProvider: string;
+      _keyInput: string;
+      _saveLlmKey: () => Promise<void>;
+    };
+    view._selectedLlmProvider = "openrouter";
+    view._keyInput = "sk-or-test-12345";
 
     // Capture all config.set calls via updateConfig
     const setCalls: unknown[] = [];
@@ -127,11 +130,12 @@ describe("ApiKeysView DOM", () => {
         setCalls.push(params);
         return {};
       }
+      if (method === "models.list") return { models: [] };
       return undefined;
     });
 
-    // Call _saveKeys directly
-    await (el as unknown as { _saveKeys: (c: string) => Promise<void> })._saveKeys("llm");
+    // Call _saveLlmKey directly
+    await view._saveLlmKey();
 
     // Should use updateConfig (config.set) with full config including provider
     expect(setCalls.length).toBe(1);
@@ -140,7 +144,6 @@ describe("ApiKeysView DOM", () => {
     const providers = models.providers as Record<string, unknown>;
     const openrouter = providers.openrouter as Record<string, unknown>;
     expect(openrouter.apiKey).toBe("sk-or-test-12345");
-    expect(openrouter.baseUrl).toBe("https://openrouter.ai/api/v1");
 
     cleanup(el);
   });

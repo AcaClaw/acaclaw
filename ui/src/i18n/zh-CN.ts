@@ -470,6 +470,7 @@ export const zhCN: Record<string, string> = {
   "apikeys.save": "保存",
   "apikeys.defaultModel": "默认模型",
   "apikeys.model": "模型",
+  "apikeys.models": "可用模型",
   "apikeys.using": "正在使用",
   "apikeys.change": "更改",
   "apikeys.saveModel": "保存模型",
@@ -490,6 +491,8 @@ export const zhCN: Record<string, string> = {
   "apikeys.savedModel": "✓ 默认模型已保存",
   "apikeys.savedKeys": "✓ 密钥已保存",
   "apikeys.saveFailed": "⚠ 保存失败 — 网关是否在运行？",
+  "apikeys.enable": "启用",
+  "apikeys.noKeyNeeded": "{0} 无需 API 密钥 — 直接启用即可。",
   "apikeys.gate.title": "需要 API 密钥才能继续",
   "apikeys.gate.desc": "请在下方添加至少一个 LLM 提供商密钥并保存。也可以通过 OpenClaw CLI 或环境变量配置。",
 

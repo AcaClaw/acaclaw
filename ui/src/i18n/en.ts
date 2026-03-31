@@ -471,6 +471,7 @@ export const en: Record<string, string> = {
   "apikeys.save": "Save",
   "apikeys.defaultModel": "Default Model",
   "apikeys.model": "Model",
+  "apikeys.models": "Models",
   "apikeys.using": "Using",
   "apikeys.change": "Change",
   "apikeys.saveModel": "Save Model",
@@ -491,6 +492,8 @@ export const en: Record<string, string> = {
   "apikeys.savedModel": "✓ Default model saved",
   "apikeys.savedKeys": "✓ Keys saved",
   "apikeys.saveFailed": "⚠ Save failed — is the gateway running?",
+  "apikeys.enable": "Enable",
+  "apikeys.noKeyNeeded": "{0} works without an API key — just enable it.",
   "apikeys.gate.title": "API key required to continue",
   "apikeys.gate.desc": "Add at least one LLM provider key below, then save. You can also configure keys via OpenClaw CLI or environment variables.",
 

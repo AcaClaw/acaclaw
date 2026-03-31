@@ -8,6 +8,7 @@ import { t, LocaleController } from "../i18n.js";
 import { toMarkdownHtml } from "../chat/markdown.js";
 import { isSttSupported, startStt, stopStt, isSttActive, speakText, stopTts, isTtsSpeaking } from "../chat/speech.js";
 import { exportChatMarkdown } from "../chat/export.js";
+import { catalogToConfigProvider } from "../models/provider-mapping.js";
 
 /* ── Lucide-style SVG icons for quick-actions & UI (14×14) ── */
 const qiBarChart = html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg>`;
@@ -2300,30 +2301,39 @@ export class ChatView extends LitElement {
 
   private async _loadModels() {
     try {
-      const [modelsResult, sessionsResult] = await Promise.all([
+      const [modelsResult, configResult] = await Promise.all([
         gateway.call<{ models: Array<{id: string; name: string; provider?: string}> }>("models.list", {}),
-        gateway.call<{ defaults?: { model?: string; modelProvider?: string } }>("sessions.list", {
-          includeGlobal: true, includeUnknown: true,
-        }),
+        gateway.call<Record<string, unknown>>("config.get"),
       ]);
 
-      // Build options with "provider/model" values and "model · provider" labels
-      // This matches OpenClaw control UI's oi() format exactly
+      // Determine which config providers are configured (have API keys)
+      const cfg = (configResult?.config as Record<string, unknown>) ?? configResult ?? {};
+      const providers = (cfg.models as Record<string, unknown>)?.providers as Record<string, unknown> | undefined;
+      const configuredProviders = new Set<string>(providers ? Object.keys(providers) : []);
+
+      // Read the user-saved default model from agents.defaults.model
+      const agents = cfg.agents as Record<string, unknown> | undefined;
+      const defaults = agents?.defaults as Record<string, unknown> | undefined;
+      const savedDefaultModel = typeof defaults?.model === "string" ? defaults.model : "";
+
+      // Filter models to only configured providers and build options
       const raw = modelsResult?.models ?? [];
-      this._availableModels = raw.map((m) => ({
+      const filtered = raw.filter((m) =>
+        m.provider ? configuredProviders.has(catalogToConfigProvider(m.provider)) : false
+      );
+      this._availableModels = filtered.map((m) => ({
         value: m.provider ? `${m.provider}/${m.id}` : m.id,
         label: m.provider ? `${m.name} · ${m.provider}` : m.name,
       }));
 
-      // Resolve default model display name from session defaults
-      // Only show if the model is actually available (has a configured provider)
-      const dm = sessionsResult?.defaults?.model ?? "";
-      const dp = sessionsResult?.defaults?.modelProvider ?? "";
-      const defaultId = dp && dm ? `${dp}/${dm}` : dm;
-      if (dm && raw.some((m) => (m.provider ? `${m.provider}/${m.id}` : m.id) === defaultId)) {
-        this._defaultModelDisplay = dp ? `${dm} · ${dp}` : dm;
-      } else if (raw.length > 0) {
-        const first = raw[0];
+      // Display the saved default model, or fall back to first available
+      if (savedDefaultModel) {
+        const match = filtered.find((m) => (m.provider ? `${m.provider}/${m.id}` : m.id) === savedDefaultModel);
+        this._defaultModelDisplay = match
+          ? (match.provider ? `${match.name} · ${match.provider}` : match.name)
+          : savedDefaultModel;
+      } else if (filtered.length > 0) {
+        const first = filtered[0];
         this._defaultModelDisplay = first.provider ? `${first.name} · ${first.provider}` : first.name;
       } else {
         this._defaultModelDisplay = "";

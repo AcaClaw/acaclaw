@@ -1,479 +1,186 @@
-import { LitElement, html, css } from "lit";
+import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { gateway, updateConfig, setConfigValue } from "../controllers/gateway.js";
 import { t, LocaleController } from "../i18n.js";
-
-interface KeyEntry {
-  id: string;
-  label: string;
-  value: string;
-  visible: boolean;
-  saved: boolean;
-}
-
-interface ProviderDef {
-  id: string;
-  name: string;
-  placeholder: string;
-  prefix: string;
-  baseUrl?: string;
-}
-
-interface ModelOption {
-  id: string;
-  name: string;
-  provider: string;
-  providerName: string;
-}
-
-const LLM_PROVIDERS: ProviderDef[] = [
-  { id: "anthropic", name: "Anthropic", placeholder: "sk-ant-api03-...", prefix: "sk-ant-", baseUrl: "https://api.anthropic.com" },
-  { id: "openai", name: "OpenAI", placeholder: "sk-...", prefix: "sk-", baseUrl: "https://api.openai.com/v1" },
-  { id: "google", name: "Google AI", placeholder: "AIza...", prefix: "AIza", baseUrl: "https://generativelanguage.googleapis.com/v1beta" },
-  { id: "moonshot", name: "Moonshot / Kimi", placeholder: "sk-...", prefix: "sk-", baseUrl: "https://api.moonshot.ai/v1" },
-  { id: "openrouter", name: "OpenRouter", placeholder: "sk-or-...", prefix: "sk-or-", baseUrl: "https://openrouter.ai/api/v1" },
-  { id: "azure", name: "Azure OpenAI", placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", prefix: "" },
-  { id: "ollama", name: "Ollama (local)", placeholder: "http://localhost:11434", prefix: "", baseUrl: "http://localhost:11434" },
-  { id: "mistral", name: "Mistral", placeholder: "...", prefix: "", baseUrl: "https://api.mistral.ai/v1" },
-  { id: "deepseek", name: "DeepSeek", placeholder: "sk-...", prefix: "sk-", baseUrl: "https://api.deepseek.com" },
-];
-
-const BROWSER_PROVIDERS: ProviderDef[] = [
-  { id: "brave-search", name: "Brave Search", placeholder: "BSA...", prefix: "BSA" },
-  { id: "gemini", name: "Gemini (Google)", placeholder: "AIza...", prefix: "AIza" },
-  { id: "grok", name: "Grok (xAI)", placeholder: "xai-...", prefix: "xai-" },
-  { id: "kimi", name: "Kimi (Moonshot)", placeholder: "sk-...", prefix: "" },
-  { id: "perplexity", name: "Perplexity", placeholder: "pplx-...", prefix: "pplx-" },
-];
-
-let _nextId = 1;
-function genId(): string {
-  return `key-${_nextId++}`;
-}
+import {
+  type ProviderDef,
+  type ModelInfo,
+  LLM_PROVIDERS,
+  BROWSER_PROVIDERS,
+  CATALOG_TO_CONFIG_PROVIDER,
+} from "../models/provider-mapping.js";
 
 @customElement("acaclaw-api-keys")
 export class ApiKeysView extends LitElement {
   private _lc = new LocaleController(this);
+
   @state() private _tab: "llm" | "browser" = "llm";
+  @state() private _loaded = false;
 
-  // LLM state
-  @state() private _llmProvider = "";
-  @state() private _llmKeys: Map<string, KeyEntry[]> = new Map();
+  // Provider state: which providers have keys configured
+  @state() private _configuredLlm = new Set<string>();
+  @state() private _configuredBrowser = new Set<string>();
+  @state() private _selectedLlmProvider = "";
+  @state() private _selectedBrowserProvider = "";
 
-  // Browser state
-  @state() private _browserProvider = "";
-  @state() private _browserKeys: Map<string, KeyEntry[]> = new Map();
+  // Key input for current provider
+  @state() private _keyInput = "";
+  @state() private _keyVisible = false;
 
-  // Default model (provider/model format, e.g. "moonshot/kimi-k2.5")
+  // Models grouped by provider (from models.list)
+  @state() private _modelsByProvider = new Map<string, ModelInfo[]>();
+
+  // Default model
   @state() private _defaultModel = "";
-  @state() private _savedModel = ""; // what's currently persisted
-  @state() private _configuredModels: ModelOption[] = [];
+  @state() private _savedModel = "";
+  @state() private _changingModel = false;
+  @state() private _showAllModels = false;
 
   // Feedback
-  @state() private _saveMessage = "";
+  @state() private _saving = false;
+  @state() private _message = "";
 
   static override styles = css`
-    :host {
-      display: block;
-    }
+    :host { display: block; }
 
     /* ── Setup gate banner ── */
     .setup-gate-banner {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      padding: 16px 20px;
-      margin-bottom: 24px;
+      display: flex; align-items: center; gap: 16px;
+      padding: 16px 20px; margin-bottom: 24px;
       background: var(--ac-warning-bg, #fef3cd);
       border: 1px solid var(--ac-warning-border, #ffc107);
-      border-radius: 12px;
-      color: var(--ac-warning-text, #856404);
+      border-radius: 12px; color: var(--ac-warning-text, #856404);
     }
-    .setup-gate-icon {
-      font-size: 28px;
-      flex-shrink: 0;
-    }
-    .setup-gate-text {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      font-size: 14px;
-      line-height: 1.5;
-    }
-    .setup-gate-text strong {
-      font-size: 16px;
-    }
+    .setup-gate-icon { font-size: 28px; flex-shrink: 0; }
+    .setup-gate-text { display: flex; flex-direction: column; gap: 4px; font-size: 14px; line-height: 1.5; }
+    .setup-gate-text strong { font-size: 16px; }
 
     /* ── Page header ── */
-    h1 {
-      font-size: 32px;
-      font-weight: 800;
-      margin-bottom: 6px;
-      letter-spacing: -0.03em;
-      color: var(--ac-text);
-    }
-    .subtitle {
-      font-size: 14px;
-      color: var(--ac-text-muted);
-      margin-bottom: 28px;
-      line-height: 1.5;
-    }
+    h1 { font-size: 32px; font-weight: 800; margin-bottom: 6px; letter-spacing: -0.03em; color: var(--ac-text); }
+    .subtitle { font-size: 14px; color: var(--ac-text-muted); margin-bottom: 28px; line-height: 1.5; }
 
     /* ── Tabs ── */
-    .tabs {
-      display: flex;
-      gap: 0;
-      margin-bottom: 28px;
-      border-bottom: 1px solid var(--ac-border);
-    }
+    .tabs { display: flex; gap: 0; margin-bottom: 28px; border-bottom: 1px solid var(--ac-border); }
     .tab {
-      padding: 12px 24px;
-      font-size: 14px;
-      font-weight: 500;
-      color: var(--ac-text-muted);
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
-      margin-bottom: -1px;
-      white-space: nowrap;
-      transition: all var(--ac-transition-fast);
+      padding: 12px 24px; font-size: 14px; font-weight: 500; color: var(--ac-text-muted);
+      cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+      white-space: nowrap; transition: all var(--ac-transition-fast);
     }
-    .tab:hover {
-      color: var(--ac-text-secondary);
-    }
-    .tab.active {
-      color: var(--ac-primary);
-      border-bottom-color: var(--ac-primary);
-    }
+    .tab:hover { color: var(--ac-text-secondary); }
+    .tab.active { color: var(--ac-primary); border-bottom-color: var(--ac-primary); }
     .tab .count {
-      background: var(--ac-primary-bg);
-      color: var(--ac-primary);
-      font-size: 11px;
-      font-weight: 600;
-      padding: 2px 8px;
-      border-radius: var(--ac-radius-full, 9999px);
-      margin-left: 8px;
+      background: var(--ac-primary-bg); color: var(--ac-primary);
+      font-size: 11px; font-weight: 600; padding: 2px 8px;
+      border-radius: var(--ac-radius-full, 9999px); margin-left: 8px;
     }
 
     /* ── Cards ── */
     .card {
-      background: var(--ac-bg-surface);
-      border: 1px solid var(--ac-border-subtle);
-      border-radius: var(--ac-radius-lg);
-      padding: 32px;
-      margin-bottom: 24px;
+      background: var(--ac-bg-surface); border: 1px solid var(--ac-border-subtle);
+      border-radius: var(--ac-radius-lg); padding: 32px; margin-bottom: 24px;
       box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02), 0 2px 4px -1px rgba(0,0,0,0.02), 0 0 0 1px rgba(0,0,0,0.02);
       transition: all var(--ac-transition);
     }
-    .card h2 {
-      font-size: 16px;
-      font-weight: 600;
-      color: var(--ac-text);
-      margin-bottom: 20px;
-      letter-spacing: -0.01em;
-    }
+    .card h2 { font-size: 16px; font-weight: 600; color: var(--ac-text); margin-bottom: 20px; letter-spacing: -0.01em; }
 
     /* ── Provider chips ── */
-    .provider-chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
+    .provider-chips { display: flex; flex-wrap: wrap; gap: 8px; }
     .provider-chip {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 16px;
-      border: 1px solid var(--ac-border);
-      border-radius: var(--ac-radius-full, 9999px);
-      font-size: 13px;
-      font-weight: 450;
-      cursor: pointer;
-      transition: all var(--ac-transition-fast);
-      background: var(--ac-bg-surface);
-      color: var(--ac-text-secondary);
-      box-shadow: var(--ac-shadow-xs);
+      display: flex; align-items: center; gap: 6px; padding: 8px 16px;
+      border: 1px solid var(--ac-border); border-radius: var(--ac-radius-full, 9999px);
+      font-size: 13px; font-weight: 450; cursor: pointer;
+      transition: all var(--ac-transition-fast); background: var(--ac-bg-surface);
+      color: var(--ac-text-secondary); box-shadow: var(--ac-shadow-xs);
     }
-    .provider-chip:hover {
-      border-color: var(--ac-primary);
-      color: var(--ac-primary);
-      box-shadow: var(--ac-shadow-sm);
-      transform: translateY(-0.5px);
-    }
-    .provider-chip.active {
-      border-color: var(--ac-primary);
-      background: var(--ac-primary-bg);
-      color: var(--ac-primary);
-      font-weight: 600;
-      box-shadow: 0 0 0 1px var(--ac-primary), var(--ac-shadow-xs);
-    }
-    .provider-chip.configured {
-      border-color: rgba(5, 150, 105, 0.3);
-    }
-    .provider-chip.configured.active {
-      border-color: var(--ac-primary);
-      background: var(--ac-primary-bg);
-      box-shadow: 0 0 0 1px var(--ac-primary), var(--ac-shadow-xs);
-    }
-    .provider-chip .chip-check {
-      color: var(--ac-success);
-      font-size: 13px;
-      font-weight: 700;
-    }
+    .provider-chip:hover { border-color: var(--ac-primary); color: var(--ac-primary); box-shadow: var(--ac-shadow-sm); transform: translateY(-0.5px); }
+    .provider-chip.active { border-color: var(--ac-primary); background: var(--ac-primary-bg); color: var(--ac-primary); font-weight: 600; box-shadow: 0 0 0 1px var(--ac-primary), var(--ac-shadow-xs); }
+    .provider-chip.configured { border-color: rgba(5, 150, 105, 0.3); }
+    .provider-chip.configured.active { border-color: var(--ac-primary); background: var(--ac-primary-bg); box-shadow: 0 0 0 1px var(--ac-primary), var(--ac-shadow-xs); }
+    .provider-chip .chip-check { color: var(--ac-success); font-size: 13px; font-weight: 700; }
 
     /* ── Configured banner ── */
     .configured-banner {
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      padding: 16px 20px;
-      background: var(--ac-success-bg, #ecfdf5);
-      border: 1px solid rgba(5, 150, 105, 0.15);
-      border-radius: var(--ac-radius-sm);
-      font-size: 14px;
-      color: #065f46;
-      margin-bottom: 16px;
+      display: flex; align-items: flex-start; gap: 12px; padding: 16px 20px;
+      background: var(--ac-success-bg, #ecfdf5); border: 1px solid rgba(5, 150, 105, 0.15);
+      border-radius: var(--ac-radius-sm); font-size: 14px; color: #065f46; margin-bottom: 16px;
     }
-    .configured-banner .check {
-      font-size: 18px;
-      margin-top: 1px;
-    }
-    .configured-banner .detail {
-      color: #047857;
-      font-size: 12px;
-      margin-top: 4px;
+    .configured-banner .check { font-size: 18px; margin-top: 1px; }
+    .configured-banner .detail { color: #047857; font-size: 12px; margin-top: 4px; font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace; letter-spacing: 0.02em; }
+
+    /* ── Key input ── */
+    .key-row { display: flex; gap: 8px; align-items: center; }
+    .key-input {
+      flex: 1; padding: 10px 14px; border: 1px solid var(--ac-border);
+      border-radius: var(--ac-radius-sm); font-size: 13px;
       font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
-      letter-spacing: 0.02em;
+      background: var(--ac-bg-surface); transition: all var(--ac-transition-fast);
     }
+    .key-input:focus { outline: none; border-color: var(--ac-primary); box-shadow: var(--ac-shadow-focus); }
+    .key-input::placeholder { color: var(--ac-text-tertiary, #cbd5e1); }
+    .icon-btn {
+      padding: 8px 12px; background: var(--ac-bg-surface); border: 1px solid var(--ac-border);
+      border-radius: var(--ac-radius-sm); font-size: 14px; cursor: pointer; line-height: 1;
+      transition: all var(--ac-transition-fast); box-shadow: var(--ac-shadow-xs);
+    }
+    .icon-btn:hover { background: var(--ac-bg-hover); box-shadow: var(--ac-shadow-sm); }
+
+    /* ── Buttons ── */
+    .btn-row { display: flex; gap: 10px; margin-top: 20px; align-items: center; }
+    .btn { padding: 9px 20px; border-radius: var(--ac-radius-sm); font-size: 13px; font-weight: 500; cursor: pointer; transition: all var(--ac-transition-fast); letter-spacing: 0.01em; }
+    .btn-primary { background: var(--ac-primary); color: #fff; border: none; box-shadow: var(--ac-shadow-xs); }
+    .btn-primary:hover { background: var(--ac-primary-dark); box-shadow: var(--ac-shadow-sm); transform: translateY(-0.5px); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    .btn-outline { background: var(--ac-bg-surface); border: 1px solid var(--ac-border); color: var(--ac-text-secondary); box-shadow: var(--ac-shadow-xs); }
+    .btn-outline:hover { background: var(--ac-bg-hover); border-color: var(--ac-border-strong); color: var(--ac-text); }
+    .btn-danger { background: transparent; border: 1px solid var(--ac-danger, #dc3545); color: var(--ac-danger, #dc3545); }
+    .btn-danger:hover { background: var(--ac-danger, #dc3545); color: #fff; }
+    .save-msg { font-size: 13px; color: var(--ac-success); margin-left: 8px; font-weight: 500; animation: fadeIn 0.3s ease; }
+
+    /* ── Empty state ── */
+    .empty-state { text-align: center; padding: 40px 20px; color: var(--ac-text-muted); font-size: 14px; }
+    .empty-state .icon { font-size: 36px; margin-bottom: 12px; opacity: 0.6; }
+
+    /* ── Model selector ── */
+    .model-row { display: flex; align-items: center; gap: 14px; }
+    .model-select {
+      flex: 1; padding: 10px 14px; border: 1px solid var(--ac-border);
+      border-radius: var(--ac-radius-sm); font-size: 13px; background: var(--ac-bg-surface);
+      cursor: pointer; transition: all var(--ac-transition-fast); box-shadow: var(--ac-shadow-xs);
+    }
+    .model-select:focus { outline: none; border-color: var(--ac-primary); box-shadow: var(--ac-shadow-focus); }
 
     /* ── Saved model display ── */
     .saved-model {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 16px 20px;
-      background: var(--ac-success-bg, #ecfdf5);
-      border: 1px solid rgba(5, 150, 105, 0.15);
-      border-radius: var(--ac-radius-sm);
-      font-size: 14px;
-      color: #065f46;
+      display: flex; align-items: center; gap: 12px; padding: 16px 20px;
+      background: var(--ac-success-bg, #ecfdf5); border: 1px solid rgba(5, 150, 105, 0.15);
+      border-radius: var(--ac-radius-sm); font-size: 14px; color: #065f46;
     }
     .saved-model code {
       font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
-      background: rgba(5, 150, 105, 0.1);
-      padding: 3px 10px;
-      border-radius: var(--ac-radius-xs, 6px);
-      font-size: 13px;
-      font-weight: 500;
-      letter-spacing: 0.01em;
+      background: rgba(5, 150, 105, 0.1); padding: 3px 10px;
+      border-radius: var(--ac-radius-xs, 6px); font-size: 13px; font-weight: 500; letter-spacing: 0.01em;
     }
-    .change-link {
-      font-size: 13px;
-      color: var(--ac-primary);
-      cursor: pointer;
-      margin-left: auto;
-      font-weight: 500;
-      transition: color var(--ac-transition-fast);
-    }
-    .change-link:hover {
-      color: var(--ac-primary-dark);
-    }
+    .change-link { font-size: 13px; color: var(--ac-primary); cursor: pointer; margin-left: auto; font-weight: 500; transition: color var(--ac-transition-fast); }
+    .change-link:hover { color: var(--ac-primary-dark); }
 
-    /* ── Key list ── */
-    .key-list {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
+    /* ── Per-provider model list ── */
+    .model-list { margin-top: 16px; }
+    .model-list-header { font-size: 13px; font-weight: 600; color: var(--ac-text-secondary); margin-bottom: 8px; }
+    .model-list-table {
+      width: 100%; border-collapse: collapse; font-size: 13px;
     }
-    .key-entry {
-      border: 1px solid var(--ac-border);
-      border-radius: var(--ac-radius-sm);
-      padding: 16px 20px;
-      background: var(--ac-bg);
-      transition: border-color var(--ac-transition-fast);
+    .model-list-table th {
+      text-align: left; padding: 8px 12px; font-weight: 500; color: var(--ac-text-muted);
+      border-bottom: 1px solid var(--ac-border); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;
     }
-    .key-entry:focus-within {
-      border-color: var(--ac-primary);
-      box-shadow: var(--ac-shadow-focus);
+    .model-list-table td {
+      padding: 8px 12px; border-bottom: 1px solid var(--ac-border-subtle); color: var(--ac-text-secondary);
     }
-    .key-entry.saved {
-      border-color: rgba(5, 150, 105, 0.3);
-      background: var(--ac-success-bg, #ecfdf5);
-    }
-    .key-entry-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 10px;
-    }
-    .key-label-input {
-      padding: 4px 8px;
-      border: 1px solid transparent;
-      border-radius: var(--ac-radius-xs, 6px);
-      font-size: 12px;
-      color: var(--ac-text-secondary);
-      background: transparent;
-      width: 160px;
-      transition: all var(--ac-transition-fast);
-    }
-    .key-label-input:hover {
-      border-color: var(--ac-border);
-      background: var(--ac-bg-surface);
-    }
-    .key-label-input:focus {
-      outline: none;
-      border-color: var(--ac-primary);
-      background: var(--ac-bg-surface);
-      box-shadow: var(--ac-shadow-focus);
-    }
-    .key-status {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      font-size: 11px;
-      color: var(--ac-text-muted);
-      font-weight: 500;
-    }
-    .key-status.connected {
-      color: var(--ac-success);
-    }
-    .key-row {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-    .key-input {
-      flex: 1;
-      padding: 10px 14px;
-      border: 1px solid var(--ac-border);
-      border-radius: var(--ac-radius-sm);
-      font-size: 13px;
-      font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
-      background: var(--ac-bg-surface);
-      transition: all var(--ac-transition-fast);
-    }
-    .key-input:focus {
-      outline: none;
-      border-color: var(--ac-primary);
-      box-shadow: var(--ac-shadow-focus);
-    }
-    .key-input::placeholder {
-      color: var(--ac-text-tertiary, #cbd5e1);
-    }
-    .icon-btn {
-      padding: 8px 12px;
-      background: var(--ac-bg-surface);
-      border: 1px solid var(--ac-border);
-      border-radius: var(--ac-radius-sm);
-      font-size: 14px;
-      cursor: pointer;
-      line-height: 1;
-      transition: all var(--ac-transition-fast);
-      box-shadow: var(--ac-shadow-xs);
-    }
-    .icon-btn:hover {
-      background: var(--ac-bg-hover);
-      box-shadow: var(--ac-shadow-sm);
-    }
-    .icon-btn.danger:hover {
-      background: var(--ac-error-bg, #fef2f2);
-      border-color: var(--ac-error);
-      color: var(--ac-error);
-    }
-
-    /* ── Buttons ── */
-    .btn-row {
-      display: flex;
-      gap: 10px;
-      margin-top: 20px;
-      align-items: center;
-    }
-    .btn {
-      padding: 9px 20px;
-      border-radius: var(--ac-radius-sm);
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all var(--ac-transition-fast);
-      letter-spacing: 0.01em;
-    }
-    .btn-primary {
-      background: var(--ac-primary);
-      color: #fff;
-      border: none;
-      box-shadow: var(--ac-shadow-xs);
-    }
-    .btn-primary:hover {
-      background: var(--ac-primary-dark);
-      box-shadow: var(--ac-shadow-sm);
-      transform: translateY(-0.5px);
-    }
-    .btn-primary:active {
-      transform: translateY(0);
-    }
-    .btn-outline {
-      background: var(--ac-bg-surface);
-      border: 1px solid var(--ac-border);
-      color: var(--ac-text-secondary);
-      box-shadow: var(--ac-shadow-xs);
-    }
-    .btn-outline:hover {
-      background: var(--ac-bg-hover);
-      border-color: var(--ac-border-strong);
-      color: var(--ac-text);
-    }
-    .btn-danger {
-      background: transparent;
-      border: 1px solid var(--ac-danger, #dc3545);
-      color: var(--ac-danger, #dc3545);
-    }
-    .btn-danger:hover {
-      background: var(--ac-danger, #dc3545);
-      color: #fff;
-    }
-
-    .save-msg {
-      font-size: 13px;
-      color: var(--ac-success);
-      margin-left: 8px;
-      font-weight: 500;
-      animation: fadeIn 0.3s ease;
-    }
-
-    /* ── Empty state ── */
-    .empty-state {
-      text-align: center;
-      padding: 40px 20px;
-      color: var(--ac-text-muted);
-      font-size: 14px;
-    }
-    .empty-state .icon {
-      font-size: 36px;
-      margin-bottom: 12px;
-      opacity: 0.6;
-    }
-
-    /* ── Model selector ── */
-    .model-row {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-    .model-select {
-      flex: 1;
-      padding: 10px 14px;
-      border: 1px solid var(--ac-border);
-      border-radius: var(--ac-radius-sm);
-      font-size: 13px;
-      background: var(--ac-bg-surface);
-      cursor: pointer;
-      transition: all var(--ac-transition-fast);
-      box-shadow: var(--ac-shadow-xs);
-    }
-    .model-select:focus {
-      outline: none;
-      border-color: var(--ac-primary);
-      box-shadow: var(--ac-shadow-focus);
-    }
+    .model-list-table tr:last-child td { border-bottom: none; }
+    .model-list-table .model-name { font-weight: 500; color: var(--ac-text); }
+    .expand-link { display: inline-block; margin-top: 8px; font-size: 13px; color: var(--ac-primary); cursor: pointer; font-weight: 500; }
+    .expand-link:hover { text-decoration: underline; }
 
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(-2px); }
@@ -481,223 +188,98 @@ export class ApiKeysView extends LitElement {
     }
   `;
 
+  /* ── Lifecycle ── */
+
   override connectedCallback() {
     super.connectedCallback();
-    // Wait for gateway to connect before loading keys
     gateway.addEventListener("state-change", () => {
-      if (gateway.state === "connected" && gateway.authenticated) {
-        this._loadExistingKeys();
-      }
+      if (gateway.state === "connected" && gateway.authenticated) this._loadState();
     });
-    // Try immediately if already connected
-    if (gateway.state === "connected" && gateway.authenticated) {
-      this._loadExistingKeys();
-    }
+    if (gateway.state === "connected" && gateway.authenticated) this._loadState();
   }
 
-  private _keysLoaded = false;
-
-  private async _loadExistingKeys() {
-    if (this._keysLoaded) return;
+  /** Load provider config + models from gateway. */
+  private async _loadState() {
+    if (this._loaded) return;
     try {
       const snapshot = await gateway.call<Record<string, unknown>>("config.get");
       if (!snapshot) return;
-      this._keysLoaded = true;
+      this._loaded = true;
 
-      // config.get returns ConfigFileSnapshot — the config is in .config
-      const cfg =
-        (snapshot.config as Record<string, unknown>) ??
-        (snapshot as Record<string, unknown>);
+      const cfg = (snapshot.config as Record<string, unknown>) ?? snapshot;
 
-      // ── LLM providers: detect from auth.profiles + models.providers ──
-      const auth = cfg.auth as Record<string, unknown> | undefined;
+      // ── Detect configured LLM providers from models.providers ──
       const models = cfg.models as Record<string, unknown> | undefined;
-
-      // Auth profiles tell us which providers are configured
-      if (auth?.profiles && typeof auth.profiles === "object") {
-        for (const [profileId, profile] of Object.entries(
-          auth.profiles as Record<string, Record<string, unknown>>,
-        )) {
-          if (!profile?.provider) continue;
-          const providerName = String(profile.provider).toLowerCase();
-          const mapped = this._mapProviderName(providerName);
-          if (mapped && !this._llmKeys.has(mapped)) {
-            // Verify an actual API key exists in models.providers
-            const provObj = (models?.providers as Record<string, Record<string, unknown>> | undefined)?.[providerName];
-            const realKey = provObj?.apiKey;
-            if (realKey && realKey !== "__OPENCLAW_REDACTED__") {
-              this._llmKeys.set(mapped, [
-                {
-                  id: genId(),
-                  label: profileId,
-                  value: "••••••••••••••••",
-                  visible: false,
-                  saved: true,
-                },
-              ]);
-            }
-          }
-        }
+      const providers = (models?.providers ?? {}) as Record<string, Record<string, unknown>>;
+      for (const [pid, pval] of Object.entries(providers)) {
+        if (pval?.apiKey) this._configuredLlm.add(pid);
       }
 
-      // Also check models.providers for any with apiKey set
-      if (models?.providers && typeof models.providers === "object") {
-        for (const [pid, pval] of Object.entries(
-          models.providers as Record<string, Record<string, unknown>>,
-        )) {
-          const providerName = pid.toLowerCase();
-          const mapped = this._mapProviderName(providerName);
-          if (mapped && !this._llmKeys.has(mapped)) {
-            // Provider with model config — may not have key but is known
-            const hasKey =
-              pval?.apiKey && pval.apiKey !== "__OPENCLAW_REDACTED__";
-            if (
-              pval?.apiKey === "__OPENCLAW_REDACTED__" ||
-              hasKey
-            ) {
-              this._llmKeys.set(mapped, [
-                {
-                  id: genId(),
-                  label: "Default",
-                  value: hasKey ? String(pval.apiKey) : "••••••••••••••••",
-                  visible: false,
-                  saved: true,
-                },
-              ]);
-            }
-          }
-        }
-      }
-
-      // ── Browser/search keys: detect from tools.web.search ──
+      // ── Detect configured browser/search provider ──
       const tools = cfg.tools as Record<string, unknown> | undefined;
       const web = tools?.web as Record<string, unknown> | undefined;
       const search = web?.search as Record<string, unknown> | undefined;
-
-      if (search) {
-        const searchProvider = (search.provider as string | undefined)?.toLowerCase();
-        if (searchProvider) {
-          // Brave uses top-level apiKey; other providers use a nested sub-object
-          let searchApiKey: string | undefined;
-          if (searchProvider === "brave") {
-            searchApiKey = search.apiKey as string | undefined;
-          } else {
-            const sub = search[searchProvider] as Record<string, unknown> | undefined;
-            searchApiKey = sub?.apiKey as string | undefined;
-          }
-
-          if (searchApiKey) {
-            const browserId = this._mapBrowserProvider(searchProvider);
-            if (browserId) {
-              const isRedacted = searchApiKey === "__OPENCLAW_REDACTED__";
-              this._browserKeys.set(browserId, [
-                {
-                  id: genId(),
-                  label: "Default",
-                  value: isRedacted ? "••••••••••••••••" : searchApiKey,
-                  visible: false,
-                  saved: true,
-                },
-              ]);
-              this._browserProvider = browserId;
-            }
-          }
+      if (search?.provider) {
+        const sp = String(search.provider);
+        const browserId = sp === "brave" ? "brave-search" : sp;
+        if (BROWSER_PROVIDERS.some((p) => p.id === browserId)) {
+          this._configuredBrowser.add(browserId);
         }
       }
 
-      // ── Build model list from gateway (OpenClaw handles model discovery) ──
-      // Build model list from OpenClaw — no local filtering
-      const configuredModels: ModelOption[] = [];
-      try {
-        const modelsResult = await gateway.call<Record<string, unknown>>("models.list");
-        const payload = (modelsResult as Record<string, unknown>)?.models
-          ?? (modelsResult as Record<string, unknown>)?.payload;
-        const allModels = Array.isArray(payload)
-          ? payload
-          : (payload as Record<string, unknown>)?.models;
-        if (Array.isArray(allModels)) {
-          for (const m of allModels) {
-            const mid = m.id as string;
-            const mprovider = m.provider as string;
-            const mname = (m.name as string) ?? mid;
-            if (!mid || !mprovider) continue;
-            configuredModels.push({
-              id: `${mprovider}/${mid}`,
-              name: mname,
-              provider: mprovider,
-              providerName: mprovider,
-            });
-          }
-        }
-      } catch {
-        // models.list not available — keep empty
-      }
-      this._configuredModels = configuredModels;
+      // ── Fetch model catalog and group by provider ──
+      await this._refreshModels();
 
-      // ── Read default model from config ──
+      // ── Read default model ──
       const agents = cfg.agents as Record<string, unknown> | undefined;
       const defaults = agents?.defaults as Record<string, unknown> | undefined;
       const modelCfg = defaults?.model;
       if (typeof modelCfg === "string" && modelCfg) {
         this._defaultModel = modelCfg;
-      } else if (modelCfg && typeof modelCfg === "object") {
-        const primary = (modelCfg as Record<string, unknown>).primary as string | undefined;
-        if (primary) this._defaultModel = primary;
-      }
-
-      // Auto-select first configured model only if a provider has keys
-      const hasAnyKey = Object.values(this._llmKeys).some((v) => v !== "");
-      if (!this._defaultModel && hasAnyKey && configuredModels.length > 0) {
-        this._defaultModel = configuredModels[0].id;
       }
       this._savedModel = this._defaultModel;
 
-      // Auto-select the first configured provider (not alphabetical default)
-      const firstLlm = this._sortedProviders(LLM_PROVIDERS, this._llmKeys)[0];
-      if (firstLlm) this._llmProvider = firstLlm.id;
-      const firstBrowser = this._sortedProviders(BROWSER_PROVIDERS, this._browserKeys)[0];
-      if (firstBrowser) this._browserProvider = firstBrowser.id;
+      // Auto-select first configured provider
+      this._selectedLlmProvider = this._sortedProviders(LLM_PROVIDERS, this._configuredLlm)[0]?.id ?? "";
+      this._selectedBrowserProvider = this._sortedProviders(BROWSER_PROVIDERS, this._configuredBrowser)[0]?.id ?? "";
 
       this.requestUpdate();
     } catch {
-      // Gateway not available — keys can still be entered manually
+      // Gateway not available
     }
   }
 
-  private _mapProviderName(name: string): string | undefined {
-    const map: Record<string, string> = {
-      anthropic: "anthropic",
-      openai: "openai",
-      google: "google",
-      "google-ai": "google",
-      moonshot: "moonshot",
-      kimi: "moonshot",
-      openrouter: "openrouter",
-      azure: "azure",
-      "azure-openai": "azure",
-      ollama: "ollama",
-      mistral: "mistral",
-      deepseek: "deepseek",
-    };
-    return map[name.toLowerCase()];
+  /** Fetch models from gateway and group by provider. */
+  private async _refreshModels() {
+    try {
+      const result = await gateway.call<Record<string, unknown>>("models.list");
+      const payload = result?.models ?? (result as Record<string, unknown>)?.payload;
+      const allModels = Array.isArray(payload)
+        ? payload
+        : (payload as Record<string, unknown>)?.models;
+      const grouped = new Map<string, ModelInfo[]>();
+      if (Array.isArray(allModels)) {
+        for (const m of allModels) {
+          const mid = m.id as string;
+          const mprovider = m.provider as string;
+          if (!mid || !mprovider) continue;
+          const list = grouped.get(mprovider) ?? [];
+          list.push({ id: `${mprovider}/${mid}`, name: (m.name as string) ?? mid, provider: mprovider });
+          grouped.set(mprovider, list);
+        }
+      }
+      this._modelsByProvider = grouped;
+    } catch {
+      // models.list not available
+    }
   }
 
-  private _mapBrowserProvider(name: string): string | undefined {
-    const map: Record<string, string> = {
-      brave: "brave-search",
-      "brave-search": "brave-search",
-      gemini: "gemini",
-      grok: "grok",
-      kimi: "kimi",
-      perplexity: "perplexity",
-    };
-    return map[name.toLowerCase()];
-  }
+  /* ── Render ── */
 
   override render() {
-    const llmCount = this._countActiveKeys(this._llmKeys);
-    const browserCount = this._countActiveKeys(this._browserKeys);
-    const needsSetup = this._keysLoaded && llmCount === 0;
+    const llmCount = this._configuredLlm.size;
+    const browserCount = this._configuredBrowser.size;
+    const needsSetup = this._loaded && llmCount === 0;
 
     return html`
       ${needsSetup ? html`
@@ -708,24 +290,18 @@ export class ApiKeysView extends LitElement {
             <span>${t("apikeys.gate.desc")}</span>
           </div>
         </div>
-      ` : ""}
+      ` : nothing}
       <h1>${t("apikeys.title")}</h1>
       <p class="subtitle">${t("apikeys.subtitle")}</p>
 
       <div class="tabs">
-        <div
-          class="tab ${this._tab === "llm" ? "active" : ""}"
-          @click=${() => (this._tab = "llm")}
-        >
+        <div class="tab ${this._tab === "llm" ? "active" : ""}" @click=${() => (this._tab = "llm")}>
           ${t("apikeys.tab.llm")}
-          ${llmCount > 0 ? html`<span class="count">${llmCount}</span>` : ""}
+          ${llmCount > 0 ? html`<span class="count">${llmCount}</span>` : nothing}
         </div>
-        <div
-          class="tab ${this._tab === "browser" ? "active" : ""}"
-          @click=${() => (this._tab = "browser")}
-        >
+        <div class="tab ${this._tab === "browser" ? "active" : ""}" @click=${() => (this._tab = "browser")}>
           ${t("apikeys.tab.browser")}
-          ${browserCount > 0 ? html`<span class="count">${browserCount}</span>` : ""}
+          ${browserCount > 0 ? html`<span class="count">${browserCount}</span>` : nothing}
         </div>
       </div>
 
@@ -733,102 +309,112 @@ export class ApiKeysView extends LitElement {
     `;
   }
 
-  /** Return providers sorted: configured first, then unconfigured. */
-  private _sortedProviders(list: ProviderDef[], keys: Map<string, KeyEntry[]>): ProviderDef[] {
-    const configured = list.filter((p) => keys.has(p.id));
-    const unconfigured = list.filter((p) => !keys.has(p.id));
-    return [...configured, ...unconfigured];
+  /** Sort providers: configured first. */
+  private _sortedProviders(list: ProviderDef[], configured: Set<string>): ProviderDef[] {
+    return [...list.filter((p) => configured.has(p.id)), ...list.filter((p) => !configured.has(p.id))];
   }
 
-  @state() private _changingModel = false;
-
   /* ── LLM tab ── */
+
   private _renderLlmTab() {
-    const sorted = this._sortedProviders(LLM_PROVIDERS, this._llmKeys);
-    const provider = sorted.find((p) => p.id === this._llmProvider) ?? sorted[0];
-    if (!this._llmProvider && provider) this._llmProvider = provider.id;
-    const keys = this._llmKeys.get(this._llmProvider) ?? [];
-    const allSaved = keys.length > 0 && keys.every((k) => k.saved);
-    const hasUnsaved = keys.some((k) => !k.saved);
-    const modelChanged = this._defaultModel !== this._savedModel;
+    const sorted = this._sortedProviders(LLM_PROVIDERS, this._configuredLlm);
+    const provider = sorted.find((p) => p.id === this._selectedLlmProvider) ?? sorted[0];
+    if (!this._selectedLlmProvider && provider) this._selectedLlmProvider = provider.id;
+    const isConfigured = this._configuredLlm.has(this._selectedLlmProvider);
+    const providerModels = this._modelsForConfigProvider(this._selectedLlmProvider);
 
     return html`
+      <!-- Provider selector -->
       <div class="card">
         <h2>${t("apikeys.provider")}</h2>
         <div class="provider-chips">
-          ${sorted.map(
-            (p) => html`
-              <div
-                class="provider-chip ${p.id === this._llmProvider ? "active" : ""} ${this._llmKeys.has(p.id) ? "configured" : ""}"
-                @click=${() => (this._llmProvider = p.id)}
-              >
-                ${this._llmKeys.has(p.id) ? html`<span class="chip-check">✓</span>` : ""}
-                ${p.name}
-              </div>
-            `,
-          )}
+          ${sorted.map((p) => html`
+            <div
+              class="provider-chip ${p.id === this._selectedLlmProvider ? "active" : ""} ${this._configuredLlm.has(p.id) ? "configured" : ""}"
+              @click=${() => { this._selectedLlmProvider = p.id; this._keyInput = ""; this._keyVisible = false; this._showAllModels = false; }}
+            >
+              ${this._configuredLlm.has(p.id) ? html`<span class="chip-check">✓</span>` : nothing}
+              ${p.name}
+            </div>
+          `)}
         </div>
       </div>
 
+      <!-- API Key card -->
       <div class="card">
-        <h2>${provider.name} — API Keys</h2>
+        <h2>${t("apikeys.apiKeys", provider.name)}</h2>
 
-        ${allSaved
-          ? html`
-              <div class="configured-banner">
-                <span class="check">✅</span>
-                <div>
-                  <div>${provider.name} is configured and ready to use.</div>
-                  <div class="detail">Key: ${keys[0]?.value?.startsWith("••") ? keys[0].value : "••••••••" + (keys[0]?.value?.slice(-4) ?? "")}</div>
-                </div>
-              </div>
-            `
-          : ""}
-
-        ${keys.length === 0
-          ? html`
-              <div class="empty-state">
-                <div class="icon">🔐</div>
-                <div>${t("apikeys.noKeys", provider.name)}</div>
-                <div style="margin-top: 4px">${t("apikeys.noKeys.hint")}</div>
-              </div>
-            `
-          : !allSaved
-            ? html`
-                <div class="key-list">
-                  ${keys.map((k) => this._renderKeyEntry(k, this._llmProvider, "llm"))}
-                </div>
-              `
-            : ""}
+        ${isConfigured ? html`
+          <div class="configured-banner">
+            <span class="check">✅</span>
+            <div>
+              <div>${t("apikeys.configured", provider.name)}</div>
+              <div class="detail">${t("apikeys.keyPrefix")}••••••••••••</div>
+            </div>
+          </div>
+        ` : html`
+          <div class="key-row">
+            <input
+              class="key-input"
+              type="${this._keyVisible ? "text" : "password"}"
+              placeholder=${provider.placeholder}
+              .value=${this._keyInput}
+              @input=${(e: Event) => { this._keyInput = (e.target as HTMLInputElement).value; }}
+            />
+            <button class="icon-btn" title="${this._keyVisible ? t("apikeys.hide") : t("apikeys.show")}"
+              @click=${() => { this._keyVisible = !this._keyVisible; }}>
+              ${this._keyVisible ? "🙈" : "👁"}
+            </button>
+          </div>
+        `}
 
         <div class="btn-row">
-          ${!allSaved
-            ? html`
-                <button
-                  class="btn btn-outline"
-                  @click=${() => this._addKey(this._llmProvider, "llm", provider.placeholder)}
-                >
-                  ${t("apikeys.addKey")}
-                </button>
-              `
-            : ""}
-          ${hasUnsaved
-            ? html`<button class="btn btn-primary" @click=${() => this._saveKeys("llm")}>${t("apikeys.save")}</button>`
-            : ""}
-          ${allSaved
-            ? html`<button class="btn btn-outline" @click=${() => this._addKey(this._llmProvider, "llm", provider.placeholder)}>${t("apikeys.addAnother")}</button>`
-            : ""}
-          ${allSaved
-            ? html`<button class="btn btn-danger" @click=${() => this._removeProvider(this._llmProvider, "llm")}>${t("apikeys.removeProvider")}</button>`
-            : ""}
-          ${this._saveMessage ? html`<span class="save-msg">${this._saveMessage}</span>` : ""}
+          ${!isConfigured && this._keyInput ? html`
+            <button class="btn btn-primary" ?disabled=${this._saving} @click=${() => this._saveLlmKey()}>
+              ${t("apikeys.save")}
+            </button>
+          ` : nothing}
+          ${isConfigured ? html`
+            <button class="btn btn-danger" @click=${() => this._removeLlmProvider()}>
+              ${t("apikeys.removeProvider")}
+            </button>
+          ` : nothing}
+          ${this._message ? html`<span class="save-msg">${this._message}</span>` : nothing}
         </div>
       </div>
+
+      <!-- Per-provider model list -->
+      ${isConfigured && providerModels.length > 0 ? html`
+        <div class="card">
+          <h2>${provider.name} — ${t("apikeys.models")} (${providerModels.length})</h2>
+          <table class="model-list-table">
+            <thead>
+              <tr>
+                <th>${t("apikeys.model")}</th>
+                <th>ID</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(this._showAllModels ? providerModels : providerModels.slice(0, 5)).map((m) => html`
+                <tr>
+                  <td class="model-name">${m.name}</td>
+                  <td>${m.id}</td>
+                </tr>
+              `)}
+            </tbody>
+          </table>
+          ${providerModels.length > 5 ? html`
+            <span class="expand-link" @click=${() => { this._showAllModels = !this._showAllModels; }}>
+              ${this._showAllModels ? `▲ Show top 5` : `▼ Show all ${providerModels.length} models`}
+            </span>
+          ` : nothing}
+        </div>
+      ` : nothing}
 
       <!-- Default model -->
       <div class="card">
         <h2>${t("apikeys.defaultModel")}</h2>
-        ${this._configuredModels.length > 0
+        ${this._allModels.length > 0
           ? this._savedModel && !this._changingModel
             ? html`
                 <div class="saved-model">
@@ -840,19 +426,16 @@ export class ApiKeysView extends LitElement {
             : html`
                 <div class="model-row">
                   <label style="font-size: 13px; color: var(--ac-text-secondary)">${t("apikeys.model")}</label>
-                  <select
-                    class="model-select"
-                    .value=${this._defaultModel}
-                    @change=${(e: Event) => (this._defaultModel = (e.target as HTMLSelectElement).value)}
-                  >
+                  <select class="model-select" .value=${this._defaultModel || this._allModels[0]?.id || ""}
+                    @change=${(e: Event) => (this._defaultModel = (e.target as HTMLSelectElement).value)}>
                     ${this._renderModelOptions()}
                   </select>
                 </div>
                 <div class="btn-row" style="margin-top: 12px">
-                  ${modelChanged || !this._savedModel
+                  ${(this._defaultModel || this._allModels[0]?.id) !== this._savedModel || !this._savedModel
                     ? html`<button class="btn btn-primary" @click=${() => this._saveDefaultModel()}>${t("apikeys.saveModel")}</button>`
                     : html`<button class="btn btn-outline" @click=${() => (this._changingModel = false)}>${t("apikeys.cancel")}</button>`}
-                  ${this._saveMessage ? html`<span class="save-msg">${this._saveMessage}</span>` : ""}
+                  ${this._message ? html`<span class="save-msg">${this._message}</span>` : nothing}
                 </div>
               `
           : html`
@@ -866,363 +449,291 @@ export class ApiKeysView extends LitElement {
   }
 
   /* ── Browser tab ── */
+
   private _renderBrowserTab() {
-    const sorted = this._sortedProviders(BROWSER_PROVIDERS, this._browserKeys);
-    const provider = sorted.find((p) => p.id === this._browserProvider) ?? sorted[0];
-    if (!this._browserProvider && provider) this._browserProvider = provider.id;
-    const keys = this._browserKeys.get(this._browserProvider) ?? [];
-    const allSaved = keys.length > 0 && keys.every((k) => k.saved);
-    const hasUnsaved = keys.some((k) => !k.saved);
+    const sorted = this._sortedProviders(BROWSER_PROVIDERS, this._configuredBrowser);
+    const provider = sorted.find((p) => p.id === this._selectedBrowserProvider) ?? sorted[0];
+    if (!this._selectedBrowserProvider && provider) this._selectedBrowserProvider = provider.id;
+    const isConfigured = this._configuredBrowser.has(this._selectedBrowserProvider);
+    const isKeyless = provider?.noKey === true;
 
     return html`
       <div class="card">
         <h2>${t("apikeys.searchProvider")}</h2>
         <div class="provider-chips">
-          ${sorted.map(
-            (p) => html`
-              <div
-                class="provider-chip ${p.id === this._browserProvider ? "active" : ""} ${this._browserKeys.has(p.id) ? "configured" : ""}"
-                @click=${() => (this._browserProvider = p.id)}
-              >
-                ${this._browserKeys.has(p.id) ? html`<span class="chip-check">✓</span>` : ""}
-                ${p.name}
-              </div>
-            `,
-          )}
+          ${sorted.map((p) => html`
+            <div
+              class="provider-chip ${p.id === this._selectedBrowserProvider ? "active" : ""} ${this._configuredBrowser.has(p.id) ? "configured" : ""}"
+              @click=${() => { this._selectedBrowserProvider = p.id; this._keyInput = ""; this._keyVisible = false; }}
+            >
+              ${this._configuredBrowser.has(p.id) ? html`<span class="chip-check">✓</span>` : nothing}
+              ${p.name}
+            </div>
+          `)}
         </div>
       </div>
 
       <div class="card">
-        <h2>${t("apikeys.apiKeys", provider.name)}</h2>
+        <h2>${isKeyless ? provider.name : t("apikeys.apiKeys", provider.name)}</h2>
 
-        ${allSaved
-          ? html`
-              <div class="configured-banner">
-                <span class="check">✅</span>
-                <div>
-                  <div>${t("apikeys.configured", provider.name)}</div>
-                  <div class="detail">${t("apikeys.keyPrefix")}${keys[0]?.value?.startsWith("••") ? keys[0].value : "••••••••" + (keys[0]?.value?.slice(-4) ?? "")}</div>
-                </div>
-              </div>
-            `
-          : ""}
-
-        ${keys.length === 0
-          ? html`
-              <div class="empty-state">
-                <div class="icon">🌐</div>
-                <div>${t("apikeys.noKeys", provider.name)}</div>
-                <div style="margin-top: 4px">${t("apikeys.noKeys.hint")}</div>
-              </div>
-            `
-          : !allSaved
-            ? html`
-                <div class="key-list">
-                  ${keys.map((k) => this._renderKeyEntry(k, this._browserProvider, "browser"))}
-                </div>
-              `
-            : ""}
+        ${isConfigured ? html`
+          <div class="configured-banner">
+            <span class="check">✅</span>
+            <div>
+              <div>${t("apikeys.configured", provider.name)}</div>
+              ${isKeyless ? nothing : html`<div class="detail">${t("apikeys.keyPrefix")}••••••••••••</div>`}
+            </div>
+          </div>
+        ` : isKeyless ? html`
+          <p class="detail">${t("apikeys.noKeyNeeded", provider.name)}</p>
+        ` : html`
+          <div class="key-row">
+            <input
+              class="key-input"
+              type="${this._keyVisible ? "text" : "password"}"
+              placeholder=${provider.placeholder}
+              .value=${this._keyInput}
+              @input=${(e: Event) => { this._keyInput = (e.target as HTMLInputElement).value; }}
+            />
+            <button class="icon-btn" title="${this._keyVisible ? t("apikeys.hide") : t("apikeys.show")}"
+              @click=${() => { this._keyVisible = !this._keyVisible; }}>
+              ${this._keyVisible ? "🙈" : "👁"}
+            </button>
+          </div>
+        `}
 
         <div class="btn-row">
-          ${!allSaved
-            ? html`
-                <button
-                  class="btn btn-outline"
-                  @click=${() => this._addKey(this._browserProvider, "browser", provider.placeholder)}
-                >
-                  ${t("apikeys.addKey")}
-                </button>
-              `
-            : ""}
-          ${hasUnsaved
-            ? html`<button class="btn btn-primary" @click=${() => this._saveKeys("browser")}>${t("apikeys.save")}</button>`
-            : ""}
-          ${allSaved
-            ? html`<button class="btn btn-outline" @click=${() => this._addKey(this._browserProvider, "browser", provider.placeholder)}>${t("apikeys.addAnother")}</button>`
-            : ""}
-          ${allSaved
-            ? html`<button class="btn btn-danger" @click=${() => this._removeProvider(this._browserProvider, "browser")}>${t("apikeys.removeProvider")}</button>`
-            : ""}
-          ${this._saveMessage ? html`<span class="save-msg">${this._saveMessage}</span>` : ""}
+          ${!isConfigured && (this._keyInput || isKeyless) ? html`
+            <button class="btn btn-primary" ?disabled=${this._saving} @click=${() => this._saveBrowserKey()}>
+              ${isKeyless ? t("apikeys.enable") : t("apikeys.save")}
+            </button>
+          ` : nothing}
+          ${isConfigured ? html`
+            <button class="btn btn-danger" @click=${() => this._removeBrowserProvider()}>
+              ${t("apikeys.removeProvider")}
+            </button>
+          ` : nothing}
+          ${this._message ? html`<span class="save-msg">${this._message}</span>` : nothing}
         </div>
       </div>
     `;
   }
 
-  /* ── Shared key entry card ── */
-  private _renderKeyEntry(
-    entry: KeyEntry,
-    providerId: string,
-    category: "llm" | "browser",
-  ) {
-    return html`
-      <div class="key-entry ${entry.saved ? "saved" : ""}">
-        <div class="key-entry-header">
-          <input
-            class="key-label-input"
-            type="text"
-            placeholder=${t("apikeys.label")}
-            .value=${entry.label}
-            @input=${(e: Event) => {
-              entry.label = (e.target as HTMLInputElement).value;
-              this.requestUpdate();
-            }}
-          />
-          <span class="key-status ${entry.saved ? "connected" : ""}">
-            ${entry.saved ? t("apikeys.saved") : t("apikeys.unsaved")}
-          </span>
-        </div>
-        <div class="key-row">
-          <input
-            class="key-input"
-            type="${entry.visible ? "text" : "password"}"
-            placeholder=${this._getPlaceholder(providerId, category)}
-            .value=${entry.value}
-            @input=${(e: Event) => {
-              entry.value = (e.target as HTMLInputElement).value;
-              entry.saved = false;
-              this.requestUpdate();
-            }}
-          />
-          <button
-            class="icon-btn"
-            title="${entry.visible ? t("apikeys.hide") : t("apikeys.show")}"
-            @click=${() => {
-              entry.visible = !entry.visible;
-              this.requestUpdate();
-            }}
-          >
-            ${entry.visible ? "🙈" : "👁"}
-          </button>
-          <button
-            class="icon-btn danger"
-            title=${t("apikeys.remove")}
-            @click=${() => this._removeKey(providerId, category, entry.id)}
-          >
-            ✕
-          </button>
-        </div>
-      </div>
-    `;
-  }
+  /* ── Model helpers ── */
 
-  /* ── Helpers ── */
-  private _getPlaceholder(providerId: string, category: "llm" | "browser"): string {
-    const list = category === "llm" ? LLM_PROVIDERS : BROWSER_PROVIDERS;
-    return list.find((p) => p.id === providerId)?.placeholder ?? "...";
-  }
-
-  private _addKey(providerId: string, category: "llm" | "browser", _placeholder: string) {
-    const map = category === "llm" ? this._llmKeys : this._browserKeys;
-    const existing = map.get(providerId) ?? [];
-    existing.push({
-      id: genId(),
-      label: existing.length === 0 ? t("apikeys.defaultLabel") : t("apikeys.keyLabel", existing.length + 1),
-      value: "",
-      visible: true,
-      saved: false,
-    });
-    map.set(providerId, existing);
-    this.requestUpdate();
-  }
-
-  private _removeKey(providerId: string, category: "llm" | "browser", keyId: string) {
-    const map = category === "llm" ? this._llmKeys : this._browserKeys;
-    const existing = map.get(providerId);
-    if (!existing) return;
-    const filtered = existing.filter((k) => k.id !== keyId);
-    if (filtered.length === 0) {
-      map.delete(providerId);
-    } else {
-      map.set(providerId, filtered);
+  /** Get all models for a config provider ID by checking all matching catalog providers. */
+  private _modelsForConfigProvider(configId: string): ModelInfo[] {
+    const result: ModelInfo[] = [];
+    for (const [catalogProvider, models] of this._modelsByProvider) {
+      const mapped = CATALOG_TO_CONFIG_PROVIDER[catalogProvider] ?? catalogProvider;
+      if (mapped === configId) result.push(...models);
     }
-    this.requestUpdate();
+    return result;
   }
 
-  private async _removeProvider(providerId: string, category: "llm" | "browser") {
-    const providerDef = (category === "llm" ? LLM_PROVIDERS : BROWSER_PROVIDERS).find(
-      (p) => p.id === providerId,
-    );
-    const name = providerDef?.name ?? providerId;
+  /** Flat list of models from configured providers only. */
+  private get _allModels(): ModelInfo[] {
+    const result: ModelInfo[] = [];
+    for (const [catalogProvider, models] of this._modelsByProvider) {
+      const configId = CATALOG_TO_CONFIG_PROVIDER[catalogProvider] ?? catalogProvider;
+      if (this._configuredLlm.has(configId)) result.push(...models);
+    }
+    return result;
+  }
+
+  /** Render <optgroup>-grouped model options for default model selector. */
+  private _renderModelOptions() {
+    if (this._configuredLlm.size === 0) return nothing;
+    // Filter to catalog providers that map to a configured config provider
+    const entries = Array.from(this._modelsByProvider.entries())
+      .filter(([catalogProvider]) => {
+        const configId = CATALOG_TO_CONFIG_PROVIDER[catalogProvider] ?? catalogProvider;
+        return this._configuredLlm.has(configId);
+      });
+    if (entries.length === 0) return nothing;
+    return entries.map(([provider, models]) => {
+      const configId = CATALOG_TO_CONFIG_PROVIDER[provider] ?? provider;
+      const def = LLM_PROVIDERS.find((p) => p.id === configId);
+      const label = def?.name ?? provider;
+      return html`
+        <optgroup label=${label}>
+          ${models.map((m) => html`
+            <option value=${m.id} ?selected=${m.id === this._defaultModel}>${m.name}</option>
+          `)}
+        </optgroup>
+      `;
+    });
+  }
+
+  /* ── Save / Remove actions ── */
+
+  private _flash(msg: string, duration = 3000) {
+    this._message = msg;
+    this.requestUpdate();
+    setTimeout(() => { this._message = ""; this.requestUpdate(); }, duration);
+  }
+
+  /** Save an LLM provider's API key. */
+  private async _saveLlmKey() {
+    const providerId = this._selectedLlmProvider;
+    const key = this._keyInput.trim();
+    if (!key) return;
+
+    this._saving = true;
+    try {
+      await updateConfig((cfg) => {
+        const models = (cfg.models ?? {}) as Record<string, unknown>;
+        const providers = (models.providers ?? {}) as Record<string, Record<string, unknown>>;
+        const existing = providers[providerId] ?? {};
+        existing.apiKey = key;
+        providers[providerId] = existing;
+        models.providers = providers;
+        cfg.models = models;
+        return cfg;
+      });
+
+      this._configuredLlm = new Set([...this._configuredLlm, providerId]);
+      this._keyInput = "";
+      this._keyVisible = false;
+      this._flash(t("apikeys.savedKeys"));
+
+      // Refresh models — new provider may now return models
+      await this._refreshModels();
+      window.dispatchEvent(new CustomEvent("keys-saved"));
+    } catch {
+      this._flash(t("apikeys.saveFailed"), 4000);
+    } finally {
+      this._saving = false;
+    }
+  }
+
+  /** Remove an LLM provider's key from config. */
+  private async _removeLlmProvider() {
+    const providerId = this._selectedLlmProvider;
+    const def = LLM_PROVIDERS.find((p) => p.id === providerId);
+    const name = def?.name ?? providerId;
     if (!confirm(t("apikeys.removeProvider.confirm", name))) return;
 
     try {
       await updateConfig((cfg) => {
-        if (category === "llm") {
-          const providers = (cfg.models as Record<string, unknown>)?.providers as
-            | Record<string, unknown>
-            | undefined;
-          if (providers) delete providers[providerId];
-          // Also clean auth.profiles that reference this provider
-          const profiles = (cfg.auth as Record<string, unknown>)?.profiles as
-            | Record<string, unknown>
-            | undefined;
-          if (profiles) {
-            for (const [key, val] of Object.entries(profiles)) {
-              if ((val as Record<string, unknown>)?.provider === providerId) {
-                delete profiles[key];
-              }
-            }
+        const providers = (cfg.models as Record<string, unknown>)?.providers as Record<string, unknown> | undefined;
+        if (providers) delete providers[providerId];
+
+        // Clean auth profiles referencing this provider
+        const profiles = (cfg.auth as Record<string, unknown>)?.profiles as Record<string, Record<string, unknown>> | undefined;
+        if (profiles) {
+          for (const [key, val] of Object.entries(profiles)) {
+            if (val?.provider === providerId) delete profiles[key];
           }
-        } else {
-          const search = ((cfg.tools as Record<string, unknown>)?.web as Record<string, unknown>)
-            ?.search as Record<string, unknown> | undefined;
-          if (search) {
-            const providerName = providerId === "brave-search" ? "brave" : providerId;
-            if (search.provider === providerName) {
-              delete search.provider;
-              delete search.enabled;
-              delete search.apiKey;
-              delete search[providerName];
-            }
+        }
+
+        // Clear default model if it used this provider
+        const defaultModel = (cfg.agents as Record<string, unknown>)?.defaults as Record<string, unknown> | undefined;
+        if (typeof defaultModel?.model === "string" && (defaultModel.model as string).startsWith(`${providerId}/`)) {
+          delete defaultModel.model;
+          this._defaultModel = "";
+          this._savedModel = "";
+        }
+
+        return cfg;
+      });
+
+      const next = new Set(this._configuredLlm);
+      next.delete(providerId);
+      this._configuredLlm = next;
+      this._flash(t("apikeys.removedProvider", name));
+
+      await this._refreshModels();
+      window.dispatchEvent(new CustomEvent("keys-saved"));
+    } catch {
+      this._flash(t("apikeys.saveFailed"), 4000);
+    }
+  }
+
+  /** Save a browser/search provider's API key (or enable a keyless provider). */
+  private async _saveBrowserKey() {
+    const providerId = this._selectedBrowserProvider;
+    const def = BROWSER_PROVIDERS.find((p) => p.id === providerId);
+    const isKeyless = def?.noKey === true;
+    const key = this._keyInput.trim();
+    if (!isKeyless && !key) return;
+
+    this._saving = true;
+    try {
+      await updateConfig((cfg) => {
+        const tools = (cfg.tools ?? {}) as Record<string, unknown>;
+        const web = (tools.web ?? {}) as Record<string, unknown>;
+        const search = (web.search ?? {}) as Record<string, unknown>;
+        const providerName = providerId === "brave-search" ? "brave" : providerId;
+        search.provider = providerName;
+        search.enabled = true;
+        if (!isKeyless) {
+          if (providerName === "brave") {
+            search.apiKey = key;
+          } else {
+            search[providerName] = { apiKey: key };
+          }
+        }
+        web.search = search;
+        tools.web = web;
+        cfg.tools = tools;
+        return cfg;
+      });
+
+      this._configuredBrowser = new Set([...this._configuredBrowser, providerId]);
+      this._keyInput = "";
+      this._keyVisible = false;
+      this._flash(t("apikeys.savedKeys"));
+    } catch {
+      this._flash(t("apikeys.saveFailed"), 4000);
+    } finally {
+      this._saving = false;
+    }
+  }
+
+  /** Remove a browser/search provider from config. */
+  private async _removeBrowserProvider() {
+    const providerId = this._selectedBrowserProvider;
+    const def = BROWSER_PROVIDERS.find((p) => p.id === providerId);
+    const name = def?.name ?? providerId;
+    if (!confirm(t("apikeys.removeProvider.confirm", name))) return;
+
+    try {
+      await updateConfig((cfg) => {
+        const search = ((cfg.tools as Record<string, unknown>)?.web as Record<string, unknown>)
+          ?.search as Record<string, unknown> | undefined;
+        if (search) {
+          const providerName = providerId === "brave-search" ? "brave" : providerId;
+          if (search.provider === providerName) {
+            delete search.provider;
+            delete search.enabled;
+            delete search.apiKey;
+            delete search[providerName];
           }
         }
         return cfg;
       });
 
-      const map = category === "llm" ? this._llmKeys : this._browserKeys;
-      map.delete(providerId);
-      this._saveMessage = t("apikeys.removedProvider", name);
-      this.requestUpdate();
-      setTimeout(() => {
-        this._saveMessage = "";
-        this.requestUpdate();
-      }, 3000);
-
-      if (category === "llm") {
-        window.dispatchEvent(new CustomEvent("keys-saved"));
-      }
+      const next = new Set(this._configuredBrowser);
+      next.delete(providerId);
+      this._configuredBrowser = next;
+      this._flash(t("apikeys.removedProvider", name));
     } catch {
-      this._saveMessage = t("apikeys.saveFailed");
-      this.requestUpdate();
-      setTimeout(() => {
-        this._saveMessage = "";
-        this.requestUpdate();
-      }, 4000);
+      this._flash(t("apikeys.saveFailed"), 4000);
     }
   }
 
-  private _countActiveKeys(map: Map<string, KeyEntry[]>): number {
-    let count = 0;
-    for (const entries of map.values()) {
-      count += entries.filter((k) => k.value.length > 0).length;
-    }
-    return count;
-  }
-
-  private _renderModelOptions() {
-    // Only show models from providers that have a configured API key
-    const activeProviders = new Set<string>();
-    for (const [providerId, entries] of this._llmKeys.entries()) {
-      if (entries.some((k) => k.value.length > 0)) activeProviders.add(providerId);
-    }
-    const filteredModels = activeProviders.size > 0
-      ? this._configuredModels.filter((m) => activeProviders.has(m.provider))
-      : this._configuredModels;
-
-    // Group models by provider
-    const groups = new Map<string, ModelOption[]>();
-    for (const m of filteredModels) {
-      const list = groups.get(m.providerName) ?? [];
-      list.push(m);
-      groups.set(m.providerName, list);
-    }
-    return Array.from(groups.entries()).map(
-      ([providerName, models]) => html`
-        <optgroup label=${providerName}>
-          ${models.map(
-            (m) => html`<option value=${m.id} ?selected=${m.id === this._defaultModel}>${m.name}</option>`,
-          )}
-        </optgroup>
-      `,
-    );
-  }
-
+  /** Save the default model selection. */
   private async _saveDefaultModel() {
     try {
-      await setConfigValue(["agents", "defaults", "model"], this._defaultModel);
-      this._savedModel = this._defaultModel;
+      const model = this._defaultModel || this._allModels[0]?.id || "";
+      await setConfigValue(["agents", "defaults", "model"], model);
+      this._defaultModel = model;
+      this._savedModel = model;
       this._changingModel = false;
-      this._saveMessage = t("apikeys.savedModel");
-      setTimeout(() => (this._saveMessage = ""), 3000);
+      this._flash(t("apikeys.savedModel"));
     } catch (err) {
-      this._saveMessage = `✗ ${err instanceof Error ? err.message : err}`;
-    }
-  }
-
-  private async _saveKeys(category: "llm" | "browser") {
-    const map = category === "llm" ? this._llmKeys : this._browserKeys;
-
-    try {
-      // Save via read-modify-write (same pattern as OpenClaw's config.set).
-      if (category === "llm") {
-        await updateConfig((cfg) => {
-          const models = (cfg.models ?? {}) as Record<string, unknown>;
-          const providers = (models.providers ?? {}) as Record<string, unknown>;
-          for (const [providerId, keys] of map.entries()) {
-            const primaryKey = keys[0]?.value;
-            if (!primaryKey || primaryKey === "••••••••••••••••") continue;
-            const def = LLM_PROVIDERS.find((p) => p.id === providerId);
-            const existing = (providers[providerId] ?? {}) as Record<string, unknown>;
-            existing.apiKey = primaryKey;
-            if (!existing.models) existing.models = [];
-            if (def?.baseUrl && !existing.baseUrl) existing.baseUrl = def.baseUrl;
-            providers[providerId] = existing;
-          }
-          models.providers = providers;
-          cfg.models = models;
-          return cfg;
-        });
-      } else {
-        await updateConfig((cfg) => {
-          const tools = (cfg.tools ?? {}) as Record<string, unknown>;
-          const web = (tools.web ?? {}) as Record<string, unknown>;
-          const search = (web.search ?? {}) as Record<string, unknown>;
-          for (const [providerId, keys] of map.entries()) {
-            const primaryKey = keys[0]?.value;
-            if (!primaryKey || primaryKey === "••••••••••••••••") continue;
-            const providerName = providerId === "brave-search" ? "brave" : providerId;
-            search.provider = providerName;
-            search.enabled = true;
-            if (providerName === "brave") {
-              search.apiKey = primaryKey;
-            } else {
-              search[providerName] = { apiKey: primaryKey };
-            }
-            break;
-          }
-          web.search = search;
-          tools.web = web;
-          cfg.tools = tools;
-          return cfg;
-        });
-      }
-
-      // Mark saved
-      for (const keys of map.values()) {
-        for (const k of keys) {
-          if (k.value.length > 0) k.saved = true;
-        }
-      }
-
-      this._saveMessage = t("apikeys.savedKeys");
-      this.requestUpdate();
-      setTimeout(() => {
-        this._saveMessage = "";
-        this.requestUpdate();
-      }, 3000);
-
-      // Notify the app shell that keys have been saved (lifts the API-key gate)
-      if (category === "llm") {
-        window.dispatchEvent(new CustomEvent("keys-saved"));
-      }
-    } catch {
-      this._saveMessage = t("apikeys.saveFailed");
-      this.requestUpdate();
-      setTimeout(() => {
-        this._saveMessage = "";
-        this.requestUpdate();
-      }, 4000);
+      this._flash(`✗ ${err instanceof Error ? err.message : err}`, 4000);
     }
   }
 }
