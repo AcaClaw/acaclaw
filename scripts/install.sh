@@ -69,22 +69,32 @@ _resolve_repo_root() {
 		return
 	fi
 
+	# Detect if we're already inside a local clone/checkout
+	local _script_path
+	_script_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+	if [[ -f "${_script_path}/install.sh" && -f "${_script_path}/../package.json" ]]; then
+		REPO_ROOT="$(cd "${_script_path}/.." && pwd)"
+		log "Using local source at ${REPO_ROOT}"
+		return
+	fi
+
 	# Clone the latest release from GitHub
 	if ! command -v git &>/dev/null; then
 		error "git is required for remote install. Install git and try again."
 		error "Or clone manually: git clone https://github.com/${ACACLAW_GITHUB_REPO}.git && bash acaclaw/scripts/install.sh"
 		exit 1
 	fi
-	log "Downloading AcaClaw from GitHub..."
 	ACACLAW_CLONE_DIR="$(mktemp -d)"
+	log "Downloading AcaClaw from GitHub → ${ACACLAW_CLONE_DIR}"
 	# Try HTTPS first (works for most users), then SSH fallback (for corporate proxies / SSH-configured users)
-	if GIT_TERMINAL_PROMPT=0 git clone --depth 1 "https://github.com/${ACACLAW_GITHUB_REPO}.git" "$ACACLAW_CLONE_DIR" 2>/dev/null; then
+	if GIT_TERMINAL_PROMPT=0 git clone --depth 1 --progress "https://github.com/${ACACLAW_GITHUB_REPO}.git" "$ACACLAW_CLONE_DIR"; then
 		REPO_ROOT="$ACACLAW_CLONE_DIR"
 		return
 	fi
 	rm -rf "$ACACLAW_CLONE_DIR"
 	ACACLAW_CLONE_DIR="$(mktemp -d)"
-	if git clone --depth 1 "git@github.com:${ACACLAW_GITHUB_REPO}.git" "$ACACLAW_CLONE_DIR" 2>/dev/null; then
+	log "HTTPS failed, trying SSH → ${ACACLAW_CLONE_DIR}"
+	if git clone --depth 1 --progress "git@github.com:${ACACLAW_GITHUB_REPO}.git" "$ACACLAW_CLONE_DIR"; then
 		REPO_ROOT="$ACACLAW_CLONE_DIR"
 		return
 	fi
@@ -460,19 +470,27 @@ _ui_needs_rebuild() {
 	[[ -n "$newest_src" ]]
 }
 
+# Deploy helper: clean stale hashed assets before copying new build.
+# Without this, old chunk files accumulate and cached index.html may
+# reference missing hashes after a rebuild, causing blank pages on refresh.
+_deploy_ui() {
+	mkdir -p "${ACAC_UI_DEST}"
+	# Remove old hashed assets (js/css chunks) but keep non-asset files
+	rm -rf "${ACAC_UI_DEST}/assets" 2>/dev/null || true
+	cp -r "${ACAC_UI_SRC}/dist/"* "${ACAC_UI_DEST}/"
+}
+
 if _ui_needs_rebuild && [[ -d "${ACAC_UI_SRC}/src" ]] && check_command npm; then
 	log "Building AcaClaw UI (source is newer than dist)..."
 	(cd "${ACAC_UI_SRC}" && npm install --no-audit --no-fund 2>/dev/null && npm run build 2>/dev/null)
 	if [[ -d "${ACAC_UI_SRC}/dist" ]]; then
-		mkdir -p "${ACAC_UI_DEST}"
-		cp -r "${ACAC_UI_SRC}/dist/"* "${ACAC_UI_DEST}/"
+		_deploy_ui
 		log "@acaclaw/ui built and installed ✓"
 	else
 		warn "@acaclaw/ui: build failed"
 	fi
 elif [[ -d "${ACAC_UI_SRC}/dist" ]]; then
-	mkdir -p "${ACAC_UI_DEST}"
-	cp -r "${ACAC_UI_SRC}/dist/"* "${ACAC_UI_DEST}/"
+	_deploy_ui
 	log "@acaclaw/ui installed ✓"
 else
 	warn "@acaclaw/ui: dist not found and no source to build"
@@ -610,7 +628,11 @@ elif user_path:
 with open('${ACACLAW_CONFIG}', 'w') as f:
     json.dump(cfg, f, indent=2)
     f.write('\n')
-" 2>/dev/null
+"
+	if [[ $? -ne 0 ]]; then
+		error "Failed to create config file"
+		exit 1
+	fi
 
 	log "Config updated — user settings preserved ✓"
 else
@@ -633,7 +655,11 @@ if miniforge:
 with open('${ACACLAW_CONFIG}', 'w') as f:
     json.dump(cfg, f, indent=2)
     f.write('\n')
-" 2>/dev/null
+"
+	if [[ $? -ne 0 ]]; then
+		error "Failed to create config file"
+		exit 1
+	fi
 
 	log "AcaClaw standalone config created ✓"
 fi
@@ -652,7 +678,12 @@ cui.setdefault('dangerouslyDisableDeviceAuth', True)
 with open('${ACACLAW_CONFIG}', 'w') as f:
     json.dump(cfg, f, indent=2)
     f.write('\n')
-" 2>/dev/null
+"
+
+if [[ ! -f "${ACACLAW_CONFIG}" ]]; then
+	error "Config file was not created at ${ACACLAW_CONFIG}"
+	exit 1
+fi
 
 log "Config location: ${ACACLAW_CONFIG}"
 log "OpenClaw's own config: untouched ✓"
@@ -807,6 +838,29 @@ header "Opening Setup Wizard"
 
 log "Starting OpenClaw gateway..."
 if check_command openclaw; then
+	if [[ ! -f "${ACACLAW_CONFIG}" ]]; then
+		error "Cannot start gateway — config file missing at ${ACACLAW_CONFIG}"
+		error "Run the installer again or create the config manually."
+		exit 1
+	fi
+
+	# Check if gateway is already running on port 2090
+	_existing_pid=""
+	if command -v lsof &>/dev/null; then
+		_existing_pid="$(lsof -ti :2090 2>/dev/null | head -1)" || true
+	elif command -v ss &>/dev/null; then
+		_existing_pid="$(ss -tlnp sport = :2090 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1)" || true
+	fi
+
+	if [[ -n "$_existing_pid" ]] && kill -0 "$_existing_pid" 2>/dev/null; then
+		log "Gateway already running (PID $_existing_pid) — restarting with fresh config..."
+		kill "$_existing_pid" 2>/dev/null || true
+		sleep 1
+		# Ensure it's gone
+		kill -0 "$_existing_pid" 2>/dev/null && kill -9 "$_existing_pid" 2>/dev/null || true
+		sleep 0.5
+	fi
+
 	# Start gateway for AcaClaw
 	openclaw gateway run --bind loopback --port 2090 &>/dev/null &
 	GATEWAY_PID=$!
