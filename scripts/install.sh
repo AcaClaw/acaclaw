@@ -64,38 +64,62 @@ esac
 # When piped via curl: clone the repo first, then use the clone as root.
 
 _resolve_repo_root() {
-	# Only use a local source when REPO_ROOT is explicitly exported (dev/CI).
-	# Running `bash install.sh` from a checkout should still fetch the latest
-	# release from GitHub so the installer always behaves like a real install.
+	# Explicit REPO_ROOT override (dev/CI)
 	if [[ -n "${REPO_ROOT:-}" && -f "${REPO_ROOT}/scripts/install.sh" ]]; then
 		log "Using local source at ${REPO_ROOT} (REPO_ROOT set)"
 		return
 	fi
 
-	# Clone the latest release from GitHub
+	# Detect local checkout (used as final fallback if network fails)
+	local _local_root=""
+	local _script_path
+	_script_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || true
+	if [[ -n "$_script_path" && -f "${_script_path}/install.sh" && -f "${_script_path}/../package.json" ]]; then
+		_local_root="$(cd "${_script_path}/.." && pwd)"
+	fi
+
+	# Clone from GitHub (requires git)
 	if ! command -v git &>/dev/null; then
+		if [[ -n "$_local_root" ]]; then
+			warn "git not found — using local checkout at ${_local_root}"
+			REPO_ROOT="$_local_root"
+			return
+		fi
 		error "git is required for remote install. Install git and try again."
-		error "Or clone manually: git clone https://github.com/${ACACLAW_GITHUB_REPO}.git && bash acaclaw/scripts/install.sh"
 		exit 1
 	fi
+
+	# Try HTTPS first (30s timeout), then SSH (30s timeout).
+	# HTTPS can hang behind some firewalls, so timeout keeps the flow moving.
+	local _clone_timeout=30
 	ACACLAW_CLONE_DIR="$(mktemp -d)"
-	log "Downloading AcaClaw from GitHub → ${ACACLAW_CLONE_DIR}"
-	# Try HTTPS first (works for most users), then SSH fallback (for corporate proxies / SSH-configured users)
-	if GIT_TERMINAL_PROMPT=0 git clone --depth 1 --progress "https://github.com/${ACACLAW_GITHUB_REPO}.git" "$ACACLAW_CLONE_DIR"; then
+	log "Downloading AcaClaw from GitHub..."
+	if timeout "$_clone_timeout" git clone --depth 1 --progress \
+		"https://github.com/${ACACLAW_GITHUB_REPO}.git" "$ACACLAW_CLONE_DIR" 2>&1; then
 		REPO_ROOT="$ACACLAW_CLONE_DIR"
 		return
 	fi
 	rm -rf "$ACACLAW_CLONE_DIR"
 	ACACLAW_CLONE_DIR="$(mktemp -d)"
-	log "HTTPS failed, trying SSH → ${ACACLAW_CLONE_DIR}"
-	if git clone --depth 1 --progress "git@github.com:${ACACLAW_GITHUB_REPO}.git" "$ACACLAW_CLONE_DIR"; then
+	log "HTTPS failed or timed out, trying SSH..."
+	if timeout "$_clone_timeout" git clone --depth 1 --progress \
+		"git@github.com:${ACACLAW_GITHUB_REPO}.git" "$ACACLAW_CLONE_DIR" 2>&1; then
 		REPO_ROOT="$ACACLAW_CLONE_DIR"
 		return
 	fi
+	rm -rf "$ACACLAW_CLONE_DIR"
+	ACACLAW_CLONE_DIR=""
 
-	error "Could not find AcaClaw source files."
-	error "Install via: npm install -g github:acaclaw/acaclaw && acaclaw-install"
-	error "Or clone manually: git clone https://github.com/${ACACLAW_GITHUB_REPO}.git && bash acaclaw/scripts/install.sh"
+	# Network failed — fall back to local checkout if available
+	if [[ -n "$_local_root" ]]; then
+		warn "GitHub unreachable — using local checkout at ${_local_root}"
+		REPO_ROOT="$_local_root"
+		return
+	fi
+
+	error "Could not download AcaClaw from GitHub (both HTTPS and SSH failed)."
+	error "Check your network connection and try again."
+	error "Or clone manually: git clone git@github.com:${ACACLAW_GITHUB_REPO}.git && bash acaclaw/scripts/install.sh"
 	exit 1
 }
 
