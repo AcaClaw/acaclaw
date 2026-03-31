@@ -491,6 +491,8 @@ export const en: Record<string, string> = {
   "apikeys.keyLabel": "Key {0}",
   "apikeys.savedModel": "✓ Default model saved",
   "apikeys.savedKeys": "✓ Keys saved",
+  "apikeys.savedReconnecting": "✓ Keys saved — gateway reloading…",
+  "apikeys.removedReconnecting": "✓ {0} removed — gateway reloading…",
   "apikeys.saveFailed": "⚠ Save failed — is the gateway running?",
   "apikeys.region": "Region",
   "apikeys.region.international": "International (.ai)",

@@ -661,10 +661,14 @@ export class ApiKeysView extends LitElement {
       this._configuredLlm = new Set([...this._configuredLlm, providerId]);
       this._keyInput = "";
       this._keyVisible = false;
-      this._flash(t("apikeys.savedKeys"));
 
-      // Refresh models — new provider may now return models
-      await this._refreshModels();
+      // Changing config.env triggers a gateway restart (OpenClaw has no
+      // hot-reload rule for 'env' paths).  Don't refresh models now — the
+      // env var isn't applied until after restart.  Instead, reset _loaded
+      // so the existing state-change handler re-runs _loadState (including
+      // model refresh) once the gateway reconnects.
+      this._loaded = false;
+      this._flash(t("apikeys.savedReconnecting"), 5000);
       window.dispatchEvent(new CustomEvent("keys-saved"));
     } catch {
       this._flash(t("apikeys.saveFailed"), 4000);
@@ -713,9 +717,10 @@ export class ApiKeysView extends LitElement {
       const next = new Set(this._configuredLlm);
       next.delete(providerId);
       this._configuredLlm = next;
-      this._flash(t("apikeys.removedProvider", name));
 
-      await this._refreshModels();
+      // Same env-restart behavior as save — defer model refresh to reconnect.
+      this._loaded = false;
+      this._flash(t("apikeys.removedReconnecting", name), 5000);
       window.dispatchEvent(new CustomEvent("keys-saved"));
     } catch {
       this._flash(t("apikeys.saveFailed"), 4000);

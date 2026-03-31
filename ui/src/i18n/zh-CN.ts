@@ -490,6 +490,8 @@ export const zhCN: Record<string, string> = {
   "apikeys.keyLabel": "密钥 {0}",
   "apikeys.savedModel": "✓ 默认模型已保存",
   "apikeys.savedKeys": "✓ 密钥已保存",
+  "apikeys.savedReconnecting": "✓ 密钥已保存 — 网关重载中…",
+  "apikeys.removedReconnecting": "✓ 已移除 {0} — 网关重载中…",
   "apikeys.saveFailed": "⚠ 保存失败 — 网关是否在运行？",
   "apikeys.region": "区域",
   "apikeys.region.international": "国际版 (.ai)",

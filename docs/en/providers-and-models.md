@@ -539,6 +539,20 @@ AcaClaw's GUI is a frontend to OpenClaw's backend. For provider and model manage
 └─────────────────┘                         └──────────────────┘
 ```
 
+### Gateway Restart on `config.env` Changes
+
+OpenClaw's config reloader has no hot-reload rule for the `env` prefix.
+Any change to `config.env.*` triggers a full gateway restart (default behavior
+for unmatched config paths).  AcaClaw handles this by:
+
+1. **Not refreshing models immediately** — env vars are applied only at startup, so
+   the model catalog would be stale until the restart completes.
+2. **Setting `_loaded = false`** so the existing `state-change` listener on the
+   gateway re-runs `_loadState()` (including model refresh) once the WebSocket
+   reconnects after the restart.
+3. **Showing "gateway reloading…"** in the flash message so the user knows the
+   brief disconnect is expected.
+
 ### Implementation: Reading Provider State
 
 ```typescript
