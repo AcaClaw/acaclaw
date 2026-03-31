@@ -281,10 +281,10 @@ fi
 # --- Service detection ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Detect the actual gateway service (skip legacy --profile services)
+# Detect the actual gateway service (prefer OpenClaw native, then legacy names)
 detect_gateway_service() {
     if command -v systemctl &>/dev/null; then
-        for unit in "acaclaw-gateway.service" "openclaw-gateway-acaclaw.service"; do
+        for unit in "openclaw-gateway.service" "acaclaw-gateway.service" "openclaw-gateway-acaclaw.service"; do
             local unit_path="${HOME}/.config/systemd/user/${unit}"
             # Skip service files with --profile (causes wrong config dir)
             [[ -f "$unit_path" ]] && grep -q -- "--profile" "$unit_path" 2>/dev/null && continue
@@ -294,6 +294,13 @@ detect_gateway_service() {
                 return 0
             fi
         done
+    fi
+    # macOS: check if openclaw daemon is installed (launchd)
+    if [[ "$(uname -s)" == "Darwin" ]] && command -v openclaw &>/dev/null; then
+        if openclaw daemon status &>/dev/null 2>&1; then
+            echo "openclaw-daemon"
+            return 0
+        fi
     fi
     return 1
 }

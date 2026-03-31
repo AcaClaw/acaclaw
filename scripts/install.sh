@@ -905,12 +905,12 @@ if check_command openclaw; then
 		sleep 0.5
 	fi
 
-	# Install systemd service and start gateway through it (auto-restart on crash)
+	# Install auto-restart service and start gateway through OpenClaw's native daemon
 	SERVICE_SCRIPT="${SCRIPT_DIR}/acaclaw-service.sh"
 	if [[ -f "$SERVICE_SCRIPT" ]]; then
 		log "Installing gateway auto-restart service..."
 		if bash "$SERVICE_SCRIPT" install 2>/dev/null; then
-			systemctl --user start acaclaw-gateway.service 2>/dev/null || true
+			openclaw daemon start 2>/dev/null || true
 			GATEWAY_STARTED=true
 		else
 			warn "Service install failed — starting gateway directly"
@@ -994,7 +994,7 @@ done
 echo ""
 echo -e "${GREEN}AcaClaw v${ACACLAW_VERSION} installed successfully.${NC}"
 echo ""
-echo "  Complete setup in your browser: ${BOLD}http://localhost:2090/${NC}"
+echo -e "  Complete setup in your browser: ${BOLD}http://localhost:2090/${NC}"
 echo ""
 echo "  The wizard will guide you through:"
 echo "    1. Choose your research discipline"
@@ -1004,7 +1004,7 @@ echo "    4. Choose security level"
 echo ""
 echo "  After setup, launch AcaClaw anytime:"
 echo "    • From your app launcher (desktop shortcut installed)"
-echo "    • Or run: ${BOLD}bash ${ACACLAW_DIR}/start.sh${NC}"
-echo "    • Stop:  ${BOLD}bash ${ACACLAW_DIR}/stop.sh${NC}"
+echo -e "    • Or run: ${BOLD}bash ${ACACLAW_DIR}/start.sh${NC}"
+echo -e "    • Stop:  ${BOLD}bash ${ACACLAW_DIR}/stop.sh${NC}"
 echo ""
 log "Happy researching!"

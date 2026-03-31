@@ -250,46 +250,33 @@ echo ""
 # stdout pipe, killing the script. By deferring to the very end, all file
 # removals are guaranteed to complete first.
 
-# Remove AcaClaw gateway service
+# Remove AcaClaw gateway service (delegates to openclaw daemon uninstall + legacy cleanup)
 SERVICE_SCRIPT="${SCRIPT_DIR}/acaclaw-service.sh"
 if [[ -f "$SERVICE_SCRIPT" ]]; then
 	bash "$SERVICE_SCRIPT" remove 2>/dev/null || true
-else
-	SYSTEMD_UNIT="${HOME}/.config/systemd/user/acaclaw-gateway.service"
-	if [[ -f "$SYSTEMD_UNIT" ]] && command -v systemctl &>/dev/null; then
-		systemctl --user stop acaclaw-gateway.service 2>/dev/null || true
-		systemctl --user disable acaclaw-gateway.service 2>/dev/null || true
-		rm -f "$SYSTEMD_UNIT"
-		systemctl --user daemon-reload 2>/dev/null || true
-	fi
-	# Also remove OpenClaw profile-based service
-	OC_PROFILE_UNIT="${HOME}/.config/systemd/user/openclaw-gateway-acaclaw.service"
-	if [[ -f "$OC_PROFILE_UNIT" ]] && command -v systemctl &>/dev/null; then
-		systemctl --user stop openclaw-gateway-acaclaw.service 2>/dev/null || true
-		systemctl --user disable openclaw-gateway-acaclaw.service 2>/dev/null || true
-		rm -f "$OC_PROFILE_UNIT"
-		systemctl --user daemon-reload 2>/dev/null || true
-	fi
 fi
 
-# Remove OpenClaw's own gateway service (if installed separately)
-case "$(uname -s)" in
-	Linux*)
-		OC_UNIT="${HOME}/.config/systemd/user/openclaw-gateway.service"
-		if [[ -f "$OC_UNIT" ]] && command -v systemctl &>/dev/null; then
-			systemctl --user stop openclaw-gateway.service 2>/dev/null || true
-			systemctl --user disable openclaw-gateway.service 2>/dev/null || true
-			rm -f "$OC_UNIT"
-			systemctl --user daemon-reload 2>/dev/null || true
-		fi
-		;;
-	Darwin*)
-		if [[ -f "${HOME}/Library/LaunchAgents/ai.openclaw.gateway.plist" ]]; then
-			launchctl unload "${HOME}/Library/LaunchAgents/ai.openclaw.gateway.plist" 2>/dev/null || true
-			rm -f "${HOME}/Library/LaunchAgents/ai.openclaw.gateway.plist"
-		fi
-		;;
-esac
+# Also try openclaw daemon uninstall directly (in case acaclaw-service.sh is missing)
+if command -v openclaw &>/dev/null; then
+	openclaw daemon uninstall 2>/dev/null || true
+fi
+
+# Clean up any remaining legacy service files not handled by the above
+for _legacy_unit in "acaclaw-gateway.service" "openclaw-gateway-acaclaw.service"; do
+	_legacy_path="${HOME}/.config/systemd/user/${_legacy_unit}"
+	if [[ -f "$_legacy_path" ]] && command -v systemctl &>/dev/null; then
+		systemctl --user stop "${_legacy_unit}" 2>/dev/null || true
+		systemctl --user disable "${_legacy_unit}" 2>/dev/null || true
+		rm -f "$_legacy_path"
+	fi
+done
+command -v systemctl &>/dev/null && systemctl --user daemon-reload 2>/dev/null || true
+
+# macOS: clean up legacy com.acaclaw.gateway plist
+if [[ -f "${HOME}/Library/LaunchAgents/com.acaclaw.gateway.plist" ]]; then
+	launchctl bootout "gui/$(id -u)/com.acaclaw.gateway" 2>/dev/null || true
+	rm -f "${HOME}/Library/LaunchAgents/com.acaclaw.gateway.plist"
+fi
 
 bash "${SCRIPT_DIR}/stop.sh" 2>/dev/null || true
 

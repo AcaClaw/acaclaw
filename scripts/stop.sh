@@ -10,7 +10,7 @@ ACACLAW_PID_FILE="${ACACLAW_DATA_DIR}/gateway.pid"
 # Detect the actual gateway service (OpenClaw-managed profile service takes priority)
 detect_gateway_service() {
     if command -v systemctl &>/dev/null; then
-        for unit in "openclaw-gateway-acaclaw.service" "acaclaw-gateway.service"; do
+        for unit in "openclaw-gateway.service" "openclaw-gateway-acaclaw.service" "acaclaw-gateway.service"; do
             if systemctl --user is-active "$unit" &>/dev/null 2>&1 || \
                [[ -f "${HOME}/.config/systemd/user/${unit}" ]]; then
                 echo "$unit"
