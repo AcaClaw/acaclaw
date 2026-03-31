@@ -850,11 +850,34 @@ if [[ "$SKIP_CONDA" != "true" ]]; then
 	log "Scientific packages will be installed during setup wizard"
 fi
 
-# --- Start gateway and open browser setup wizard ---
+# --- Install auto-restart service and start gateway ---
 
-header "Opening Setup Wizard"
+header "Starting Gateway"
+
+# Remove legacy --profile service files that used ~/.openclaw-acaclaw/ isolation.
+# AcaClaw now uses ~/.openclaw/ directly; stale profile services cause the gateway
+# to read the wrong config and serve 503s.
+_cleanup_legacy_services() {
+	local systemd_dir="${HOME}/.config/systemd/user"
+	local legacy_unit="openclaw-gateway-acaclaw.service"
+	if [[ -f "${systemd_dir}/${legacy_unit}" ]]; then
+		systemctl --user stop "${legacy_unit}" 2>/dev/null || true
+		systemctl --user disable "${legacy_unit}" 2>/dev/null || true
+		rm -f "${systemd_dir}/${legacy_unit}"
+		log "Removed legacy service: ${legacy_unit}"
+	fi
+	# Also nuke any acaclaw-gateway.service that has --profile (from older installs)
+	local current_unit="${systemd_dir}/acaclaw-gateway.service"
+	if [[ -f "$current_unit" ]] && grep -q -- "--profile" "$current_unit" 2>/dev/null; then
+		systemctl --user stop acaclaw-gateway.service 2>/dev/null || true
+		rm -f "$current_unit"
+		log "Removed stale service with --profile flag"
+	fi
+}
+_cleanup_legacy_services
 
 log "Starting OpenClaw gateway..."
+GATEWAY_STARTED=false
 if check_command openclaw; then
 	if [[ ! -f "${ACACLAW_CONFIG}" ]]; then
 		error "Cannot start gateway — config file missing at ${ACACLAW_CONFIG}"
@@ -862,27 +885,61 @@ if check_command openclaw; then
 		exit 1
 	fi
 
-	# Check if gateway is already running on port 2090
+	# Stop the systemd service first (if running from a previous install)
+	if systemctl --user is-active acaclaw-gateway.service &>/dev/null; then
+		systemctl --user stop acaclaw-gateway.service 2>/dev/null || true
+		sleep 1
+	fi
+
+	# Kill any stale process on the port
 	_existing_pid=""
 	if command -v lsof &>/dev/null; then
 		_existing_pid="$(lsof -ti :2090 2>/dev/null | head -1)" || true
 	elif command -v ss &>/dev/null; then
 		_existing_pid="$(ss -tlnp sport = :2090 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1)" || true
 	fi
-
 	if [[ -n "$_existing_pid" ]] && kill -0 "$_existing_pid" 2>/dev/null; then
-		log "Gateway already running (PID $_existing_pid) — restarting with fresh config..."
 		kill "$_existing_pid" 2>/dev/null || true
 		sleep 1
-		# Ensure it's gone
 		kill -0 "$_existing_pid" 2>/dev/null && kill -9 "$_existing_pid" 2>/dev/null || true
 		sleep 0.5
 	fi
 
-	# Start gateway for AcaClaw
-	openclaw gateway run --bind loopback --port 2090 &>/dev/null &
-	GATEWAY_PID=$!
-	sleep 2
+	# Install systemd service and start gateway through it (auto-restart on crash)
+	SERVICE_SCRIPT="${SCRIPT_DIR}/acaclaw-service.sh"
+	if [[ -f "$SERVICE_SCRIPT" ]]; then
+		log "Installing gateway auto-restart service..."
+		if bash "$SERVICE_SCRIPT" install 2>/dev/null; then
+			systemctl --user start acaclaw-gateway.service 2>/dev/null || true
+			GATEWAY_STARTED=true
+		else
+			warn "Service install failed — starting gateway directly"
+		fi
+	fi
+
+	# Fallback: start gateway directly if systemd failed
+	if [[ "$GATEWAY_STARTED" == "false" ]]; then
+		openclaw gateway run --bind loopback --port 2090 &>/dev/null &
+		GATEWAY_STARTED=true
+	fi
+
+	# Wait for gateway to be ready before opening the browser
+	if [[ "$GATEWAY_STARTED" == "true" ]]; then
+		log "Waiting for gateway to be ready..."
+		_ready=false
+		for _i in $(seq 1 30); do
+			if curl -s -o /dev/null -w '' http://localhost:2090/ 2>/dev/null; then
+				_ready=true
+				break
+			fi
+			sleep 1
+		done
+		if [[ "$_ready" == "true" ]]; then
+			log "Gateway ready ✓"
+		else
+			warn "Gateway not responding yet — it may still be starting"
+		fi
+	fi
 
 	# Save setup state for the wizard to read
 	cat > "${ACACLAW_DIR}/config/setup-pending.json" <<SETUPJSON
@@ -912,40 +969,6 @@ else
 	warn "OpenClaw not found — start the gateway manually:"
 	warn "  openclaw gateway run --bind loopback --port 2090"
 	warn "Then visit http://localhost:2090/"
-fi
-
-# --- Install auto-restart service ---
-
-header "Auto-Restart Service"
-
-# Remove legacy --profile service files that used ~/.openclaw-acaclaw/ isolation.
-# AcaClaw now uses ~/.openclaw/ directly; stale profile services cause the gateway
-# to read the wrong config and serve 503s.
-_cleanup_legacy_services() {
-	local systemd_dir="${HOME}/.config/systemd/user"
-	local legacy_unit="openclaw-gateway-acaclaw.service"
-	if [[ -f "${systemd_dir}/${legacy_unit}" ]]; then
-		systemctl --user stop "${legacy_unit}" 2>/dev/null || true
-		systemctl --user disable "${legacy_unit}" 2>/dev/null || true
-		rm -f "${systemd_dir}/${legacy_unit}"
-		log "Removed legacy service: ${legacy_unit}"
-	fi
-	# Also nuke any acaclaw-gateway.service that has --profile (from older installs)
-	local current_unit="${systemd_dir}/acaclaw-gateway.service"
-	if [[ -f "$current_unit" ]] && grep -q -- "--profile" "$current_unit" 2>/dev/null; then
-		systemctl --user stop acaclaw-gateway.service 2>/dev/null || true
-		rm -f "$current_unit"
-		log "Removed stale service with --profile flag"
-	fi
-}
-_cleanup_legacy_services
-
-SERVICE_SCRIPT="${SCRIPT_DIR}/acaclaw-service.sh"
-if [[ -f "$SERVICE_SCRIPT" ]]; then
-	log "Installing gateway auto-restart service..."
-	bash "$SERVICE_SCRIPT" install 2>/dev/null || warn "Service install failed (non-fatal — gateway still works, just won't auto-restart)"
-else
-	log "Service script not found — skipping"
 fi
 
 # --- Install desktop shortcut ---
