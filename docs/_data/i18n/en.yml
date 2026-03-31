@@ -11,6 +11,8 @@ nav:
     url: /en/architecture/
   - title: Providers & Models
     url: /en/providers-and-models/
+  - title: Chat Handling
+    url: /en/chat-handling/
   - title: Skills
     url: /en/skills/
   - title: Digital Life Agents

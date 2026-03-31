@@ -11,6 +11,8 @@ nav:
     url: /zh-CN/architecture/
   - title: 服务商与模型
     url: /zh-CN/providers-and-models/
+  - title: 聊天处理
+    url: /zh-CN/chat-handling/
   - title: 技能管理
     url: /zh-CN/skills/
   - title: 数字科研助手

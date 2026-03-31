@@ -53,7 +53,7 @@ AcaClaw is a distribution layer — it builds on top of OpenClaw, not alongside 
 
 > See [Providers & Models](/en/providers-and-models/) for the full provider architecture, model mapping, API reference, and AcaClaw GUI integration method.
 
-| **Chat, sessions, message history** | OpenClaw gateway | Use via WebSocket RPC |
+| **Chat, sessions, message history** | OpenClaw gateway | Use via WebSocket RPC — see [Chat Handling](/en/chat-handling/) |
 | **Plugin SDK, skill system, CLI** | OpenClaw | Use as-is |
 | **Web GUI** | AcaClaw | AcaClaw's own research-focused UI |
 | **Workspace and project system** | AcaClaw plugin | AcaClaw value-add |
