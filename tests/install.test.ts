@@ -666,7 +666,7 @@ with open('${stateDir}/openclaw.json', 'w') as f:
 			expect(config.gateway.auth.mode).toBe("none");
 		});
 
-		it("sanitizes controlUi: enabled=false, no root field", async () => {
+		it("sanitizes controlUi: enabled=true, basePath=/openclaw, no root field", async () => {
 			const stateDir = join(fakeHome, ".openclaw");
 			const configFile = join(stateDir, "openclaw.json");
 
@@ -692,9 +692,9 @@ import json
 with open('${configFile}') as f:
     cfg = json.load(f)
 cui = cfg.setdefault('gateway', {}).setdefault('controlUi', {})
-cui['enabled'] = False
+cui['enabled'] = True
 cui.pop('root', None)
-cui.setdefault('basePath', '/')
+cui['basePath'] = '/openclaw'
 cui.setdefault('dangerouslyDisableDeviceAuth', True)
 with open('${configFile}', 'w') as f:
     json.dump(cfg, f, indent=2)
@@ -704,9 +704,9 @@ with open('${configFile}', 'w') as f:
 			expect(code).toBe(0);
 
 			const config = JSON.parse(await readFile(configFile, "utf-8"));
-			expect(config.gateway.controlUi.enabled).toBe(false);
+			expect(config.gateway.controlUi.enabled).toBe(true);
 			expect(config.gateway.controlUi).not.toHaveProperty("root");
-			expect(config.gateway.controlUi.basePath).toBe("/");
+			expect(config.gateway.controlUi.basePath).toBe("/openclaw");
 			expect(config.gateway.controlUi.dangerouslyDisableDeviceAuth).toBe(true);
 		});
 	});

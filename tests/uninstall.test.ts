@@ -746,7 +746,7 @@ describe("uninstall-all.sh — full uninstall", () => {
 // End-to-end tests — run the ACTUAL scripts against a sandboxed HOME
 // =================================================================
 
-describe("uninstall-all.sh — end-to-end", () => {
+describe("uninstall-all.sh — end-to-end", { timeout: 60_000 }, () => {
 	let fakeHome: string;
 	let fakeBin: string;
 
@@ -765,12 +765,25 @@ describe("uninstall-all.sh — end-to-end", () => {
 		await writeFile(join(fakeBin, "pkill"), "#!/bin/bash\nexit 0\n");
 		await runBash(`chmod +x "${join(fakeBin, "pkill")}"`);
 
-		// Stub openclaw — pretend it doesn't exist (command -v will fail)
-		// No stub needed — just ensure it's not on the overridden PATH
+		// Stub pgrep — no-op to avoid finding real gateway processes
+		await writeFile(join(fakeBin, "pgrep"), "#!/bin/bash\nexit 1\n");
+		await runBash(`chmod +x "${join(fakeBin, "pgrep")}"`);
+
+		// Stub conda — no-op to avoid interacting with real conda envs
+		await writeFile(join(fakeBin, "conda"), "#!/bin/bash\nif [[ \"$1\" == \"env\" && \"$2\" == \"list\" ]]; then echo ''; exit 0; fi\nexit 0\n");
+		await runBash(`chmod +x "${join(fakeBin, "conda")}"`);
+
+		// Stub openclaw — exit 1 so command -v fails (pretend not installed)
+		await writeFile(join(fakeBin, "openclaw"), "#!/bin/bash\nexit 1\n");
+		await runBash(`chmod +x "${join(fakeBin, "openclaw")}"`);
 
 		// Stub npm — always succeeds
 		await writeFile(join(fakeBin, "npm"), "#!/bin/bash\nexit 0\n");
 		await runBash(`chmod +x "${join(fakeBin, "npm")}"`);
+
+		// Stub launchctl — no-op (macOS service manager)
+		await writeFile(join(fakeBin, "launchctl"), "#!/bin/bash\nexit 0\n");
+		await runBash(`chmod +x "${join(fakeBin, "launchctl")}"`);
 	});
 
 	afterEach(async () => {
@@ -863,7 +876,7 @@ describe("uninstall-all.sh — end-to-end", () => {
 	});
 });
 
-describe("uninstall.sh — end-to-end", () => {
+describe("uninstall.sh — end-to-end", { timeout: 60_000 }, () => {
 	let fakeHome: string;
 	let fakeBin: string;
 
@@ -878,9 +891,25 @@ describe("uninstall.sh — end-to-end", () => {
 		await writeFile(join(fakeBin, "pkill"), "#!/bin/bash\nexit 0\n");
 		await runBash(`chmod +x "${join(fakeBin, "pkill")}"`);
 
+		// Stub pgrep — no-op to avoid finding real gateway processes
+		await writeFile(join(fakeBin, "pgrep"), "#!/bin/bash\nexit 1\n");
+		await runBash(`chmod +x "${join(fakeBin, "pgrep")}"`);
+
+		// Stub conda — no-op to avoid interacting with real conda envs
+		await writeFile(join(fakeBin, "conda"), "#!/bin/bash\nif [[ \"$1\" == \"env\" && \"$2\" == \"list\" ]]; then echo ''; exit 0; fi\nexit 0\n");
+		await runBash(`chmod +x "${join(fakeBin, "conda")}"`);
+
+		// Stub openclaw — exit 1 so command -v fails (pretend not installed)
+		await writeFile(join(fakeBin, "openclaw"), "#!/bin/bash\nexit 1\n");
+		await runBash(`chmod +x "${join(fakeBin, "openclaw")}"`);
+
 		// Stub npm — no-op to avoid uninstalling real packages
 		await writeFile(join(fakeBin, "npm"), "#!/bin/bash\nexit 0\n");
 		await runBash(`chmod +x "${join(fakeBin, "npm")}"`);
+
+		// Stub launchctl — no-op (macOS service manager)
+		await writeFile(join(fakeBin, "launchctl"), "#!/bin/bash\nexit 0\n");
+		await runBash(`chmod +x "${join(fakeBin, "launchctl")}"`);
 	});
 
 	afterEach(async () => {

@@ -29,10 +29,14 @@
     "prepare": "npm run build:ui",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "npx playwright test",
+    "test:e2e:update": "npx playwright test --update-snapshots",
+    "test:e2e:ui": "npx playwright test --ui",
     "check": "tsc --noEmit"
   },
   "devDependencies": {
     "@playwright/mcp": "^0.0.68",
+    "@playwright/test": "^1.59.0",
     "@sinclair/typebox": "0.34.48",
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^3.2.4",

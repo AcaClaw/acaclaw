@@ -8,7 +8,7 @@
     },
     "controlUi": {
       "enabled": false,
-      "basePath": "/",
+      "basePath": "/openclaw",
       "dangerouslyDisableDeviceAuth": true
     }
   },

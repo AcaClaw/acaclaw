@@ -859,7 +859,62 @@ describe("AcaClaw App E2E", async () => {
 				}
 			} finally {
 				gw2?.close();
+				// Cleanup config.set may trigger another gateway restart;
+				// wait for it to recover so subsequent tests (and the system)
+				// find a healthy gateway.
+				await waitForHealthy(RESTART_TIMEOUT);
 			}
 		}, RESTART_TIMEOUT + LLM_TIMEOUT + 10_000);
+	});
+
+	// --- OpenClaw Control UI Access ---
+
+	describe("OpenClaw Control UI at /openclaw/", () => {
+		it("redirects /openclaw to /openclaw/", async () => {
+			if (!isUp) return;
+			const res = await fetch(`${GATEWAY_URL}/openclaw`, { redirect: "manual" });
+			expect(res.status).toBe(302);
+			expect(res.headers.get("location")).toBe("/openclaw/");
+		});
+
+		it("serves OpenClaw Control UI HTML at /openclaw/", async () => {
+			if (!isUp) return;
+			const res = await fetch(`${GATEWAY_URL}/openclaw/`);
+			expect(res.ok).toBe(true);
+			const html = await res.text();
+			// Control UI index.html includes the OpenClaw SPA entry point
+			expect(html.toLowerCase()).toContain("<!doctype html>");
+			expect(html).toContain("openclaw-app");
+			// Should NOT be the AcaClaw UI
+			expect(html).not.toContain("acaclaw-app");
+		});
+
+		it("serves bootstrap config JSON", async () => {
+			if (!isUp) return;
+			const res = await fetch(`${GATEWAY_URL}/openclaw/__openclaw/control-ui-config.json`);
+			expect(res.ok).toBe(true);
+			const config = await res.json();
+			expect(config.basePath).toBe("/openclaw");
+			expect(config.serverVersion).toBeDefined();
+		});
+
+		it("serves SPA routes under /openclaw/ (client-side routing fallback)", async () => {
+			if (!isUp) return;
+			for (const path of ["/openclaw/chat", "/openclaw/config", "/openclaw/sessions"]) {
+				const res = await fetch(`${GATEWAY_URL}${path}`);
+				expect(res.ok).toBe(true);
+				const html = await res.text();
+				expect(html.toLowerCase()).toContain("<!doctype html>");
+				expect(html).not.toContain("acaclaw-app");
+			}
+		});
+
+		it("applies security headers", async () => {
+			if (!isUp) return;
+			const res = await fetch(`${GATEWAY_URL}/openclaw/`);
+			expect(res.headers.get("x-frame-options")).toBe("DENY");
+			expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+			expect(res.headers.get("referrer-policy")).toBe("no-referrer");
+		});
 	});
 });
