@@ -246,6 +246,9 @@ desktop.ini
 # Playwright MCP
 .playwright-mcp/
 
+# Playwright test results (failure screenshots, error context)
+test-results/
+
 # Backup (moved/deleted files)
 backup/
 
