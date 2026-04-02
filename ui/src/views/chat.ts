@@ -2,6 +2,7 @@ import { LitElement, html, css, svg, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { gateway } from "../controllers/gateway.js";
+import { eventLogger } from "../main.js";
 import { STAFF_MEMBERS, getCustomizedStaff } from "./staff.js";
 import type { StaffMember } from "./staff.js";
 import { t, LocaleController } from "../i18n.js";
@@ -1679,6 +1680,12 @@ export class ChatView extends LitElement {
 
     const text = tab.input.trim();
     if (!text || tab.sending) return;
+
+    eventLogger.log("chat.send", "info", {
+      agentId: tab.agentId,
+      messageLength: text.length,
+      hasAttachments: this._attachments.length > 0,
+    });
 
     // Save session title from the first user message
     const isFirstMessage = !tab.messages.some((m) => m.role === "user");

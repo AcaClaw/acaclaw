@@ -1,6 +1,7 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { gateway, updateConfig, setConfigValue } from "../controllers/gateway.js";
+import { eventLogger } from "../main.js";
 import { t, LocaleController } from "../i18n.js";
 import {
   type ProviderDef,
@@ -665,6 +666,7 @@ export class ApiKeysView extends LitElement {
       this._configuredLlm = new Set([...this._configuredLlm, providerId]);
       this._keyInput = "";
       this._keyVisible = false;
+      eventLogger.log("apikey.added", "info", { provider: providerId });
 
       // Changing config.env triggers a gateway restart (OpenClaw has no
       // hot-reload rule for 'env' paths).  Don't refresh models now — the
@@ -721,6 +723,7 @@ export class ApiKeysView extends LitElement {
       const next = new Set(this._configuredLlm);
       next.delete(providerId);
       this._configuredLlm = next;
+      eventLogger.log("apikey.removed", "info", { provider: providerId });
 
       // Same env-restart behavior as save — defer model refresh to reconnect.
       this._loaded = false;

@@ -467,6 +467,14 @@ else
 	warn "@acaclaw/compat-checker: npm package not yet published (install from source)"
 fi
 
+log "Installing @acaclaw/logger..."
+if [[ -d "${REPO_PLUGINS_DIR}/logger" ]]; then
+	cp -r "${REPO_PLUGINS_DIR}/logger" "${ACACLAW_PLUGINS_DIR}/acaclaw-logger"
+	log "@acaclaw/logger installed ✓"
+else
+	warn "@acaclaw/logger: npm package not yet published (install from source)"
+fi
+
 log "Installing @acaclaw/ui (plugin)..."
 if [[ -d "${REPO_PLUGINS_DIR}/ui" ]]; then
 	cp -r "${REPO_PLUGINS_DIR}/ui" "${ACACLAW_PLUGINS_DIR}/acaclaw-ui"
@@ -682,16 +690,17 @@ with open('${ACACLAW_CONFIG}', 'w') as f:
 	log "AcaClaw standalone config created ✓"
 fi
 
-# Sanitize: ensure controlUi is disabled (AcaClaw's plugin handles UI serving)
-# and remove any stale controlUi.root that might point to old paths.
+# Sanitize: ensure controlUi is enabled at /openclaw/ so the OpenClaw Control UI
+# is accessible from AcaClaw's Settings → OpenClaw tab, and remove any stale
+# controlUi.root that might point to old paths.
 python3 -c "
 import json
 with open('${ACACLAW_CONFIG}') as f:
     cfg = json.load(f)
 cui = cfg.setdefault('gateway', {}).setdefault('controlUi', {})
-cui['enabled'] = False
+cui['enabled'] = True
 cui.pop('root', None)
-cui.setdefault('basePath', '/')
+cui['basePath'] = '/openclaw'
 cui.setdefault('dangerouslyDisableDeviceAuth', True)
 with open('${ACACLAW_CONFIG}', 'w') as f:
     json.dump(cfg, f, indent=2)

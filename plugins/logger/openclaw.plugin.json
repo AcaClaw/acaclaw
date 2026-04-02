@@ -1,0 +1,46 @@
+{
+  "id": "acaclaw-logger",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "eventJournal": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable the event journal",
+            "uiHint": "Enable event journal"
+          },
+          "level": {
+            "type": "string",
+            "enum": ["debug", "info", "warn", "error"],
+            "default": "info",
+            "description": "Minimum event level to record",
+            "uiHint": "Minimum log level"
+          },
+          "logDir": {
+            "type": "string",
+            "default": "~/.acaclaw/logs",
+            "description": "Directory for event journal files",
+            "uiHint": "Event log directory"
+          },
+          "retentionDays": {
+            "type": "number",
+            "default": 30,
+            "description": "Days to keep event log files before pruning",
+            "uiHint": "Log retention (days)"
+          },
+          "maxEventFileMB": {
+            "type": "number",
+            "default": 100,
+            "description": "Maximum daily log file size in MB",
+            "uiHint": "Max daily file size (MB)"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "additionalProperties": false
+  }
+}

@@ -2,6 +2,7 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { gateway } from "../controllers/gateway.js";
+import { eventLogger } from "../main.js";
 import { t, getLocale, setLocale, LocaleController, type Locale } from "../i18n.js";
 
 type Theme = "light" | "dark" | "system";
@@ -315,6 +316,7 @@ export class SettingsView extends LitElement {
       const updated = { ...cfg, security: { ...this._security } };
       await gateway.call("config.set", { raw: JSON.stringify(updated, null, 2), baseHash });
       this._dirty = false;
+      eventLogger.log("config.change", "info", { key: "security", source: "settings" });
     } catch (e) {
       console.error("[settings] save failed", e);
     }

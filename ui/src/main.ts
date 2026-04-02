@@ -34,6 +34,10 @@ const loadedViews = new Set<string>();
 
 // Import gateway controller
 import { gateway, GatewayState } from "./controllers/gateway.js";
+import { EventLogger } from "./controllers/event-logger.js";
+
+/** Singleton event logger for UI-originated events. */
+export const eventLogger = new EventLogger(gateway);
 
 type Route =
   | "chat"
@@ -484,7 +488,14 @@ export class AcaClawApp extends LitElement {
     this._routeFromHash();
     window.addEventListener("hashchange", () => this._routeFromHash());
     gateway.addEventListener("state-change", ((e: CustomEvent) => {
+      const prev = this._gatewayState;
       this._gatewayState = e.detail.state;
+      // Log connection lifecycle events
+      if (e.detail.state === "connected") {
+        eventLogger.log("connection.connected", "info", {});
+      } else if (e.detail.state === "disconnected" && prev === "connected") {
+        eventLogger.log("connection.disconnected", "info", {});
+      }
       if (e.detail.state === "connected" && !this._keysChecked) {
         this._checkKeysConfigured();
       }
