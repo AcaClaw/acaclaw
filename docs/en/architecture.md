@@ -343,6 +343,122 @@ See [Data Safety](/en/data-safety/) for the complete design including trash syst
 
 ---
 
+## UI Strategy: Patched OpenClaw UI vs Separate Plugin UI
+
+### The Core Question
+
+AcaClaw needs a research-focused web interface. OpenClaw already ships a web UI (the Control UI). Two approaches:
+
+| Strategy | Summary |
+|---|---|
+| **A. Patch OpenClaw's UI** | Apply light modifications to OpenClaw's existing Control UI — change theme, remove some tabs, add AcaClaw tabs |
+| **B. Separate plugin UI (current)** | Ship a completely separate SPA, served via `registerHttpRoute()`, replacing OpenClaw's UI |
+
+Neither approach modifies OpenClaw's core source. Strategy A patches the built UI output; Strategy B ignores it entirely.
+
+### Strategy A: Patch OpenClaw's UI
+
+Apply a thin layer of changes on top of OpenClaw's Control UI: swap the color theme, hide tabs irrelevant to researchers (e.g., developer-facing channel config), add a few AcaClaw-specific tabs (workspace, backup, environment).
+
+**What seems attractive:**
+- Very little code to write — a theme override, a tab filter, a few new route components
+- Users get OpenClaw's existing chat interface, settings, model picker out of the box
+- No need to rebuild the entire UI from scratch
+
+**What goes wrong:**
+
+| Concern | Problem |
+|---|---|
+| **No stable UI extension API** | OpenClaw's Control UI has no theming API, no tab registration system, no plugin slot architecture. "Patching" means directly modifying the built output or monkey-patching the frontend JavaScript at runtime |
+| **Upstream churn** | OpenClaw's UI changes every release — component structure, CSS class names, route layout, state management. Each OpenClaw update can silently break AcaClaw's patches. Patches that targeted a specific DOM structure or component name stop working |
+| **Testing burden** | Every OpenClaw release requires retesting all patches. "Did the tab removal still work? Did the theme override break? Did the new tabs still mount correctly?" This is manual integration testing with no contract |
+| **Fragile coupling** | AcaClaw becomes coupled to OpenClaw's _internal_ UI implementation (component names, CSS selectors, router config, store shapes). None of this is a public API — it can change without notice or deprecation |
+| **Partial ownership** | AcaClaw owns some tabs but not others. Bug reports become ambiguous: is a problem in OpenClaw's code or AcaClaw's patches? Debug surface is mixed |
+| **Upgrade friction** | Even though the change is "small," the user can't safely run `npm update openclaw` without checking if AcaClaw's patches still apply. Version lock-step on the UI layer |
+
+**Verdict:** Looks cheap, but the maintenance cost is proportional to OpenClaw's release frequency, not to the size of AcaClaw's patches. A one-line theme override still breaks when the CSS variable it targets gets renamed.
+
+### Strategy B: Separate Plugin UI (Current — Recommended)
+
+AcaClaw ships its own SPA, built independently. The `acaclaw-ui` plugin registers HTTP routes in the gateway to serve this SPA at `/`. OpenClaw's Control UI is disabled by default.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  OpenClaw Gateway (single process, single port :18789)   │
+│                                                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐ │
+│  │ WebSocket RPC │  │ REST API     │  │ Auth + TLS    │ │
+│  │ (chat, tools, │  │ (/health,    │  │ (device keys, │ │
+│  │  sessions)    │  │  /v1/models) │  │  challenges)  │ │
+│  └──────┬───────┘  └──────┬───────┘  └───────┬───────┘ │
+│         │                 │                   │          │
+│  ┌──────┴─────────────────┴───────────────────┴───────┐ │
+│  │             Plugin HTTP Route Pipeline              │ │
+│  │                                                     │ │
+│  │  acaclaw-ui plugin:                                 │ │
+│  │    "/" (exact)     → serves AcaClaw SPA index.html  │ │
+│  │    "/assets/*"     → serves built JS/CSS            │ │
+│  │    "/chat/*" etc.  → SPA fallback to index.html     │ │
+│  └─────────────────────────────────────────────────────┘ │
+│                                                          │
+│  OpenClaw Control UI: disabled (gateway.controlUi: false)│
+└─────────────────────────────────────────────────────────┘
+```
+
+| Aspect | Assessment |
+|---|---|
+| **Auth** | Free. Gateway handles all authentication. Same-origin requests |
+| **Gateway connection** | Free. Same-origin WebSocket, no CORS, no discovery |
+| **Build independence** | AcaClaw builds its own SPA with its own Vite/build config. No dependency on OpenClaw's UI internals |
+| **Breakage risk** | Low. `registerHttpRoute()` is a stable plugin SDK API. OpenClaw's UI refactors don't affect AcaClaw at all |
+| **OpenClaw upgrades** | Fully independent. `npm update openclaw` works without retesting AcaClaw's UI |
+| **Ownership** | Clean. Every pixel is AcaClaw's responsibility. Bug reports are unambiguous |
+| **More initial work** | Yes — must build chat interface, settings, model picker from scratch. But these are built once against the stable WebSocket RPC API, not against OpenClaw's internal components |
+| **Escape hatch** | `openclaw config set gateway.controlUi.enabled true` re-enables OpenClaw's original UI when needed |
+
+**Verdict:** More upfront work, but zero ongoing UI maintenance per OpenClaw release.
+
+### Head-to-Head
+
+| Concern | Patched OpenClaw UI | Separate plugin UI (current) |
+|---|---|---|
+| Initial effort | Low (theme + tab changes) | Higher (build SPA from scratch) |
+| Maintenance per OpenClaw release | Must verify patches still work | Zero |
+| Coupling to OpenClaw UI internals | High (CSS, components, routes) | None |
+| Independent upgrades | No (UI patches may break) | Yes |
+| Bug ownership | Mixed (OpenClaw + AcaClaw UI) | Clear (all AcaClaw) |
+| Relies on stable API | No (internal UI implementation) | Yes (`registerHttpRoute()`) |
+| Customization freedom | Limited to what OpenClaw's UI allows | Total |
+| OpenClaw source modified | No | No |
+
+> **The key insight:** The amount of AcaClaw's UI code is irrelevant to the maintenance cost. What matters is the stability of the _contract_ you depend on. Patching depends on OpenClaw's internal UI (unstable, changes every release). The plugin approach depends on `registerHttpRoute()` (stable SDK API, versioned).
+
+### OpenClaw Control UI Behavior
+
+By default, AcaClaw's installer sets:
+
+```json
+{
+  "gateway": {
+    "controlUi": {
+      "enabled": false
+    }
+  }
+}
+```
+
+This disables OpenClaw's built-in UI. AcaClaw's plugin UI takes over at `/`. The gateway, RPC, auth, and all backend functionality remain fully operational.
+
+To re-enable for debugging or advanced use:
+
+```bash
+openclaw config set gateway.controlUi.enabled true
+# OpenClaw UI is now available at its base path (default: /openclaw/)
+# AcaClaw UI remains at /
+```
+
+---
+
 ## Integration Points with OpenClaw
 
 AcaClaw ONLY uses these official OpenClaw APIs:

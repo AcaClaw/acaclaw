@@ -246,13 +246,15 @@ The browser wizard then:
 
 Nothing is installed outside these directories. Nothing is sent to the internet (except npm/conda package downloads and the API key test).
 
-**If you already have OpenClaw installed:** AcaClaw never modifies `~/.openclaw/`. Your existing config, plugins, and sessions are untouched. AcaClaw inherits your API keys read-only via `$include`. Uninstalling AcaClaw leaves OpenClaw exactly as it was.
+**If you already have OpenClaw installed:** AcaClaw never modifies `~/.openclaw/`. Your existing config, plugins, and sessions are untouched. AcaClaw inherits your API keys read-only via `$include`. However, **uninstalling AcaClaw removes both AcaClaw and OpenClaw** (`~/.acaclaw/` and `~/.openclaw/`).
 
 ---
 
 ## Uninstall
 
 AcaClaw can be uninstalled two ways: from the browser GUI or from the terminal.
+
+> **Note:** Uninstalling AcaClaw removes **both** AcaClaw (`~/.acaclaw/`) and OpenClaw (`~/.openclaw/`), including config, plugins, sessions, conda environments, and gateway services. Your research data (`~/AcaClaw/`) is never touched.
 
 ### Option 1: Browser GUI (Settings page)
 
@@ -261,23 +263,20 @@ Open AcaClaw in your browser → navigate to **Settings** → click the **Uninst
 The Uninstall tab shows:
 
 - What will be removed and what stays untouched
-- **Remove AcaClaw only** — removes AcaClaw but keeps OpenClaw
-- **Remove everything** — removes both AcaClaw and OpenClaw
+- **Uninstall** — removes both AcaClaw and OpenClaw
 
 Click a button, confirm, and the uninstall runs with a live progress log. No terminal needed.
 
 ### Option 2: Terminal
 
-Remove AcaClaw only (keeps OpenClaw):
-
 ```bash
 bash ~/github/acaclaw/scripts/uninstall.sh
 ```
 
-Remove everything (AcaClaw + OpenClaw):
+(`uninstall-all.sh` is a backward-compat alias that delegates to `uninstall.sh`.)
 
 ```bash
-bash ~/github/acaclaw/scripts/uninstall-all.sh
+bash ~/github/acaclaw/scripts/uninstall-all.sh   # same as above
 ```
 
 #### Script options
@@ -289,25 +288,23 @@ bash ~/github/acaclaw/scripts/uninstall-all.sh
 
 ### What gets removed
 
-| Item | Path | Removed by |
-|---|---|---|
-| AcaClaw data (plugins, skills, config, sessions) | `~/.openclaw/` | Both scripts |
-| AcaClaw conda environments (acaclaw, acaclaw-bio, etc.) | conda env list | Both scripts |
-| AcaClaw config and audit data | `~/.acaclaw/` | Both scripts |
-| AcaClaw-installed Miniforge | `~/.acaclaw/miniforge3/` | Both scripts |
-| AcaClaw desktop shortcut | App launcher / Desktop | Both scripts |
-| AcaClaw gateway service | `acaclaw-gateway.service` | Both scripts |
-| OpenClaw | `~/.openclaw/` | `uninstall-all.sh` only |
-| OpenClaw gateway service | `openclaw-gateway.service` | `uninstall-all.sh` only |
+| Item | Path |
+|---|---|
+| OpenClaw directory (config, plugins, sessions, UI) | `~/.openclaw/` |
+| AcaClaw conda environments (acaclaw, acaclaw-bio, etc.) | conda env list |
+| AcaClaw config and audit data | `~/.acaclaw/` |
+| AcaClaw-installed Miniforge | `~/.acaclaw/miniforge3/` |
+| AcaClaw desktop shortcut | App launcher / Desktop |
+| AcaClaw gateway service | `acaclaw-gateway.service` |
+| OpenClaw gateway service | `openclaw-gateway.service` |
+| OpenClaw + ClawHub CLI | npm global packages |
 
 ### What stays untouched
 
 | Item | Path |
 |---|---|
 | Your research data | `~/AcaClaw/` |
-| OpenClaw (when using "AcaClaw only") | `~/.openclaw/` |
 | System conda installations | `~/miniconda3/`, `~/miniforge3/`, etc. |
+| Node.js itself | system install |
 
 The uninstall scripts **never** remove `~/AcaClaw/` automatically — your research files are yours.
-
-**OpenClaw is never affected by "Remove AcaClaw only".** Your `~/.openclaw/` directory, config, plugins, and sessions remain exactly as they were before AcaClaw was installed.

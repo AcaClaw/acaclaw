@@ -27,6 +27,8 @@ This document defines **what to test**, **how to test**, and **when to test**. F
   - [6. Config Validation Tests](#6-config-validation-tests)
   - [7. Install / Uninstall Tests](#7-install--uninstall-tests)
   - [8. Integration Tests](#8-integration-tests)
+- [9. GUI Tests (DOM + Gateway Contract)](#9-gui-tests-dom--gateway-contract)
+  - [Planned: Playwright Screenshot + E2E Tests](#planned-playwright-screenshot--e2e-tests)
 - [Writing Tests for Vibe-Coded Features](#writing-tests-for-vibe-coded-features)
 - [Coverage Requirements](#coverage-requirements)
 - [CI Pipeline](#ci-pipeline)
@@ -534,6 +536,153 @@ End-to-end tests that verify plugins work together in a realistic scenario.
 
 ---
 
+### 9. GUI Tests (DOM + Gateway Contract)
+
+AcaClaw's web UI is built with Lit web components served from `ui/src/views/`. GUI tests live in two tiers, both using Vitest:
+
+#### Tier 1: DOM Component Tests (`dom-*.test.ts`)
+
+**Approach:** Render real Lit components in happy-dom (`@vitest-environment happy-dom`). The gateway module is fully mocked — `gateway.call` returns canned data. Tests create the custom element, append it to `document.body`, wait for `updateComplete`, then query the shadow DOM for expected structure.
+
+**Pattern:**
+```typescript
+// @vitest-environment happy-dom
+vi.mock("../ui/src/controllers/gateway.js", () => ({
+  gateway: { call: mockCall, state: "connected", ... },
+}));
+const el = document.createElement("acaclaw-workspace") as WorkspaceView;
+document.body.appendChild(el);
+await el.updateComplete;
+expect(el.shadowRoot!.querySelectorAll(".file-row").length).toBe(3);
+```
+
+**What they verify:**
+- Component renders without errors
+- Correct DOM structure (headings, tabs, cards, buttons, toolbar items)
+- Conditional rendering (e.g., "New Project" button only inside Projects dir)
+- Basic interactions (tab switching, click-to-select, keyboard shortcuts)
+- Gateway RPC calls are triggered on mount (data loading)
+
+| File | Component | Key Assertions |
+|------|-----------|----------------|
+| `dom-workspace.test.ts` | WorkspaceView | File rows from mock data, toolbar buttons, conditional "New Project" |
+| `dom-backup.test.ts` | BackupView | 4 tabs (files/trash/snapshots/settings), stat cards |
+| `dom-sessions.test.ts` | SessionsView | Toolbar with search + page-size, refresh button, empty state |
+| `dom-skills.test.ts` | SkillsView | Featured/Installed tabs, skill cards, tab switching |
+| `dom-agents.test.ts` | AgentsView | Agent cards with names, start buttons, chat event dispatch |
+| `dom-environment.test.ts` | EnvironmentView | 5 ecosystem tabs, env list, package table |
+| `dom-command-palette.test.ts` | CommandPalette | Hidden by default, Ctrl+K / Cmd+K open, search input + results |
+| `dom-api-keys.test.ts` | ApiKeysView | LLM/Browser tabs, ≥5 provider chips, chip selection |
+| `dom-staff.test.ts` | StaffView | 6 staff cards, env install status |
+| `dom-onboarding.test.ts` | OnboardingView | 5 wizard steps, discipline cards, click-to-select |
+| `dom-monitor.test.ts` | MonitorView | Health card, CPU/memory/disk/GPU stats, session usage |
+| `dom-usage.test.ts` | UsageView | Period toggles (today/week/month), summary cards |
+| `dom-chat.test.ts` | ChatView | Heading, textarea + send button, disabled-when-empty |
+
+#### Tier 2: Gateway Contract Tests (`ui-*.test.ts`)
+
+**Approach:** No DOM rendering. Handler logic is **replicated** as standalone functions in the test file. Tests assert the correct RPC method name and parameter shape is sent to `mockCall`.
+
+**What they verify:**
+- Exact RPC method names (`acaclaw.project.create`, `skills.install`, etc.)
+- Parameter shapes and required fields
+- Input validation (trimming, empty-name rejection)
+- Server error forwarding
+- Timeout values for long operations (e.g., 5-min skill install)
+- Client-side filtering and search logic
+
+| File | Scope | Key Assertions |
+|------|-------|----------------|
+| `ui-workspace.test.ts` | Project/folder/file CRUD | RPC method + params, trim, empty-name error, server error passthrough |
+| `ui-skills.test.ts` | Skill install/toggle/filter | `skills.install` with 300s timeout, `skills.update`, ClawHub dedup |
+| `ui-staff.test.ts` | Staff customization | localStorage persistence, skill assignment, `applyCustomizations` |
+
+#### Known Gaps
+
+These are areas the current GUI test suite does **not** cover:
+
+| Gap | Impact | Suggested Fix |
+|-----|--------|---------------|
+| **No real browser rendering** | CSS layout bugs, scroll issues, and visual regressions are invisible | Playwright screenshot tests (see plan below) |
+| **No WebSocket streaming** | Chat streaming, agent output, progress events are untested | Playwright E2E against running gateway |
+| **No cross-view navigation** | Sidebar nav, command palette → view routing, deep links untested | Playwright navigation tests |
+| **Gateway contract drift** | `ui-*` tests replicate handler logic — if the component diverges, tests still pass | Import handler functions from the component instead of copying |
+| **No accessibility testing** | ARIA roles, keyboard-only navigation, screen reader compat untested | Add axe-core assertions to DOM tests |
+| **No error/loading states** | Gateway disconnects, timeouts, partial failures untested | Add `mockCall.mockRejectedValue` test cases to each DOM file |
+| **No responsive layout** | Mobile breakpoints, viewport resizing untested | Playwright viewport tests |
+| **Chat is minimally tested** | Most complex view (streaming, tool calls, staff switching) has only heading + textarea tests | Priority: Playwright E2E for chat flow |
+
+#### Planned: Playwright Screenshot + E2E Tests
+
+happy-dom cannot catch real CSS rendering, layout breaks, scroll behavior, or visual regressions. The next tier of GUI testing uses **Playwright** against the real running UI. Playwright is already installed (`@playwright/mcp` in `package.json`).
+
+**Architecture:**
+
+```
+Gateway (port 2090)  ←───WebSocket───→  Lit SPA (served at /)
+       ↑                                      ↑
+   Real RPC                              Playwright
+   (or mock server)                    (Chromium headless)
+                                              ↓
+                                     Screenshot capture
+                                              ↓
+                                     Baseline comparison
+                                     + AI agent review
+```
+
+**Two modes:**
+
+| Mode | When to use | Prereq |
+|------|-------------|--------|
+| **Live E2E** | Full integration — real gateway, real WebSocket, real data | Gateway running (`scripts/start.sh`) |
+| **Dev-server** | Visual regression only — Vite dev server, no gateway needed | `cd ui && npm run dev` (port 5173) |
+
+**What Playwright tests should cover:**
+
+| Test | View | Assertion |
+|------|------|-----------|
+| Screenshot: each view renders | All 13 views | Pixel-match against baseline PNG |
+| Navigation: sidebar → each view | App shell | URL changes, view content appears |
+| Chat: send message + streaming | ChatView | Message appears, streaming indicator, tool-call card renders |
+| Onboarding: complete wizard | OnboardingView | Step transitions, discipline persists, finish writes config |
+| Command palette: search + navigate | CommandPalette | Ctrl+K opens, type → filter, Enter → navigates |
+| Staff: customize → save → reload | StaffView | Rename persists in localStorage, survives page reload |
+| Responsive: 1280px / 768px / 375px | All views | No horizontal overflow, sidebar collapses |
+| Accessibility: axe scan | All views | Zero critical/serious a11y violations |
+| Error state: gateway down | App shell | Shows reconnecting indicator, not blank page |
+
+**Screenshot + regression workflow:**
+
+```
+1. Playwright captures PNG screenshot of each view (desktop only by default)
+2. Screenshots saved to tests/e2e/__screenshots__/
+3. On first run: save as baseline (--update-snapshots)
+4. On subsequent runs: pixel-diff against baseline (1% threshold)
+5. If diff exceeds threshold: test fails + diff image saved
+6. AI agent review is NOT part of the normal loop — invoked only
+   when a specific view's diff needs human/agent judgement
+```
+
+**Context size discipline:** Only desktop-viewport baselines are stored (10 PNGs, ~50 KB each). Tablet/mobile viewports are opt-in (`--project=tablet`). AI agents never bulk-review all screenshots — they review individual views on demand.
+
+**File naming convention:**
+
+| Pattern | Example |
+|---------|---------|
+| Playwright E2E test | `tests/e2e-<view>.test.ts` |
+| Screenshot baseline | `tests/__screenshots__/<view>-1280.png` |
+| Screenshot diff | `tests/__screenshots__/<view>-1280.diff.png` |
+
+**Implementation priority:**
+
+1. Screenshot baselines for all views — desktop only (catches rendering regressions)
+2. Chat E2E (most complex, highest risk, currently least tested)
+3. Navigation E2E (cross-view integrity)
+4. Responsive viewport tests (opt-in, run on demand)
+5. Accessibility scan (axe-core via Playwright)
+
+---
+
 ## Writing Tests for Vibe-Coded Features
 
 When AI generates a new function, follow this checklist:
@@ -658,6 +807,22 @@ stages:
 | `tests/config.test.ts` | Config files: JSON validity, schema, consistency | 📋 Planned |
 | `tests/compat.test.ts` | Cross-env compatibility: pin consistency, skills deps | 📋 Planned |
 | `tests/skills.test.ts` | Skills manifest: structure, dependency mapping | 📋 Planned |
+| `tests/dom-workspace.test.ts` | WorkspaceView: file rows, toolbar buttons, conditional UI | ✅ Implemented |
+| `tests/dom-backup.test.ts` | BackupView: tabs, stat cards, backup file list | ✅ Implemented |
+| `tests/dom-sessions.test.ts` | SessionsView: toolbar, search, empty state | ✅ Implemented |
+| `tests/dom-skills.test.ts` | SkillsView: tabs, skill cards, tab switching | ✅ Implemented |
+| `tests/dom-agents.test.ts` | AgentsView: agent cards, start buttons, chat event | ✅ Implemented |
+| `tests/dom-environment.test.ts` | EnvironmentView: ecosystem tabs, env list, package table | ✅ Implemented |
+| `tests/dom-command-palette.test.ts` | CommandPalette: keyboard open, search input, results | ✅ Implemented |
+| `tests/dom-api-keys.test.ts` | ApiKeysView: provider tabs, chips, chip selection | ✅ Implemented |
+| `tests/dom-staff.test.ts` | StaffView: staff cards, env status | ✅ Implemented |
+| `tests/dom-onboarding.test.ts` | OnboardingView: wizard steps, discipline selection | ✅ Implemented |
+| `tests/dom-monitor.test.ts` | MonitorView: health card, system resources, GPU | ✅ Implemented |
+| `tests/dom-usage.test.ts` | UsageView: period toggles, summary cards, tool usage | ✅ Implemented |
+| `tests/dom-chat.test.ts` | ChatView: heading, textarea, send button state | ✅ Implemented |
+| `tests/ui-workspace.test.ts` | Gateway contract: project/folder/file CRUD RPC shapes | ✅ Implemented |
+| `tests/ui-skills.test.ts` | Gateway contract: skill install/toggle/filter RPC shapes | ✅ Implemented |
+| `tests/ui-staff.test.ts` | Gateway contract: staff customization, localStorage persistence | ✅ Implemented |
 
 ---
 
@@ -670,5 +835,6 @@ For vibe-coded projects, testing is the quality firewall. The AI writes code; th
 3. **Every environment** → Conda resolve + import test
 4. **Every skill** → manifest + dependency + mode compatibility check
 5. **Every config file** → schema validation + cross-config consistency
-6. **Run before commit** → `npm run check && npm test`
-7. **Run in CI** → all stages must pass before merge
+6. **Every GUI view** → DOM render test (happy-dom) + gateway contract test
+7. **Run before commit** → `npm run check && npm test`
+8. **Run in CI** → all stages must pass before merge

@@ -16,6 +16,7 @@ permalink: /en/auth-and-app-launch/
 - [AcaClaw Auth Configuration](#acaclaw-auth-configuration)
 - [WebSocket Handshake](#websocket-handshake)
 - [Dual UI Architecture](#dual-ui-architecture)
+- [Launching the OpenClaw GUI from AcaClaw](#launching-the-openclaw-gui-from-acaclaw)
 - [App Launch Flow](#app-launch-flow)
 - [Gateway Lifecycle](#gateway-lifecycle)
 - [OpenClaw Gateway Architecture](#openclaw-gateway-architecture)
@@ -296,6 +297,81 @@ The OpenClaw Control UI injects security headers on all responses:
 | X-Content-Type-Options | `nosniff` |
 | Referrer-Policy | `no-referrer` |
 | Cache-Control | `no-cache` (HTML), `immutable` (hashed assets) |
+
+---
+
+## Launching the OpenClaw GUI from AcaClaw
+
+The AcaClaw UI provides a direct way to open the underlying OpenClaw Control UI — the full gateway admin panel — from within the research interface.
+
+### Access Path
+
+**Settings → "OpenClaw" tab** in the AcaClaw sidebar:
+
+```
+  AcaClaw UI (http://localhost:2090/)
+       │
+       └── Settings page (/#settings)
+            │
+            ├── Appearance
+            ├── Security
+            ├── Connection
+            ├── Advanced
+            ├── OpenClaw  ◄── clicking this opens the Control UI
+            ├── Debug
+            ├── Logs
+            └── Uninstall
+```
+
+Unlike the other settings tabs that render content inline, the **OpenClaw** tab does not display a panel — it immediately opens the OpenClaw Control UI in a new browser tab.
+
+### Mechanism
+
+The settings view in `ui/src/views/settings.ts` defines `"openclaw"` as a tab type and intercepts its click:
+
+```typescript
+// Tab click handler
+if (tab === "openclaw") {
+  this._openOpenClawUI();   // opens new window instead of rendering a panel
+} else {
+  this._tab = tab;          // renders the tab panel inline
+}
+```
+
+The launch method uses `window.open` with the `noopener` flag for security:
+
+```typescript
+private _openOpenClawUI() {
+  window.open(`${location.origin}/openclaw/`, "_blank", "noopener");
+}
+```
+
+| Detail | Value |
+|---|---|
+| Target URL | `http://localhost:2090/openclaw/` |
+| Window target | `_blank` (new tab/window) |
+| Security | `noopener` — prevents the new window from accessing `window.opener` |
+| Authentication | None required (both UIs share the same loopback gateway) |
+
+### Command Palette
+
+The command palette (`Ctrl+K` / `Cmd+K`) provides navigation to all AcaClaw views but does **not** include a shortcut for the OpenClaw Control UI. The only entry point is **Settings → OpenClaw**.
+
+### What the OpenClaw Control UI Provides
+
+Once opened, the Control UI at `/openclaw/` gives access to the full OpenClaw gateway admin surface:
+
+| Page | Path | Purpose |
+|---|---|---|
+| Chat | `/openclaw/chat` | Direct chat (bypasses AcaClaw agent routing) |
+| Config | `/openclaw/config` | Full JSON config editor |
+| Channels | `/openclaw/channels` | Channel status and management |
+| Agents | `/openclaw/agents` | Agent definitions and sessions |
+| Sessions | `/openclaw/sessions` | Session browser and history |
+| Skills | `/openclaw/skills` | Skill registry (all sources) |
+| Logs | `/openclaw/logs` | Gateway log viewer |
+
+The Control UI is a separate SPA served by the gateway's built-in `control-ui.ts` — it does not share code or state with the AcaClaw UI, though both connect to the same gateway WebSocket.
 
 ---
 
