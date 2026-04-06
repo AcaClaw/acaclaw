@@ -535,11 +535,14 @@ describe("AcaClaw App E2E", async () => {
 			const result = await sendAndCollect(
 				gw,
 				"Reply with exactly one word: hello",
-				30_000,
+				LLM_TIMEOUT,
 			);
 
 			if (result.noApiKey) {
-				console.log("[latency] SKIP: no API key configured");
+				console.log(
+					"[latency] SKIP: no API key configured " +
+						`(response: ${result.text.slice(0, 80)})`,
+				);
 				return;
 			}
 
@@ -547,7 +550,7 @@ describe("AcaClaw App E2E", async () => {
 				`[latency] Full response: ${(result.totalMs / 1000).toFixed(2)}s`,
 			);
 			expect(result.totalMs).toBeLessThan(30_000);
-		}, 35_000);
+		}, LLM_TIMEOUT + 5_000);
 	});
 
 	// --- API Key → Model → Chat verification ---
