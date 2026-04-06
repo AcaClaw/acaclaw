@@ -346,8 +346,8 @@ else
 		# Download sources — try GitHub first, fall back to mirrors
 		MINIFORGE_URLS=(
 			"https://github.com/conda-forge/miniforge/releases/latest/download"
-			"https://mirrors.tuna.tsinghua.edu.cn/github-release/conda-forge/miniforge/LatestRelease"
 			"https://mirrors.bfsu.edu.cn/github-release/conda-forge/miniforge/LatestRelease"
+			"https://mirrors.tuna.tsinghua.edu.cn/github-release/conda-forge/miniforge/LatestRelease"
 		)
 
 		# Miniforge installer checks that $0 ends with .sh
@@ -403,8 +403,8 @@ else
 	trap '_restore_condarc; _cleanup_clone' EXIT
 
 	MIRROR_URLS=(
-		"https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud"
 		"https://mirrors.bfsu.edu.cn/anaconda/cloud"
+		"https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud"
 	)
 	MIRROR_SET="false"
 	for mirror_url in "${MIRROR_URLS[@]}"; do
@@ -629,14 +629,14 @@ _clawhub_install() {
 	local _timeout="${CLAWHUB_SKILL_TIMEOUT}"
 
 	# Try primary registry with timeout
-	if timeout "$_timeout" clawhub install "$_skill" --workdir "${OPENCLAW_DIR}" --force 2>/dev/null; then
+	if timeout "$_timeout" clawhub --workdir "${OPENCLAW_DIR}" install "$_skill" --force 2>/dev/null; then
 		return 0
 	fi
 
 	# Primary failed or timed out — try mirror
 	warn "${_skill}: primary ClawHub slow/unavailable, trying mirror (${CLAWHUB_MIRROR})..."
-	if timeout "$_timeout" clawhub install "$_skill" --workdir "${OPENCLAW_DIR}" --force \
-		--registry "${CLAWHUB_MIRROR}" 2>/dev/null; then
+	if timeout "$_timeout" clawhub --workdir "${OPENCLAW_DIR}" --registry "${CLAWHUB_MIRROR}" \
+		install "$_skill" --force 2>/dev/null; then
 		return 0
 	fi
 
