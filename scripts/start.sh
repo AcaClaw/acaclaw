@@ -447,21 +447,10 @@ open_app_window() {
                 --suppress-message-center-popups
                 --password-store=basic
             )
-            local edge_bin="/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"
-            local chrome_bin="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-
-            # If launched from AcaClaw.app bundle, the browser binary was already
-            # exec'd by the .app launcher — we should never reach here. But if
-            # start.sh is run directly from terminal, launch the AcaClaw.app
-            # bundle so the dock icon shows "AcaClaw" not "Edge".
-            local acaclaw_app="${HOME}/Applications/AcaClaw.app"
-            if [[ -d "$acaclaw_app" ]]; then
-                open -a "$acaclaw_app" 2>/dev/null
-            elif [[ -x "$edge_bin" ]]; then
-                # No .app bundle — fall back to direct binary launch (background)
-                "$edge_bin" "${app_flags[@]}" &>/dev/null &
-            elif [[ -x "$chrome_bin" ]]; then
-                "$chrome_bin" "${app_flags[@]}" &>/dev/null &
+            if [[ -d "/Applications/Microsoft Edge.app" ]]; then
+                open -na "Microsoft Edge" --args "${app_flags[@]}" 2>/dev/null
+            elif [[ -d "/Applications/Google Chrome.app" ]]; then
+                open -na "Google Chrome" --args "${app_flags[@]}" 2>/dev/null
             else
                 open "$URL" 2>/dev/null
             fi
