@@ -669,8 +669,9 @@ describe("AcaClaw App E2E", async () => {
 
 		it("chat.send response uses model from configured provider (not 'No API key')", async () => {
 			if (!isUp || !gw) return;
+			const conn = gw;
 
-			const providerModels = await getConfiguredProviderModels(gw);
+			const providerModels = await getConfiguredProviderModels(conn);
 			if (providerModels.size === 0) {
 				console.log("[model-match] SKIP: no providers configured");
 				return;
@@ -684,7 +685,7 @@ describe("AcaClaw App E2E", async () => {
 
 			// Set the session model (may be blocked in OpenClaw 4.2+ for WebChat)
 			try {
-				await gw.call("sessions.patch", {
+				await conn.call("sessions.patch", {
 					key: sessionKey,
 					model: fullModelRef,
 				});
@@ -701,7 +702,7 @@ describe("AcaClaw App E2E", async () => {
 					() => reject(new Error(`chat timeout (${LLM_TIMEOUT}ms)`)),
 					LLM_TIMEOUT,
 				);
-				gw.onNotification("chat", (payload: unknown) => {
+				conn.onNotification("chat", (payload: unknown) => {
 					const p = payload as {
 						state: string;
 						sessionKey?: string;
@@ -732,7 +733,7 @@ describe("AcaClaw App E2E", async () => {
 				});
 			});
 
-			await gw.call("chat.send", {
+			await conn.call("chat.send", {
 				sessionKey,
 				message: "Reply with exactly: hello",
 				idempotencyKey: randomUUID(),
@@ -757,7 +758,7 @@ describe("AcaClaw App E2E", async () => {
 
 			// Clean up
 			try {
-				await gw.call("sessions.remove", { key: sessionKey });
+				await conn.call("sessions.remove", { key: sessionKey });
 			} catch { /* ignore */ }
 		}, LLM_TIMEOUT + 5_000);
 	});
