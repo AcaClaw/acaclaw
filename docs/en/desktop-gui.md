@@ -23,7 +23,7 @@ permalink: /en/desktop-gui/
 - [7. Setup Wizard (Browser-Based)](#7-setup-wizard-browser-based)
 - [What AcaClaw's UI Includes](#what-acaclaws-ui-includes)
 - [Implementation Approach](#implementation-approach)
-- [Desktop Launch (Browser-Based)](#desktop-launch-browser-based)
+- [Desktop Launch](#desktop-launch)
   - [→ Full auth and token details](/en/auth-and-app-launch/)
 - [GUI-to-CLI Mapping](#gui-to-cli-mapping)
 
@@ -1276,16 +1276,19 @@ AcaClaw update (install.sh --upgrade)
   └── Does NOT touch: ~/.openclaw/ (OpenClaw's config, plugins, sessions)
 ```
 
-### Future: Electron or Tauri Wrapper
+### Future: Electron or Tauri Wrapper (Linux / Windows)
 
-If AcaClaw needs system tray, native notifications, or auto-start on login, a desktop wrapper can load the same SPA in a native window. The Lit components are identical — the wrapper just replaces the browser tab.
+On macOS, AcaClaw already ships a native `.app` bundle using `WKWebView` (the system WebKit engine). The compiled Swift binary (~60 KB) shows AcaClaw's icon in the Dock, handles Dock relaunch natively, and quits when the window is closed — no browser dependency at runtime.
+
+For Linux and Windows, if AcaClaw needs system tray, native notifications, or auto-start on login, a desktop wrapper can load the same SPA in a native window. The Lit components are identical — the wrapper just replaces the browser tab.
 
 | Option | Pros | Cons |
 |---|---|---|
-| **Electron** | Mature, system tray, native notifications, auto-start | 150+ MB overhead, Chromium bundle |
+| **WKWebView (Swift)** | ~60 KB, native Dock icon, no browser needed | macOS only **(current)** |
+| **Electron** | Cross-platform, system tray, native notifications | 150+ MB overhead, Chromium bundle |
 | **Tauri** | ~5 MB binary, uses OS webview, Rust IPC | Younger ecosystem, webview compatibility varies |
 
-Not planned for initial release. The browser-based SPA covers all required functionality.
+Linux and Windows wrappers are not planned for initial release. The browser-based SPA covers all required functionality on those platforms.
 
 ### Phased Rollout
 
@@ -1316,18 +1319,19 @@ Build the panels that require AcaClaw plugin backend methods.
 
 When AcaClaw ships signed platform packages, replace the terminal script with native installers.
 
-| Platform | Installer type |
-|---|---|
-| macOS | `.dmg` (signed + notarized) |
-| Windows | `.exe` (signed) |
-| Linux | `.AppImage` or `.deb`/`.rpm` |
-| All platforms | Shell script + browser wizard **(current)** |
+| Platform | Installer type | Status |
+|---|---|---|
+| macOS | `.app` with WKWebView (compiled from Swift) | **Current** — native window, Dock icon, no browser dependency |
+| macOS | `.dmg` (signed + notarized) | Future |
+| Windows | `.exe` (signed) | Future |
+| Linux | `.AppImage` or `.deb`/`.rpm` | Future |
+| All platforms | Shell script + browser wizard | **Current** — fallback on all platforms |
 
 ---
 
-## Desktop Launch (Browser-Based)
+## Desktop Launch
 
-AcaClaw runs as a local web app: the gateway serves the UI, and the user opens it in the browser. This section covers the desktop shortcut and platform integration. For the full authentication flow, token lifecycle, and WebSocket handshake details, see [Authentication and App Launch](/en/auth-and-app-launch/).
+AcaClaw runs as a local web app: the gateway serves the UI, and the user accesses it through a native window or browser. On macOS, `install-desktop.sh` compiles a ~60 KB Swift binary that opens a native `WKWebView` window — no browser required. On other platforms, `start.sh` opens the UI in the default browser. For the full authentication flow, token lifecycle, and WebSocket handshake details, see [Authentication and App Launch](/en/auth-and-app-launch/).
 
 ### Scripts
 
@@ -1339,10 +1343,10 @@ AcaClaw runs as a local web app: the gateway serves the UI, and the user opens i
 
 ### Platform Behavior
 
-| Platform | Desktop shortcut | Browser launch method | Notes |
+| Platform | Desktop shortcut | Launch method | Notes |
 |---|---|---|---|
 | **Linux** | `.desktop` file in `~/.local/share/applications/` | `xdg-open` | Appears in GNOME, KDE, XFCE app launchers |
-| **macOS** | `.command` file in `~/Applications/` | `open` | Double-click in Finder, or drag to Dock |
+| **macOS** | `.app` bundle in `~/Applications/` | Native WKWebView window | Compiled Swift binary; shows AcaClaw icon in Dock, handles Dock relaunch, no browser needed. Falls back to `open URL` if `swiftc` unavailable |
 | **WSL2** | `.lnk` shortcut on Windows Desktop | `powershell.exe Start-Process` | Runs gateway inside WSL, opens Windows browser |
 | **Headless/SSH** | N/A | Prints URL to terminal | User visits URL from any browser |
 
