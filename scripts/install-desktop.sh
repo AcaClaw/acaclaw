@@ -156,37 +156,126 @@ install_macos() {
 
     mkdir -p "$app_dir"
 
-    # Layer 1: .app via osacompile
-    # The applet launches start.sh in the background (&) so it exits immediately
-    # instead of stalling while start.sh waits for the gateway.
-    # start.sh handles gateway startup + browser open on its own.
+    # Layer 1: .app bundle with bash launcher that exec's into Edge/Chrome.
+    #
+    # How it works:
+    #   1. macOS launches Contents/MacOS/AcaClaw (bash script)
+    #   2. Script starts the gateway if not running
+    #   3. Script exec's into the Edge/Chrome binary with --app=localhost:2090
+    #   4. Because exec replaces the process, macOS keeps AcaClaw's Dock icon
+    #   5. Clicking the Dock icon again works normally (Chromium handles it)
+    #   6. When the user closes the window, the process exits and AcaClaw
+    #      disappears from the Dock
+    #
+    # No AppleScript, no stay-open applet, no dual Dock icons.
     log "Layer 1: Creating AcaClaw.app..."
-    # Remove any previous .app first — leftover files from an older install
-    # can confuse osacompile (it overlays, not replaces).
     [[ -d "$app_bundle" ]] && rm -rf "$app_bundle"
-    osacompile -o "$app_bundle" -e "do shell script \"bash '${start_script}' &> /dev/null &\"" 2>/dev/null
 
-    if [[ -d "$app_bundle" ]]; then
-        local resources_dir="${app_bundle}/Contents/Resources"
-        if icon_src="$(find_icon)" && command -v sips &>/dev/null && command -v iconutil &>/dev/null; then
-            local iconset_dir
-            iconset_dir="$(mktemp -d)/AcaClaw.iconset"
-            mkdir -p "$iconset_dir"
-            for size in 16 32 128 256 512; do
-                sips -z "$size" "$size" "$icon_src" --out "${iconset_dir}/icon_${size}x${size}.png" &>/dev/null || true
-                local retina=$((size * 2))
-                if [[ $retina -le 1024 ]]; then
-                    sips -z "$retina" "$retina" "$icon_src" --out "${iconset_dir}/icon_${size}x${size}@2x.png" &>/dev/null || true
-                fi
-            done
-            iconutil -c icns "$iconset_dir" -o "${resources_dir}/applet.icns" 2>/dev/null || true
-            rm -rf "$(dirname "$iconset_dir")"
-        fi
-        touch "$app_bundle"
-        log "  ✓ ~/Applications/AcaClaw.app (Launchpad, Spotlight, drag to Dock)"
-    else
-        warn "  ✗ AcaClaw.app creation failed — layers 2 and 3 still available"
+    local macos_dir="${app_bundle}/Contents/MacOS"
+    local resources_dir="${app_bundle}/Contents/Resources"
+    mkdir -p "$macos_dir" "$resources_dir"
+
+    # --- Info.plist ---
+    cat > "${app_bundle}/Contents/Info.plist" << 'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>AcaClaw</string>
+    <key>CFBundleDisplayName</key>
+    <string>AcaClaw</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.acaclaw.app</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleExecutable</key>
+    <string>AcaClaw</string>
+    <key>CFBundleIconFile</key>
+    <string>AcaClaw</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+</dict>
+</plist>
+PLIST
+
+    # --- Main executable (bash script that exec's into browser) ---
+    cat > "${macos_dir}/AcaClaw" << LAUNCHER
+#!/usr/bin/env bash
+# AcaClaw.app launcher — starts gateway then exec's into browser.
+# exec replaces this process with Edge/Chrome so macOS keeps AcaClaw's Dock icon.
+
+# PATH bootstrap (desktop .app has minimal PATH)
+for d in /opt/homebrew/bin /usr/local/bin "\$HOME/.local/share/fnm" "\$HOME/Library/pnpm" "\$HOME/.npm-global/bin"; do
+    [[ -d "\$d" ]] && export PATH="\$d:\$PATH"
+done
+if command -v fnm &>/dev/null; then
+    eval "\$(fnm env 2>/dev/null)" 2>/dev/null || true
+fi
+
+# Start gateway if not running
+if ! lsof -iTCP:2090 -sTCP:LISTEN -P &>/dev/null; then
+    bash "${start_script}" --no-browser &>/dev/null &
+    # Wait up to 30s for gateway
+    for i in \$(seq 1 30); do
+        lsof -iTCP:2090 -sTCP:LISTEN -P &>/dev/null && break
+        sleep 1
+    done
+fi
+
+# Browser profile (prevents First Run experience)
+APP_PROFILE="\$HOME/.acaclaw/browser-app"
+mkdir -p "\$APP_PROFILE"
+touch "\$APP_PROFILE/First Run"
+
+APP_FLAGS=(
+    --user-data-dir="\$APP_PROFILE"
+    --app="http://localhost:2090/"
+    --no-first-run
+    --no-default-browser-check
+    --disable-fre
+    --disable-background-networking
+    --disable-component-update
+    --disable-sync
+    --disable-translate
+    --disable-default-apps
+    --disable-extensions
+    "--disable-features=TranslateUI,OptimizationHints,MediaRouter,EdgeCollections,EdgeDiscoverWidget,msEdgeShopping,EdgeWallet,msEdgeOnRamp"
+    --suppress-message-center-popups
+    --password-store=basic
+)
+
+# exec into the browser — this replaces the current process,
+# so macOS keeps the AcaClaw .app bundle's Dock icon.
+if [[ -x "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" ]]; then
+    exec "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" "\${APP_FLAGS[@]}"
+elif [[ -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ]]; then
+    exec "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" "\${APP_FLAGS[@]}"
+else
+    open "http://localhost:2090/"
+fi
+LAUNCHER
+    chmod +x "${macos_dir}/AcaClaw"
+
+    # --- Icon ---
+    if icon_src="$(find_icon)" && command -v sips &>/dev/null && command -v iconutil &>/dev/null; then
+        local iconset_dir
+        iconset_dir="$(mktemp -d)/AcaClaw.iconset"
+        mkdir -p "$iconset_dir"
+        for size in 16 32 128 256 512; do
+            sips -z "$size" "$size" "$icon_src" --out "${iconset_dir}/icon_${size}x${size}.png" &>/dev/null || true
+            local retina=$((size * 2))
+            if [[ $retina -le 1024 ]]; then
+                sips -z "$retina" "$retina" "$icon_src" --out "${iconset_dir}/icon_${size}x${size}@2x.png" &>/dev/null || true
+            fi
+        done
+        iconutil -c icns "$iconset_dir" -o "${resources_dir}/AcaClaw.icns" 2>/dev/null || true
+        rm -rf "$(dirname "$iconset_dir")"
     fi
+    touch "$app_bundle"
+    log "  ✓ ~/Applications/AcaClaw.app (Launchpad, Spotlight, drag to Dock)"
 
     # Layer 2: Desktop shortcut
     log "Layer 2: Creating Desktop shortcut..."

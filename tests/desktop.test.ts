@@ -329,18 +329,52 @@ DESKTOP
 	// macOS: app bundle creation path
 	// ---------------------------------------------------------------
 	describe("macOS app bundle", () => {
-		it("osacompile runs start.sh in background to avoid stall", async () => {
+		it("creates .app with bash launcher that exec's into browser", async () => {
 			const script = await readFile(DESKTOP_SCRIPT, "utf-8");
-			// The osacompile command must background start.sh so the applet exits immediately
-			// instead of blocking while start.sh waits for the gateway.
-			const osaLine = script
-				.split("\n")
-				.find((l) => l.includes("osacompile") && l.includes("-o"));
-			expect(osaLine).toBeDefined();
-			// Must contain '&' to background the bash process inside do shell script
-			expect(osaLine).toMatch(/&/);
-			// Must redirect output to avoid blocking on stdout/stderr
-			expect(osaLine).toMatch(/&>/);
+			// Must create a custom .app bundle (not osacompile)
+			// with a bash script as CFBundleExecutable that exec's into Edge/Chrome
+			expect(script).toMatch(/macos_dir=.*MacOS/);
+			expect(script).toMatch(/CFBundleExecutable/);
+			expect(script).toMatch(/chmod \+x/);
+		});
+
+		it("launcher uses exec to replace process with browser", async () => {
+			const script = await readFile(DESKTOP_SCRIPT, "utf-8");
+			// exec is critical: it replaces the bash process with Edge/Chrome,
+			// so macOS keeps the AcaClaw .app bundle's Dock icon
+			expect(script).toMatch(/exec.*Microsoft Edge/);
+			expect(script).toMatch(/exec.*Google Chrome/);
+		});
+
+		it("launcher starts gateway via start.sh --no-browser", async () => {
+			const script = await readFile(DESKTOP_SCRIPT, "utf-8");
+			expect(script).toMatch(/--no-browser/);
+		});
+
+		it("launcher has PATH bootstrap for .app context", async () => {
+			const script = await readFile(DESKTOP_SCRIPT, "utf-8");
+			// .app bundles run with minimal PATH; launcher must bootstrap
+			expect(script).toMatch(/\/opt\/homebrew\/bin/);
+			expect(script).toMatch(/fnm/);
+		});
+
+		it("launcher creates browser profile to prevent First Run", async () => {
+			const script = await readFile(DESKTOP_SCRIPT, "utf-8");
+			expect(script).toMatch(/First Run/);
+			expect(script).toMatch(/--no-first-run/);
+		});
+
+		it("removes old .app before creating new one", async () => {
+			const script = await readFile(DESKTOP_SCRIPT, "utf-8");
+			expect(script).toMatch(/rm -rf.*app_bundle/);
+		});
+
+		it("icon file matches CFBundleIconFile", async () => {
+			const script = await readFile(DESKTOP_SCRIPT, "utf-8");
+			// CFBundleIconFile says "AcaClaw" (value on next line in plist heredoc)
+			expect(script).toMatch(/CFBundleIconFile/);
+			expect(script).toMatch(/<string>AcaClaw<\/string>/);
+			expect(script).toMatch(/AcaClaw\.icns/);
 		});
 
 		it("creates ~/Applications directory", async () => {
