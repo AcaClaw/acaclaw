@@ -318,8 +318,26 @@ if is_gateway_running && is_port_responding; then
     pid="$(gateway_pid)"
     log "Gateway already running (PID $pid)"
 elif is_gateway_running; then
+    # Process exists but port not responding — treat as crashed/unresponsive, restart it.
     pid="$(gateway_pid)"
-    log "Gateway already running (PID $pid)"
+    warn "Gateway process (PID $pid) is not responding on port ${ACACLAW_PORT} — restarting..."
+    kill "$pid" 2>/dev/null || true
+    sleep 1
+    rm -f "$ACACLAW_PID_FILE"
+    # Fall through to start a new gateway (handled by the else branch below)
+    log "Starting AcaClaw gateway on port ${ACACLAW_PORT}..."
+    nohup openclaw gateway run \
+        --config "${ACACLAW_CONFIG}" \
+        --bind loopback --port "$ACACLAW_PORT" --force \
+        >> "$ACACLAW_LOG_FILE" 2>&1 &
+    GATEWAY_PID=$!
+    echo "$GATEWAY_PID" > "$ACACLAW_PID_FILE"
+    log "Gateway starting (PID $GATEWAY_PID)..."
+    if wait_for_gateway; then
+        log "Gateway ready on port ${ACACLAW_PORT} ✓"
+    else
+        warn "Gateway did not respond in time — check logs: ${ACACLAW_LOG_FILE}"
+    fi
 elif [[ "$USE_SERVICE" == "true" ]]; then
     log "Starting AcaClaw gateway via systemd service..."
     if systemctl --user start "${GATEWAY_SERVICE}" 2>/dev/null; then
@@ -430,6 +448,13 @@ open_app_window() {
 
     case "$PLATFORM" in
         macos)
+            # Prefer the native WKWebView app if installed — single Dock icon,
+            # no browser chrome, no address bar, proper Cmd-Q / relaunch behavior.
+            if [[ -d "${HOME}/Applications/AcaClaw.app" ]]; then
+                open -a "${HOME}/Applications/AcaClaw.app" 2>/dev/null
+                return 0
+            fi
+
             # Disable heavy Edge/Chrome features for faster app-window startup
             local -a app_flags=(
                 --user-data-dir="$app_profile"
