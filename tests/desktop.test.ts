@@ -624,13 +624,14 @@ describe("start.sh gateway restart", () => {
 
 	it("start.sh restart branch runs a new openclaw gateway run", async () => {
 		const content = await readFile(startScript, "utf-8");
-		// After killing the zombie, it must start a new gateway with --config
+		// After killing the zombie, it must start a new gateway via OPENCLAW_CONFIG_PATH
+		// (--config is not a valid flag for `openclaw gateway run`)
 		const restartBlock = content.slice(
 			content.indexOf("not responding on port"),
-			content.indexOf("elif [[ \"$USE_SERVICE\""),
+			content.indexOf("elif [[\u0020\"$USE_SERVICE\""),
 		);
 		expect(restartBlock).toMatch(/openclaw gateway run/);
-		expect(restartBlock).toMatch(/--config/);
+		expect(restartBlock).toMatch(/OPENCLAW_CONFIG_PATH/);
 		expect(restartBlock).toMatch(/--bind loopback/);
 	});
 });

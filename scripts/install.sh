@@ -752,7 +752,11 @@ if tpl_providers:
     models_sec = cfg.setdefault('models', {})
     providers = models_sec.setdefault('providers', {})
     for pid, prov_cfg in tpl_providers.items():
-        providers.setdefault(pid, {}).setdefault('baseUrl', prov_cfg.get('baseUrl', ''))
+        prov = providers.setdefault(pid, {})
+        prov.setdefault('baseUrl', prov_cfg.get('baseUrl', ''))
+        # Ensure 'models' array is always present (validator requires it)
+        if 'models' not in prov:
+            prov['models'] = prov_cfg.get('models', [])
 
 # Update conda path if available
 miniforge = '${MINIFORGE_DIR:-}'

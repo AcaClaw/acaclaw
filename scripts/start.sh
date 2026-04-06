@@ -326,8 +326,7 @@ elif is_gateway_running; then
     rm -f "$ACACLAW_PID_FILE"
     # Fall through to start a new gateway (handled by the else branch below)
     log "Starting AcaClaw gateway on port ${ACACLAW_PORT}..."
-    nohup openclaw gateway run \
-        --config "${ACACLAW_CONFIG}" \
+    nohup OPENCLAW_CONFIG_PATH="${ACACLAW_CONFIG}" openclaw gateway run \
         --bind loopback --port "$ACACLAW_PORT" --force \
         >> "$ACACLAW_LOG_FILE" 2>&1 &
     GATEWAY_PID=$!
