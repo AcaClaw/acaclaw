@@ -403,13 +403,16 @@ else
 	trap '_restore_condarc; _cleanup_clone' EXIT
 
 	MIRROR_URLS=(
-		"https://mirrors.bfsu.edu.cn/anaconda/cloud"
-		"https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud"
+		"https://mirrors.nju.edu.cn/anaconda/cloud"   # NJU — conda-forge + .zst ✓
+		"https://mirror.sjtu.edu.cn/anaconda/cloud"   # SJTU — conda-forge .json ✓
+		"https://mirrors.bfsu.edu.cn/anaconda/cloud"  # BFSU — fallback (SSL unreliable)
+		"https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud" # TUNA — fallback
 	)
 	MIRROR_SET="false"
 	for mirror_url in "${MIRROR_URLS[@]}"; do
-		# Test using conda's own Python + ssl module to match what conda will use
-		TEST_URL="${mirror_url}/conda-forge/noarch/repodata.json.zst"
+		# Test using conda's own Python + ssl module to match what conda will use.
+		# Use .json (not .zst) so SJTU's noarch 403 on .zst doesn't block it.
+		TEST_URL="${mirror_url}/conda-forge/noarch/repodata.json"
 		if "${MINIFORGE_DIR}/bin/python3" -c "
 import urllib.request, ssl, sys
 try:
