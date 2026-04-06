@@ -420,12 +420,37 @@ open_app_window() {
     # Open AcaClaw as a standalone app window (no address bar, no tabs).
     # Must use the real browser binary (not the wrapper) with --profile-directory
     # and --app=URL, matching how Edge/Chrome create their own web app launchers.
+
+    # Pre-create the profile directory with a "First Run" sentinel file.
+    # Without this, Chrome/Edge show their First Run Experience (welcome page),
+    # which overrides --app mode and opens a normal browser window instead.
+    local app_profile="${ACACLAW_DATA_DIR}/browser-app"
+    mkdir -p "$app_profile"
+    touch "$app_profile/First Run"
+
     case "$PLATFORM" in
         macos)
+            # Disable heavy Edge/Chrome features for faster app-window startup
+            local -a app_flags=(
+                --user-data-dir="$app_profile"
+                --app="$URL"
+                --no-first-run
+                --no-default-browser-check
+                --disable-fre
+                --disable-background-networking
+                --disable-component-update
+                --disable-sync
+                --disable-translate
+                --disable-default-apps
+                --disable-extensions
+                --disable-features=TranslateUI,OptimizationHints,MediaRouter,EdgeCollections,EdgeDiscoverWidget,msEdgeShopping,EdgeWallet,msEdgeOnRamp
+                --suppress-message-center-popups
+                --password-store=basic
+            )
             if [[ -d "/Applications/Microsoft Edge.app" ]]; then
-                open -na "Microsoft Edge" --args --app="$URL" 2>/dev/null
+                open -na "Microsoft Edge" --args "${app_flags[@]}" 2>/dev/null
             elif [[ -d "/Applications/Google Chrome.app" ]]; then
-                open -na "Google Chrome" --args --app="$URL" 2>/dev/null
+                open -na "Google Chrome" --args "${app_flags[@]}" 2>/dev/null
             else
                 open "$URL" 2>/dev/null
             fi
@@ -448,7 +473,6 @@ open_app_window() {
             # Use --user-data-dir to force a NEW browser instance so --app=URL
             # is honoured. Without it, the IPC handoff to the existing browser
             # silently drops the --app flag and opens a regular tab.
-            local app_profile="${ACACLAW_DATA_DIR}/browser-app"
 
             # Disable heavy Edge/Chrome features for faster app-window startup
             # Note: this is an --app=localhost window with no external navigation,
@@ -458,6 +482,7 @@ open_app_window() {
                 --app="$URL"
                 --no-first-run
                 --no-default-browser-check
+                --disable-fre
                 --disable-background-networking
                 --disable-component-update
                 --disable-sync
@@ -465,6 +490,7 @@ open_app_window() {
                 --disable-default-apps
                 --disable-extensions
                 --disable-features=TranslateUI,OptimizationHints,MediaRouter,EdgeCollections,EdgeDiscoverWidget,msEdgeShopping,EdgeWallet,msEdgeOnRamp
+                --suppress-message-center-popups
                 --password-store=basic
             )
 
