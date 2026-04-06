@@ -41,6 +41,26 @@ warn()  { echo -e "${YELLOW}[acaclaw]${NC} $*"; }
 error() { echo -e "${RED}[acaclaw]${NC} $*" >&2; }
 header() { echo -e "\n${BOLD}${BLUE}$*${NC}\n"; }
 
+# --- Portable timeout wrapper (macOS lacks GNU timeout) ---
+if ! command -v timeout &>/dev/null; then
+	timeout() {
+		local _secs="$1"; shift
+		# Run command in background with a watchdog timer.
+		"$@" &
+		local _cmd_pid=$!
+		# Watchdog: kill the command if it exceeds the deadline
+		( sleep "$_secs" && kill "$_cmd_pid" 2>/dev/null ) &
+		local _dog_pid=$!
+		disown "$_dog_pid" 2>/dev/null || true
+		# Wait for the command (ignore errors from wait itself under set -e)
+		local _rc=0
+		wait "$_cmd_pid" 2>/dev/null || _rc=$?
+		# Kill the watchdog if it's still sleeping
+		kill "$_dog_pid" 2>/dev/null || true
+		return "$_rc"
+	}
+fi
+
 # --- Handle --help and unknown flags before cloning (avoids network delay) ---
 case "${1:-}" in
 	--help|-h)

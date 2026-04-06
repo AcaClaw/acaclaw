@@ -1006,6 +1006,28 @@ EOF
 	});
 
 	// ---------------------------------------------------------------
+	// Portable timeout shim (macOS lacks GNU timeout)
+	// ---------------------------------------------------------------
+	describe("Portable timeout shim", () => {
+		it("defines a timeout function when timeout command is missing", async () => {
+			const { stdout, code } = await runBash(
+				`grep -c 'timeout()' "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+			expect(Number(stdout.trim())).toBeGreaterThanOrEqual(1);
+		});
+
+		it("timeout shim uses background sleep+kill pattern", async () => {
+			const { stdout, code } = await runBash(
+				`grep -A15 'timeout()' "${INSTALL_SCRIPT}" | head -20`,
+			);
+			expect(code).toBe(0);
+			expect(stdout).toContain("sleep");
+			expect(stdout).toContain("kill");
+		});
+	});
+
+	// ---------------------------------------------------------------
 	// GitHub clone mirror fallback
 	// ---------------------------------------------------------------
 	describe("GitHub clone mirror fallback", () => {
