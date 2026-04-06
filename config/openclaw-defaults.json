@@ -22,7 +22,8 @@
       "compaction": {
         "notifyUser": false
       },
-      "params": {}
+      "params": {},
+      "model": "modelstudio/qwen3.5-plus"
     },
     "list": [
       {
@@ -103,6 +104,13 @@
       "mcp_uninstall",
       "config_set"
     ]
+  },
+  "models": {
+    "providers": {
+      "modelstudio": {
+        "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+      }
+    }
   },
   "plugins": {
     "allow": [

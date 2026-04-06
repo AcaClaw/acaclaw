@@ -743,6 +743,14 @@ cfg['tools'] = copy.deepcopy(tpl.get('tools', {}))
 if user_web:
     cfg['tools']['web'] = user_web
 
+# Model providers: set defaults from template, preserve user overrides
+tpl_providers = tpl.get('models', {}).get('providers', {})
+if tpl_providers:
+    models_sec = cfg.setdefault('models', {})
+    providers = models_sec.setdefault('providers', {})
+    for pid, prov_cfg in tpl_providers.items():
+        providers.setdefault(pid, {}).setdefault('baseUrl', prov_cfg.get('baseUrl', ''))
+
 # Update conda path if available
 miniforge = '${MINIFORGE_DIR:-}'
 if miniforge:

@@ -709,6 +709,143 @@ with open('${configFile}', 'w') as f:
 			expect(config.gateway.controlUi.basePath).toBe("/openclaw");
 			expect(config.gateway.controlUi.dangerouslyDisableDeviceAuth).toBe(true);
 		});
+
+		it("standalone config includes modelstudio Standard China base URL", async () => {
+			const stateDir = join(fakeHome, ".openclaw");
+			const configSource = resolve(__dirname, "../config");
+
+			const { code } = await runBash(`
+				set -euo pipefail
+				mkdir -p "${stateDir}"
+				python3 -c "
+import json
+
+with open('${configSource}/openclaw-defaults.json') as f:
+    cfg = json.load(f)
+
+cfg['gateway'].setdefault('auth', {})['mode'] = 'none'
+
+with open('${stateDir}/openclaw.json', 'w') as f:
+    json.dump(cfg, f, indent=2)
+    f.write('\\\\n')
+"
+			`);
+			expect(code).toBe(0);
+
+			const config = JSON.parse(
+				await readFile(join(stateDir, "openclaw.json"), "utf-8"),
+			);
+			expect(config.models.providers.modelstudio.baseUrl).toBe(
+				"https://dashscope.aliyuncs.com/compatible-mode/v1",
+			);
+		});
+
+		it("config merge sets modelstudio base URL when missing", async () => {
+			const openclawDir = join(fakeHome, ".openclaw");
+			const stateDir = openclawDir;
+			const configSource = resolve(__dirname, "../config");
+
+			// Existing config with NO models.providers
+			await runBash(`
+				mkdir -p "${openclawDir}"
+				cat > "${openclawDir}/openclaw.json" <<'EOF'
+{
+  "env": { "MODELSTUDIO_API_KEY": "sk-test" },
+  "agents": { "defaults": { "model": "modelstudio/qwen3.5-plus" } },
+  "gateway": {}
+}
+EOF
+			`);
+
+			const { code } = await runBash(`
+				set -euo pipefail
+				python3 -c "
+import json, copy
+
+with open('${openclawDir}/openclaw.json') as f:
+    cfg = json.load(f)
+
+with open('${configSource}/openclaw-defaults.json') as f:
+    tpl = json.load(f)
+
+tpl_providers = tpl.get('models', {}).get('providers', {})
+if tpl_providers:
+    models_sec = cfg.setdefault('models', {})
+    providers = models_sec.setdefault('providers', {})
+    for pid, prov_cfg in tpl_providers.items():
+        providers.setdefault(pid, {}).setdefault('baseUrl', prov_cfg.get('baseUrl', ''))
+
+with open('${stateDir}/openclaw.json', 'w') as f:
+    json.dump(cfg, f, indent=2)
+    f.write('\\\\n')
+"
+			`);
+			expect(code).toBe(0);
+
+			const merged = JSON.parse(
+				await readFile(join(stateDir, "openclaw.json"), "utf-8"),
+			);
+			expect(merged.models.providers.modelstudio.baseUrl).toBe(
+				"https://dashscope.aliyuncs.com/compatible-mode/v1",
+			);
+		});
+
+		it("config merge preserves user's existing modelstudio base URL", async () => {
+			const openclawDir = join(fakeHome, ".openclaw");
+			const stateDir = openclawDir;
+			const configSource = resolve(__dirname, "../config");
+
+			// Existing config with custom base URL (e.g., Coding Plan CN)
+			await runBash(`
+				mkdir -p "${openclawDir}"
+				cat > "${openclawDir}/openclaw.json" <<'EOF'
+{
+  "models": {
+    "providers": {
+      "modelstudio": {
+        "baseUrl": "https://coding.dashscope.aliyuncs.com/v1"
+      }
+    }
+  },
+  "agents": { "defaults": { "model": "modelstudio/qwen3.5-plus" } },
+  "gateway": {}
+}
+EOF
+			`);
+
+			const { code } = await runBash(`
+				set -euo pipefail
+				python3 -c "
+import json, copy
+
+with open('${openclawDir}/openclaw.json') as f:
+    cfg = json.load(f)
+
+with open('${configSource}/openclaw-defaults.json') as f:
+    tpl = json.load(f)
+
+tpl_providers = tpl.get('models', {}).get('providers', {})
+if tpl_providers:
+    models_sec = cfg.setdefault('models', {})
+    providers = models_sec.setdefault('providers', {})
+    for pid, prov_cfg in tpl_providers.items():
+        providers.setdefault(pid, {}).setdefault('baseUrl', prov_cfg.get('baseUrl', ''))
+
+with open('${stateDir}/openclaw.json', 'w') as f:
+    json.dump(cfg, f, indent=2)
+    f.write('\\\\n')
+"
+			`);
+			expect(code).toBe(0);
+
+			const merged = JSON.parse(
+				await readFile(join(stateDir, "openclaw.json"), "utf-8"),
+			);
+			// User's custom base URL is preserved (not overwritten by template)
+			expect(merged.models.providers.modelstudio.baseUrl).toBe(
+				"https://coding.dashscope.aliyuncs.com/v1",
+			);
+		});
 	});
 
 	// ---------------------------------------------------------------

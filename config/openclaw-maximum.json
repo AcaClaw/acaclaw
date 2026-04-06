@@ -51,6 +51,13 @@
       "enabled": false
     }
   },
+  "models": {
+    "providers": {
+      "modelstudio": {
+        "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+      }
+    }
+  },
   "plugins": {
     "allow": [
       "acaclaw-academic-env",
