@@ -754,36 +754,82 @@ SETUPJSON
 	// App Window/Browser Fallback Launch
 	// ---------------------------------------------------------------
 	describe("dock app window and browser fallback", () => {
-		it("linux: tries msedge, then google-chrome, handles missing DISPLAY", async () => {
+		it("linux: launches edge with --app and --disable-fre, creates First Run sentinel", async () => {
+			// Create a fake msedge binary that writes its args to a file
+			const fakeBinDir = join(fakeHome, "fake-edge");
+			const argsFile = join(fakeHome, "edge-args.txt");
+			await mkdir(fakeBinDir, { recursive: true });
+			await writeFile(
+				join(fakeBinDir, "microsoft-edge"),
+				`#!/bin/bash\necho "$@" > "${argsFile}"\n`,
+				{ mode: 0o755 },
+			);
+
+			const acaclawDir = join(fakeHome, ".acaclaw");
+			// Use awk to extract the function (handles tab-indented closing brace)
 			const script = `
-				# Extract _open_app_window function from install script
-				sed -n '/_open_app_window() {/,/^}/p' "${INSTALL_SCRIPT}" > _test_func.sh
-				source _test_func.sh
-				
+				export PATH="${fakeBinDir}:$PATH"
+				ACACLAW_DIR="${acaclawDir}"
 				OS="linux"
-				SETUP_URL="http://localhost:2090"
-				ACACLAW_DIR="$HOME/.acaclaw"
+				SETUP_URL="http://localhost:2090/"
+				DISPLAY=":0"
 
-				# Provide dummy variables or mock functions
-				log() { echo "LOG: $1"; }
-				# Stub msedge to return success
-				mkdir -p /opt/microsoft/msedge
-				cat > /opt/microsoft/msedge/microsoft-edge <<'EOF'
-#!/bin/bash
-echo "MSEDGE_LAUNCHED $@"
-EOF
-				chmod +x /opt/microsoft/msedge/microsoft-edge
+				# Extract _open_app_window using awk (handles indented braces)
+				awk '/_open_app_window\\(\\) \\{/{found=1} found{print} found && /^[[:space:]]*\\}$/{exit}' \
+					"${INSTALL_SCRIPT}" > /tmp/_test_func_$$.sh
 
-				export DISPLAY=":0"
-				export PATH="/opt/microsoft/msedge:$PATH"
+				# Patch the binary path check to use our fake binary
+				sed -i 's|/opt/microsoft/msedge/microsoft-edge|${fakeBinDir}/microsoft-edge|g' /tmp/_test_func_$$.sh
+				sed -i 's|/opt/google/chrome/google-chrome|/nonexistent/chrome|g' /tmp/_test_func_$$.sh
 
-				# Should use the app flags.
+				source /tmp/_test_func_$$.sh
+				rm -f /tmp/_test_func_$$.sh
+
 				_open_app_window
-				# Since the bash snippet runs Microsoft Edge asynchronously, we capture it manually or check if it exited 0
+				echo "EXIT_$?"
+
+				# Wait for the backgrounded process to write
+				sleep 0.2
+
+				# Verify First Run sentinel was created
+				if [[ -f "${acaclawDir}/browser-app/First Run" ]]; then
+					echo "FIRST_RUN_SENTINEL_EXISTS"
+				else
+					echo "FIRST_RUN_SENTINEL_MISSING"
+				fi
+
+				# Show the captured args
+				cat "${argsFile}" 2>/dev/null || echo "NO_ARGS_FILE"
+			`;
+			const { stdout, code } = await runBash(script);
+			expect(code).toBe(0);
+			expect(stdout).toContain("EXIT_0");
+			expect(stdout).toContain("FIRST_RUN_SENTINEL_EXISTS");
+			// Verify --app and --disable-fre flags were passed
+			expect(stdout).toContain("--app=http://localhost:2090/");
+			expect(stdout).toContain("--disable-fre");
+			expect(stdout).toContain("--suppress-message-center-popups");
+		});
+
+		it("linux: falls back to return 1 when no display and no browser", async () => {
+			const acaclawDir = join(fakeHome, ".acaclaw");
+			const script = `
+				OS="linux"
+				SETUP_URL="http://localhost:2090/"
+				ACACLAW_DIR="${acaclawDir}"
+				unset DISPLAY
+				unset WAYLAND_DISPLAY
+
+				awk '/_open_app_window\\(\\) \\{/{found=1} found{print} found && /^[[:space:]]*\\}$/{exit}' \
+					"${INSTALL_SCRIPT}" > /tmp/_test_func_$$.sh
+				source /tmp/_test_func_$$.sh
+				rm -f /tmp/_test_func_$$.sh
+
+				_open_app_window
 				echo "EXIT_$?"
 			`;
 			const { stdout } = await runBash(script);
-			expect(stdout).toContain("EXIT_0");
+			expect(stdout).toContain("EXIT_1");
 		});
 	});
 

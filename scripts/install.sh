@@ -981,27 +981,39 @@ SETUPJSON
 	# Falls back to a regular browser tab if no Chromium-based browser is found.
 	_open_app_window() {
 		local _app_profile="${ACACLAW_DIR}/browser-app"
+
+		# Pre-create the profile directory with a "First Run" sentinel file.
+		# Without this, Chrome/Edge show their First Run Experience (welcome page),
+		# which overrides --app mode and opens a normal browser window instead.
+		mkdir -p "$_app_profile"
+		touch "$_app_profile/First Run"
+
+		# Use --user-data-dir to force a NEW browser instance so --app=URL
+		# is honoured. Without it, the IPC handoff to the existing browser
+		# silently drops the --app flag and opens a regular tab.
 		local -a _app_flags=(
 			--user-data-dir="$_app_profile"
 			--app="$SETUP_URL"
 			--no-first-run
 			--no-default-browser-check
+			--disable-fre
 			--disable-background-networking
 			--disable-component-update
 			--disable-sync
 			--disable-translate
 			--disable-default-apps
 			--disable-extensions
-			--disable-features=TranslateUI,OptimizationHints,MediaRouter
+			--disable-features=TranslateUI,OptimizationHints,MediaRouter,EdgeCollections,EdgeDiscoverWidget,msEdgeShopping,EdgeWallet,msEdgeOnRamp
+			--suppress-message-center-popups
 			--password-store=basic
 		)
 
 		case "$OS" in
 			macos)
 				if [[ -d "/Applications/Microsoft Edge.app" ]]; then
-					open -na "Microsoft Edge" --args --app="$SETUP_URL" 2>/dev/null && return 0
+					open -na "Microsoft Edge" --args "${_app_flags[@]}" 2>/dev/null && return 0
 				elif [[ -d "/Applications/Google Chrome.app" ]]; then
-					open -na "Google Chrome" --args --app="$SETUP_URL" 2>/dev/null && return 0
+					open -na "Google Chrome" --args "${_app_flags[@]}" 2>/dev/null && return 0
 				fi
 				;;
 			linux)
