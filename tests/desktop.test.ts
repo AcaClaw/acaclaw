@@ -329,55 +329,64 @@ DESKTOP
 	// macOS: app bundle creation path
 	// ---------------------------------------------------------------
 	describe("macOS app bundle", () => {
-		it("creates .app with bash launcher that exec's into browser", async () => {
+		it("creates .app with native WKWebView window or fallback", async () => {
 			const script = await readFile(DESKTOP_SCRIPT, "utf-8");
-			// Must create a custom .app bundle (not osacompile)
-			// with a bash script as CFBundleExecutable that exec's into Edge/Chrome
+			// Must create a .app bundle with Info.plist and executable
 			expect(script).toMatch(/macos_dir=.*MacOS/);
 			expect(script).toMatch(/CFBundleExecutable/);
-			expect(script).toMatch(/chmod \+x/);
+			expect(script).toMatch(/CFBundleIdentifier/);
 		});
 
-		it("launcher uses exec to replace process with browser", async () => {
+		it("compiles Swift native binary when swiftc available", async () => {
 			const script = await readFile(DESKTOP_SCRIPT, "utf-8");
-			// exec is critical: it replaces the bash process with Edge/Chrome,
-			// so macOS keeps the AcaClaw .app bundle's Dock icon
-			expect(script).toMatch(/exec.*Microsoft Edge/);
-			expect(script).toMatch(/exec.*Google Chrome/);
+			expect(script).toMatch(/swiftc.*-O/);
+			expect(script).toMatch(/-framework Cocoa/);
+			expect(script).toMatch(/-framework WebKit/);
+			expect(script).toMatch(/AcaClaw\.swift/);
 		});
 
-		it("launcher starts gateway via start.sh --no-browser", async () => {
+		it("Swift source uses WKWebView and handles Dock relaunch", async () => {
+			const swift = await readFile(
+				join(DESKTOP_SCRIPT, "../AcaClaw.swift"),
+				"utf-8",
+			);
+			expect(swift).toMatch(/WKWebView/);
+			expect(swift).toMatch(/applicationShouldHandleReopen/);
+			expect(swift).toMatch(/applicationShouldTerminateAfterLastWindowClosed/);
+			expect(swift).toMatch(/makeKeyAndOrderFront/);
+		});
+
+		it("Swift source starts gateway if not running", async () => {
+			const swift = await readFile(
+				join(DESKTOP_SCRIPT, "../AcaClaw.swift"),
+				"utf-8",
+			);
+			expect(swift).toMatch(/ensureGateway/);
+			expect(swift).toMatch(/portOpen.*2090/);
+			expect(swift).toMatch(/start\.sh.*--no-browser/);
+		});
+
+		it("falls back to open-in-browser when swiftc unavailable", async () => {
+			const script = await readFile(DESKTOP_SCRIPT, "utf-8");
+			expect(script).toMatch(/_macos_fallback_launcher/);
+			// Fallback opens URL in default browser
+			expect(script).toMatch(/open.*localhost:2090/);
+		});
+
+		it("fallback launcher starts gateway via start.sh --no-browser", async () => {
 			const script = await readFile(DESKTOP_SCRIPT, "utf-8");
 			expect(script).toMatch(/--no-browser/);
 		});
 
-		it("launcher has PATH bootstrap for .app context", async () => {
+		it("fallback launcher has PATH bootstrap for .app context", async () => {
 			const script = await readFile(DESKTOP_SCRIPT, "utf-8");
-			// .app bundles run with minimal PATH; launcher must bootstrap
 			expect(script).toMatch(/\/opt\/homebrew\/bin/);
 			expect(script).toMatch(/fnm/);
-		});
-
-		it("launcher creates browser profile to prevent First Run", async () => {
-			const script = await readFile(DESKTOP_SCRIPT, "utf-8");
-			expect(script).toMatch(/First Run/);
-			expect(script).toMatch(/--no-first-run/);
 		});
 
 		it("removes old .app before creating new one", async () => {
 			const script = await readFile(DESKTOP_SCRIPT, "utf-8");
 			expect(script).toMatch(/rm -rf.*app_bundle/);
-		});
-
-		it("detects SingletonLock to bring existing window to front on relaunch", async () => {
-			const script = await readFile(DESKTOP_SCRIPT, "utf-8");
-			// When the .app is clicked again while already running,
-			// the launcher must detect the Chromium SingletonLock file
-			// and activate the existing window via osascript instead
-			// of exec'ing into Edge again (which drops --app flag)
-			expect(script).toMatch(/SingletonLock/);
-			expect(script).toMatch(/osascript.*frontmost/s);
-			expect(script).toMatch(/exit 0/);
 		});
 
 		it("icon file matches CFBundleIconFile", async () => {

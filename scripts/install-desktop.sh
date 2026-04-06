@@ -135,10 +135,28 @@ DESKTOP
 
 # ===================================================================
 # macOS: 3-layer launch guarantee
-#   Layer 1: .app via osacompile (Dock / Launchpad / Spotlight)
+#   Layer 1: .app with native WKWebView window (or open-in-browser fallback)
 #   Layer 2: Desktop shortcut (Finder alias or .command fallback)
 #   Layer 3: Browser URL (always works)
 # ===================================================================
+
+# Fallback launcher when swiftc is unavailable — opens URL in default browser.
+_macos_fallback_launcher() {
+    local macos_dir="$1" start_script="$2"
+    cat > "${macos_dir}/AcaClaw" << FALLBACK
+#!/usr/bin/env bash
+for d in /opt/homebrew/bin /usr/local/bin "\$HOME/.local/share/fnm" "\$HOME/Library/pnpm"; do
+    [[ -d "\$d" ]] && export PATH="\$d:\$PATH"
+done
+[[ -x "\$(command -v fnm)" ]] && eval "\$(fnm env 2>/dev/null)" 2>/dev/null
+if ! lsof -iTCP:2090 -sTCP:LISTEN -P &>/dev/null; then
+    bash "${start_script}" --no-browser &>/dev/null &
+    for i in \$(seq 1 30); do lsof -iTCP:2090 -sTCP:LISTEN -P &>/dev/null && break; sleep 1; done
+fi
+open "http://localhost:2090/"
+FALLBACK
+    chmod +x "${macos_dir}/AcaClaw"
+}
 
 install_macos() {
     local app_dir="${HOME}/Applications"
@@ -156,18 +174,16 @@ install_macos() {
 
     mkdir -p "$app_dir"
 
-    # Layer 1: .app bundle with bash launcher that exec's into Edge/Chrome.
+    # Layer 1: .app bundle with native macOS window (WKWebView).
     #
     # How it works:
-    #   1. macOS launches Contents/MacOS/AcaClaw (bash script)
-    #   2. Script starts the gateway if not running
-    #   3. Script exec's into the Edge/Chrome binary with --app=localhost:2090
-    #   4. Because exec replaces the process, macOS keeps AcaClaw's Dock icon
-    #   5. Clicking the Dock icon again works normally (Chromium handles it)
-    #   6. When the user closes the window, the process exits and AcaClaw
-    #      disappears from the Dock
+    #   1. Compile scripts/AcaClaw.swift into Contents/MacOS/AcaClaw
+    #   2. The binary opens a native NSWindow with WKWebView at localhost:2090
+    #   3. Single Dock icon (AcaClaw's), no separate browser process
+    #   4. Dock relaunch brings existing window to front (applicationShouldHandleReopen)
+    #   5. Close window → app quits → Dock icon disappears
     #
-    # No AppleScript, no stay-open applet, no dual Dock icons.
+    # Falls back to open-in-browser if swiftc is unavailable.
     log "Layer 1: Creating AcaClaw.app..."
     [[ -d "$app_bundle" ]] && rm -rf "$app_bundle"
 
@@ -197,84 +213,28 @@ install_macos() {
     <string>AcaClaw</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
 </dict>
 </plist>
 PLIST
 
-    # --- Main executable (bash script that exec's into browser) ---
-    cat > "${macos_dir}/AcaClaw" << LAUNCHER
-#!/usr/bin/env bash
-# AcaClaw.app launcher — starts gateway then exec's into browser.
-# exec replaces this process with Edge/Chrome so macOS keeps AcaClaw's Dock icon.
-
-# PATH bootstrap (desktop .app has minimal PATH)
-for d in /opt/homebrew/bin /usr/local/bin "\$HOME/.local/share/fnm" "\$HOME/Library/pnpm" "\$HOME/.npm-global/bin"; do
-    [[ -d "\$d" ]] && export PATH="\$d:\$PATH"
-done
-if command -v fnm &>/dev/null; then
-    eval "\$(fnm env 2>/dev/null)" 2>/dev/null || true
-fi
-
-# Start gateway if not running
-if ! lsof -iTCP:2090 -sTCP:LISTEN -P &>/dev/null; then
-    bash "${start_script}" --no-browser &>/dev/null &
-    # Wait up to 30s for gateway
-    for i in \$(seq 1 30); do
-        lsof -iTCP:2090 -sTCP:LISTEN -P &>/dev/null && break
-        sleep 1
-    done
-fi
-
-# Browser profile (prevents First Run experience)
-APP_PROFILE="\$HOME/.acaclaw/browser-app"
-mkdir -p "\$APP_PROFILE"
-touch "\$APP_PROFILE/First Run"
-
-# If AcaClaw browser is already running, bring existing window to front
-# instead of exec'ing into Edge again (which would open a regular window
-# because the IPC handoff to the running instance drops the --app flag).
-LOCK_FILE="\$APP_PROFILE/SingletonLock"
-if [[ -e "\$LOCK_FILE" ]]; then
-    osascript -e '
-        tell application "System Events"
-            set edgeProcs to every process whose unix id is in ¬
-                (do shell script "pgrep -f \"user-data-dir=.*\\.acaclaw/browser-app\" 2>/dev/null || echo -1")
-            if (count of edgeProcs) > 0 then
-                set frontmost of item 1 of edgeProcs to true
-            end if
-        end tell
-    ' 2>/dev/null
-    exit 0
-fi
-
-APP_FLAGS=(
-    --user-data-dir="\$APP_PROFILE"
-    --app="http://localhost:2090/"
-    --no-first-run
-    --no-default-browser-check
-    --disable-fre
-    --disable-background-networking
-    --disable-component-update
-    --disable-sync
-    --disable-translate
-    --disable-default-apps
-    --disable-extensions
-    "--disable-features=TranslateUI,OptimizationHints,MediaRouter,EdgeCollections,EdgeDiscoverWidget,msEdgeShopping,EdgeWallet,msEdgeOnRamp"
-    --suppress-message-center-popups
-    --password-store=basic
-)
-
-# exec into the browser — this replaces the current process,
-# so macOS keeps the AcaClaw .app bundle's Dock icon.
-if [[ -x "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" ]]; then
-    exec "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" "\${APP_FLAGS[@]}"
-elif [[ -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ]]; then
-    exec "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" "\${APP_FLAGS[@]}"
-else
-    open "http://localhost:2090/"
-fi
-LAUNCHER
-    chmod +x "${macos_dir}/AcaClaw"
+    # --- Main executable (compiled Swift binary or bash fallback) ---
+    local swift_src="${SCRIPT_DIR}/AcaClaw.swift"
+    if [[ -f "$swift_src" ]] && command -v swiftc &>/dev/null; then
+        log "  Compiling native window (swiftc)..."
+        if swiftc -O -o "${macos_dir}/AcaClaw" \
+            -framework Cocoa -framework WebKit \
+            "$swift_src" 2>/dev/null; then
+            log "  ✓ Native WKWebView window compiled"
+        else
+            warn "  swiftc failed, falling back to open-in-browser"
+            _macos_fallback_launcher "$macos_dir" "$start_script"
+        fi
+    else
+        warn "  swiftc not found, falling back to open-in-browser"
+        _macos_fallback_launcher "$macos_dir" "$start_script"
+    fi
 
     # --- Icon ---
     if icon_src="$(find_icon)" && command -v sips &>/dev/null && command -v iconutil &>/dev/null; then
