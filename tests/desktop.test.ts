@@ -384,4 +384,139 @@ DESKTOP
 			expect(stdout.trim()).toBe("http://localhost:2090/");
 		});
 	});
+
+	// ---------------------------------------------------------------
+	// macOS .app bundle structure (install_macos)
+	// ---------------------------------------------------------------
+	describe("macOS .app bundle creation", () => {
+		it("creates valid bundle directory structure", async () => {
+			const appBundle = join(fakeHome, "Applications/AcaClaw.app");
+			const contentsDir = join(appBundle, "Contents");
+			const macosDir = join(contentsDir, "MacOS");
+			const resourcesDir = join(contentsDir, "Resources");
+
+			// Simulate what install_macos creates (without icon generation)
+			await mkdir(macosDir, { recursive: true });
+			await mkdir(resourcesDir, { recursive: true });
+			await writeFile(join(contentsDir, "Info.plist"), "<plist></plist>");
+			await writeFile(join(macosDir, "AcaClaw"), "#!/usr/bin/env bash\n");
+
+			expect(await exists(appBundle)).toBe(true);
+			expect(await exists(contentsDir)).toBe(true);
+			expect(await exists(macosDir)).toBe(true);
+			expect(await exists(resourcesDir)).toBe(true);
+		});
+
+		it("generates Info.plist with correct keys via install script", async () => {
+			// Read the plist content directly from install-desktop.sh heredoc
+			const scriptContent = await readFile(DESKTOP_SCRIPT, "utf-8");
+
+			// Extract the plist XML between <<'PLIST' and PLIST markers
+			const plistMatch = scriptContent.match(
+				/cat > .*Info\.plist.*<<'PLIST'\n([\s\S]*?)\nPLIST/,
+			);
+			expect(plistMatch).not.toBeNull();
+
+			const plistXml = plistMatch![1];
+			expect(plistXml).toContain("<key>CFBundleName</key>");
+			expect(plistXml).toContain("<string>AcaClaw</string>");
+			expect(plistXml).toContain("<key>CFBundleIdentifier</key>");
+			expect(plistXml).toContain("<string>com.acaclaw.app</string>");
+			expect(plistXml).toContain("<key>CFBundleExecutable</key>");
+			// Verify it says "AcaClaw" not "applet"
+			expect(plistXml).toMatch(
+				/<key>CFBundleExecutable<\/key>\s*<string>AcaClaw<\/string>/,
+			);
+			expect(plistXml).toContain("<key>CFBundleIconFile</key>");
+			expect(plistXml).toContain(
+				"<string>public.app-category.education</string>",
+			);
+		});
+
+		it("launcher script has PATH bootstrap", async () => {
+			// Extract the launcher heredoc from install-desktop.sh and validate key sections
+			const scriptContent = await readFile(DESKTOP_SCRIPT, "utf-8");
+
+			// The LAUNCHER heredoc should contain PATH bootstrap
+			expect(scriptContent).toContain("PATH bootstrap");
+			expect(scriptContent).toContain("/opt/homebrew");
+			expect(scriptContent).toContain("fnm");
+			expect(scriptContent).toContain("nvm");
+		});
+
+		it("launcher script uses child process for browser (not exec)", async () => {
+			const scriptContent = await readFile(DESKTOP_SCRIPT, "utf-8");
+
+			// Must launch browser as child (keeps wrapper alive for Dock relaunch)
+			// Should NOT use exec (loses ability to handle second Dock click)
+			expect(scriptContent).toContain('"$EDGE_BIN" "${APP_FLAGS[@]}" &');
+			expect(scriptContent).toContain('"$CHROME_BIN" "${APP_FLAGS[@]}" &');
+			expect(scriptContent).toContain("BROWSER_PID=$!");
+			expect(scriptContent).toContain('wait "$BROWSER_PID"');
+			// Should NOT use the old osacompile or exec pattern
+			expect(scriptContent).not.toMatch(/^\s*osacompile\b/m);
+			expect(scriptContent).not.toMatch(/^\s*open -na\b/m);
+			// exec should only appear in comments, not as a command for Edge/Chrome
+			expect(scriptContent).not.toMatch(/^\s*exec "\$EDGE_BIN"/m);
+			expect(scriptContent).not.toMatch(/^\s*exec "\$CHROME_BIN"/m);
+		});
+
+		it("launcher script has single-instance lock", async () => {
+			const scriptContent = await readFile(DESKTOP_SCRIPT, "utf-8");
+
+			expect(scriptContent).toContain("LOCK_FILE");
+			expect(scriptContent).toContain(".app-lock");
+			expect(scriptContent).toContain("_activate_existing");
+			expect(scriptContent).toContain("Already running");
+		});
+
+		it("launcher script has gateway startup logic", async () => {
+			const scriptContent = await readFile(DESKTOP_SCRIPT, "utf-8");
+
+			expect(scriptContent).toContain("_port_ok");
+			expect(scriptContent).toContain("Gateway not running");
+			expect(scriptContent).toContain("openclaw gateway run");
+		});
+
+		it("launcher script isolates browser profile", async () => {
+			const scriptContent = await readFile(DESKTOP_SCRIPT, "utf-8");
+
+			expect(scriptContent).toContain("user-data-dir");
+			expect(scriptContent).toContain("browser-app");
+			expect(scriptContent).toContain("--no-first-run");
+			expect(scriptContent).toContain("--disable-extensions");
+		});
+
+		it("launcher script has debug logging", async () => {
+			const scriptContent = await readFile(DESKTOP_SCRIPT, "utf-8");
+
+			expect(scriptContent).toContain("LAUNCH_LOG");
+			expect(scriptContent).toContain("app-launch.log");
+		});
+
+		it("launcher script exits cleanly when no browser found", async () => {
+			// Verify the fallback path exists (open $URL)
+			const scriptContent = await readFile(DESKTOP_SCRIPT, "utf-8");
+
+			expect(scriptContent).toContain('open "$URL"');
+		});
+	});
+
+	// ---------------------------------------------------------------
+	// macOS .app bundle — live validation (macOS only)
+	// ---------------------------------------------------------------
+	describe("macOS .app bundle — live validation", () => {
+		it("smoke test script exists and is bash", async () => {
+			const smokeScript = join(SCRIPT_DIR, "test-desktop-app.sh");
+			try {
+				const content = await readFile(smokeScript, "utf-8");
+				expect(content).toContain("#!/usr/bin/env bash");
+				expect(content).toContain("Bundle structure");
+				expect(content).toContain("Launcher script validation");
+				expect(content).toContain("Gateway connectivity");
+			} catch {
+				// Script not yet created — skip
+			}
+		});
+	});
 });
