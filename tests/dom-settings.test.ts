@@ -205,4 +205,58 @@ describe("SettingsView DOM", () => {
     expect(toggles.length).toBe(3);
     cleanup(el);
   });
+
+  it("clicking OpenClaw tab calls window.open with _blank and /openclaw/ path", async () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const el = await createElement();
+    const tabs = qa(el, ".tab");
+    const openclawTab = Array.from(tabs).find(
+      (t) => t.textContent?.trim() === "OpenClaw",
+    );
+    expect(openclawTab).toBeTruthy();
+    (openclawTab as HTMLElement).click();
+    await el.updateComplete;
+
+    expect(openSpy).toHaveBeenCalledOnce();
+    const [url, target, features] = openSpy.mock.calls[0] as [string, string, string];
+    expect(url).toMatch(/\/openclaw\/$/);
+    expect(target).toBe("_blank");
+    expect(features).toBe("noopener");
+
+    openSpy.mockRestore();
+    cleanup(el);
+  });
+
+  it("clicking OpenClaw tab does not switch the active tab (opens externally instead)", async () => {
+    vi.spyOn(window, "open").mockImplementation(() => null);
+    const el = await createElement();
+    const activeTabBefore = q(el, ".tab.active")?.textContent?.trim();
+    const tabs = qa(el, ".tab");
+    const openclawTab = Array.from(tabs).find(
+      (t) => t.textContent?.trim() === "OpenClaw",
+    );
+    (openclawTab as HTMLElement).click();
+    await el.updateComplete;
+
+    // Active tab must not have changed — OpenClaw is external
+    const activeTabAfter = q(el, ".tab.active")?.textContent?.trim();
+    expect(activeTabAfter).toBe(activeTabBefore);
+
+    vi.restoreAllMocks();
+    cleanup(el);
+  });
+
+  it("clicking other tabs does not trigger window.open", async () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const el = await createElement();
+    const tabs = qa(el, ".tab");
+    for (const tabName of ["Appearance", "Security", "Connection", "Uninstall"]) {
+      const tab = Array.from(tabs).find((t) => t.textContent?.trim() === tabName);
+      (tab as HTMLElement).click();
+      await el.updateComplete;
+    }
+    expect(openSpy).not.toHaveBeenCalled();
+    openSpy.mockRestore();
+    cleanup(el);
+  });
 });
