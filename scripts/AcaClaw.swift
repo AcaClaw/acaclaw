@@ -29,7 +29,7 @@ private let loadingHTML = """
 </div></body></html>
 """
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate {
     var window: NSWindow!
     var webView: WKWebView!
     let gatewayURL = URL(string: "http://localhost:2090/")!
@@ -40,6 +40,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
 
         webView = WKWebView(frame: .zero, configuration: config)
+        webView.uiDelegate = self
         // Show inline loading page right away so the window appears instantly.
         webView.loadHTMLString(loadingHTML, baseURL: nil)
 
@@ -71,6 +72,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Close window → quit app → Dock icon disappears.
     func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool {
         return true
+    }
+
+    // MARK: - WKUIDelegate
+
+    /// Handle window.open(..., "_blank") — open in the system default browser
+    /// so links like the OpenClaw settings tab open a proper browser window.
+    func webView(
+        _ webView: WKWebView,
+        createWebViewWith configuration: WKWebViewConfiguration,
+        for navigationAction: WKNavigationAction,
+        windowFeatures: WKWindowFeatures
+    ) -> WKWebView? {
+        if let url = navigationAction.request.url {
+            NSWorkspace.shared.open(url)
+        }
+        return nil
     }
 
     // MARK: - Gateway

@@ -523,6 +523,13 @@ describe.skipIf(process.platform !== "darwin")(
 			expect(src).toMatch(/startGatewayAsync\(\)/);
 		});
 
+		it("WKUIDelegate is implemented — window.open(_blank) opens in system browser", async () => {
+			const src = await readFile(swiftSrc, "utf8");
+			expect(src).toMatch(/WKUIDelegate/);
+			expect(src).toMatch(/createWebViewWith/);
+			expect(src).toMatch(/NSWorkspace\.shared\.open/);
+		});
+
 		it("loading HTML is inline — window appears before gateway is ready", async () => {
 			const src = await readFile(swiftSrc, "utf8");
 			// loadHTMLString must be called before load(URLRequest)
