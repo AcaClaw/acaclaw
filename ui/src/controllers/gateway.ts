@@ -14,6 +14,9 @@ interface PendingRequest {
   reject: (reason: unknown) => void;
 }
 
+const READINESS_POLL_INTERVAL_MS = 2_000;
+const READINESS_POLL_TIMEOUT_MS = 1_500;
+
 function uuid(): string {
   return crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -23,12 +26,14 @@ class GatewayController extends EventTarget {
   private _state: GatewayState = "disconnected";
   private _pending = new Map<string, PendingRequest>();
   private _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private _readinessProbeTimer: ReturnType<typeof setTimeout> | null = null;
   private _listeners = new Map<string, Set<(data: unknown) => void>>();
   private _authenticated = false;
   private _connectNonce: string | null = null;
   private _connectSent = false;
   private _challengeTimer: ReturnType<typeof setTimeout> | null = null;
   private _reconnectAttempts = 0;
+  private _allowReconnect = true;
 
   constructor() {
     super();
@@ -58,14 +63,11 @@ class GatewayController extends EventTarget {
   /** Open WebSocket to the gateway on the same host */
   connect() {
     if (this._ws) return;
+    this._allowReconnect = true;
+    this._stopReadinessProbe();
     this._setState("connecting");
 
-    // Use gateway URL from meta tag (for dev/proxy setups) or same host
-    const gwMeta = document.querySelector<HTMLMetaElement>('meta[name="oc-gateway-url"]');
-    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    const url = gwMeta?.content
-      ? gwMeta.content
-      : `${protocol}//${location.host}/`;
+    const url = this._resolveGatewayWebSocketUrl();
     this._ws = new WebSocket(url);
 
     this._ws.onopen = () => {
@@ -93,7 +95,9 @@ class GatewayController extends EventTarget {
     this._ws.onclose = () => {
       this._cleanup();
       this._setState("disconnected");
-      this._scheduleReconnect();
+      if (this._allowReconnect) {
+        this._scheduleReconnect();
+      }
     };
 
     this._ws.onerror = () => {
@@ -102,12 +106,15 @@ class GatewayController extends EventTarget {
   }
 
   disconnect() {
+    this._allowReconnect = false;
     if (this._reconnectTimer) {
       clearTimeout(this._reconnectTimer);
       this._reconnectTimer = null;
     }
-    this._ws?.close();
+    this._stopReadinessProbe();
+    const ws = this._ws;
     this._ws = null;
+    ws?.close();
     this._cleanup();
     this._setState("disconnected");
   }
@@ -265,10 +272,12 @@ class GatewayController extends EventTarget {
   /** Immediately attempt reconnection (cancels any pending auto-reconnect). */
   reconnectNow() {
     if (this._state === "connected" || this._state === "connecting") return;
+    this._allowReconnect = true;
     if (this._reconnectTimer) {
       clearTimeout(this._reconnectTimer);
       this._reconnectTimer = null;
     }
+    this._stopReadinessProbe();
     this._reconnectAttempts = 0;
     this._ws?.close();
     this._ws = null;
@@ -276,7 +285,8 @@ class GatewayController extends EventTarget {
   }
 
   private _scheduleReconnect() {
-    if (this._reconnectTimer) return;
+    if (!this._allowReconnect || this._reconnectTimer) return;
+    this._startReadinessProbe();
     // Fast initial retries (500ms, 1s, 2s) then slower backoff (4s, 8s, 16s, 30s max).
     // Gateway restarts typically take 1-3s, so fast retries avoid the previous
     // 10+ second delay after config changes that trigger a restart.
@@ -289,6 +299,64 @@ class GatewayController extends EventTarget {
       this._reconnectTimer = null;
       this.connect();
     }, delay);
+  }
+
+  private _resolveGatewayWebSocketUrl(): string {
+    const gwMeta = document.querySelector<HTMLMetaElement>('meta[name="oc-gateway-url"]')?.content;
+    if (gwMeta) {
+      return new URL(gwMeta, location.href).toString();
+    }
+    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    return `${protocol}//${location.host}/`;
+  }
+
+  private _resolveGatewayHealthUrl(): string {
+    const gwMeta = document.querySelector<HTMLMetaElement>('meta[name="oc-gateway-url"]')?.content;
+    if (gwMeta) {
+      const url = new URL(gwMeta, location.href);
+      url.protocol = url.protocol === "wss:" ? "https:" : url.protocol === "ws:" ? "http:" : url.protocol;
+      url.pathname = "/health";
+      url.search = "";
+      url.hash = "";
+      return url.toString();
+    }
+    return `${location.protocol}//${location.host}/health`;
+  }
+
+  private _startReadinessProbe() {
+    if (this._readinessProbeTimer || !this._allowReconnect) return;
+    this._readinessProbeTimer = setTimeout(() => {
+      this._readinessProbeTimer = null;
+      void this._probeGatewayReady();
+    }, READINESS_POLL_INTERVAL_MS);
+  }
+
+  private _stopReadinessProbe() {
+    if (this._readinessProbeTimer) {
+      clearTimeout(this._readinessProbeTimer);
+      this._readinessProbeTimer = null;
+    }
+  }
+
+  private async _probeGatewayReady() {
+    if (!this._allowReconnect || this._state !== "disconnected") return;
+    try {
+      const response = await fetch(this._resolveGatewayHealthUrl(), {
+        cache: "no-store",
+        signal: AbortSignal.timeout(READINESS_POLL_TIMEOUT_MS),
+      });
+      if (response.ok) {
+        console.log("[gateway] health probe recovered — reconnecting");
+        this.reconnectNow();
+        return;
+      }
+    } catch {
+      // Gateway is still restarting.
+    }
+
+    if (this._allowReconnect && this._state === "disconnected") {
+      this._startReadinessProbe();
+    }
   }
 
   private _heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -365,17 +433,3 @@ export async function updateConfig(
     baseHash,
   });
 }
-
-// ── Auto-reconnect on tab focus / network recovery ──
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && gateway.state === "disconnected") {
-    console.log("[gateway] tab visible — reconnecting");
-    gateway.reconnectNow();
-  }
-});
-window.addEventListener("online", () => {
-  if (gateway.state === "disconnected") {
-    console.log("[gateway] network online — reconnecting");
-    gateway.reconnectNow();
-  }
-});

@@ -35,12 +35,15 @@ class MockWebSocket {
 }
 
 let lastCreatedWs: MockWebSocket | null = null;
+let createdSockets: MockWebSocket[] = [];
+const originalFetch = globalThis.fetch;
 
 // @ts-expect-error — replacing global WebSocket with mock
 globalThis.WebSocket = class extends MockWebSocket {
   constructor() {
     super();
     lastCreatedWs = this;
+    createdSockets.push(this);
   }
 };
 
@@ -60,6 +63,15 @@ beforeEach(() => {
   // Ensure clean state
   gateway.disconnect();
   lastCreatedWs = null;
+  createdSockets = [];
+  globalThis.fetch = vi.fn(async () => ({ ok: false })) as typeof fetch;
+  vi.useRealTimers();
+});
+
+afterEach(() => {
+  gateway.disconnect();
+  globalThis.fetch = originalFetch;
+  vi.useRealTimers();
 });
 
 describe("GatewayController", () => {
@@ -290,6 +302,36 @@ describe("GatewayController", () => {
       gateway.reconnectNow();
       expect(gateway.state).toBe("connecting");
     });
+
+    it("does not schedule auto-reconnect after manual disconnect", async () => {
+      vi.useFakeTimers();
+      gateway.connect();
+
+      expect(createdSockets).toHaveLength(1);
+      gateway.disconnect();
+      await vi.advanceTimersByTimeAsync(35_000);
+
+      expect(createdSockets).toHaveLength(1);
+      expect(gateway.state).toBe("disconnected");
+    });
+
+    it("reconnects as soon as health recovers instead of waiting for max backoff", async () => {
+      vi.useFakeTimers();
+      globalThis.fetch = vi.fn(async () => ({ ok: true })) as typeof fetch;
+
+      gateway.connect();
+      const ws1 = lastCreatedWs!;
+      ws1.simulateOpen();
+
+      (gateway as unknown as { _reconnectAttempts: number })._reconnectAttempts = 6;
+      ws1.close();
+
+      expect(createdSockets).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(READINESS_PROBE_TRIGGER_MS);
+
+      expect(createdSockets).toHaveLength(2);
+      expect(gateway.state).toBe("connecting");
+    });
   });
 
   // ── Connect frame format ──
@@ -307,3 +349,5 @@ describe("GatewayController", () => {
     });
   });
 });
+
+const READINESS_PROBE_TRIGGER_MS = 2_000;
