@@ -797,14 +797,19 @@ with open('${ACACLAW_CONFIG}', 'w') as f:
 	log "AcaClaw standalone config created ✓"
 fi
 
-# Sanitize: ensure controlUi is enabled at /openclaw/ so the OpenClaw Control UI
-# is accessible from AcaClaw's Settings → OpenClaw tab, and remove any stale
-# controlUi.root that might point to old paths.
-python3 -c "
+# Apply required overrides (controlUi basePath, plugins.allow).
+# This is a function so it can be called again after `openclaw daemon install`,
+# which rewrites the gateway section and would otherwise erase these fields.
+_apply_config_overrides() {
+	python3 -c "
 import json
 with open('${ACACLAW_CONFIG}') as f:
     cfg = json.load(f)
-cui = cfg.setdefault('gateway', {}).setdefault('controlUi', {})
+gw = cfg.setdefault('gateway', {})
+# Auth: none — gateway binds loopback only; no token needed from WKWebView or tests
+gw.setdefault('auth', {})['mode'] = 'none'
+gw['auth'].pop('token', None)
+cui = gw.setdefault('controlUi', {})
 cui['enabled'] = True
 cui.pop('root', None)
 cui['basePath'] = '/openclaw'
@@ -824,6 +829,8 @@ with open('${ACACLAW_CONFIG}', 'w') as f:
     json.dump(cfg, f, indent=2)
     f.write('\n')
 "
+}
+_apply_config_overrides
 
 if [[ ! -f "${ACACLAW_CONFIG}" ]]; then
 	error "Config file was not created at ${ACACLAW_CONFIG}"
@@ -1037,6 +1044,9 @@ if check_command openclaw; then
 	if [[ -f "$SERVICE_SCRIPT" ]]; then
 		log "Installing gateway auto-restart service..."
 		if bash "$SERVICE_SCRIPT" install 2>/dev/null; then
+			# openclaw daemon install rewrites the gateway config section;
+			# re-apply AcaClaw overrides so controlUi/plugins.allow are not lost.
+			_apply_config_overrides
 			openclaw daemon start 2>/dev/null || true
 			GATEWAY_STARTED=true
 		else
@@ -1046,6 +1056,8 @@ if check_command openclaw; then
 
 	# Fallback: start gateway directly if systemd failed
 	if [[ "$GATEWAY_STARTED" == "false" ]]; then
+		# Also re-apply in the fallback path (daemon install may have partially run).
+		_apply_config_overrides
 		openclaw gateway run --bind loopback --port 2090 &>/dev/null &
 		GATEWAY_STARTED=true
 	fi
