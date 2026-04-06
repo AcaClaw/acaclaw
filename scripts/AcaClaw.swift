@@ -10,19 +10,38 @@
 import Cocoa
 import WebKit
 
+// Inline loading page shown while the gateway starts (avoids blank white flash).
+private let loadingHTML = """
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+  body{margin:0;display:flex;align-items:center;justify-content:center;
+       height:100vh;background:#0f172a;font-family:-apple-system,sans-serif;color:#94a3b8}
+  .logo{font-size:2rem;font-weight:700;color:#0d9488;margin-bottom:1.5rem}
+  .spinner{width:40px;height:40px;border:4px solid #1e293b;
+           border-top-color:#0d9488;border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  p{margin-top:1.2rem;font-size:.9rem}
+</style></head><body>
+<div style="text-align:center">
+  <div class="logo">AcaClaw</div>
+  <div class="spinner"></div>
+  <p>Starting gateway…</p>
+</div></body></html>
+"""
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow!
     var webView: WKWebView!
-    let url = URL(string: "http://localhost:2090/")!
+    let gatewayURL = URL(string: "http://localhost:2090/")!
 
     func applicationDidFinishLaunching(_: Notification) {
-        ensureGateway()
-
+        // Build the window immediately — never block the main thread on gateway startup.
         let config = WKWebViewConfiguration()
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
 
         webView = WKWebView(frame: .zero, configuration: config)
-        webView.load(URLRequest(url: url))
+        // Show inline loading page right away so the window appears instantly.
+        webView.loadHTMLString(loadingHTML, baseURL: nil)
 
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1280, height: 800),
@@ -35,6 +54,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+
+        // Start gateway asynchronously — reload WKWebView once port 2090 is open.
+        startGatewayAsync()
     }
 
     /// Dock icon clicked while already running → bring window to front.
@@ -53,25 +75,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Gateway
 
-    private func ensureGateway() {
-        // Quick check: is the gateway already listening?
-        if portOpen(2090) { return }
+    /// Starts the gateway in the background, then loads the real URL once ready.
+    private func startGatewayAsync() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
 
-        // Not running — start it via start.sh --no-browser
-        let startScript = findStartScript()
-        guard !startScript.isEmpty else { return }
+            if !self.portOpen(2090) {
+                let startScript = self.findStartScript()
+                if !startScript.isEmpty {
+                    let proc = Process()
+                    proc.executableURL = URL(fileURLWithPath: "/bin/bash")
+                    proc.arguments = [startScript, "--no-browser"]
+                    proc.standardOutput = FileHandle.nullDevice
+                    proc.standardError = FileHandle.nullDevice
+                    try? proc.run()
+                }
+            }
 
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/bin/bash")
-        proc.arguments = [startScript, "--no-browser"]
-        proc.standardOutput = FileHandle.nullDevice
-        proc.standardError = FileHandle.nullDevice
-        try? proc.run()
-
-        // Wait up to 30s for the gateway to come up
-        for _ in 0..<30 {
-            if portOpen(2090) { return }
-            Thread.sleep(forTimeInterval: 1)
+            // Poll up to 30s for the gateway to come up.
+            for _ in 0..<30 {
+                if self.portOpen(2090) {
+                    DispatchQueue.main.async {
+                        self.webView.load(URLRequest(url: self.gatewayURL))
+                    }
+                    return
+                }
+                Thread.sleep(forTimeInterval: 1)
+            }
+            // Gateway didn't start — load the URL anyway so the browser error is shown.
+            DispatchQueue.main.async {
+                self.webView.load(URLRequest(url: self.gatewayURL))
+            }
         }
     }
 

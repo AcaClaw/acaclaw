@@ -356,14 +356,17 @@ DESKTOP
 			expect(swift).toMatch(/makeKeyAndOrderFront/);
 		});
 
-		it("Swift source starts gateway if not running", async () => {
+		it("Swift source starts gateway asynchronously if not running", async () => {
 			const swift = await readFile(
 				join(DESKTOP_SCRIPT, "../AcaClaw.swift"),
 				"utf-8",
 			);
-			expect(swift).toMatch(/ensureGateway/);
+			// Async gateway start (replaces old synchronous ensureGateway)
+			expect(swift).toMatch(/startGatewayAsync/);
 			expect(swift).toMatch(/portOpen.*2090/);
-			expect(swift).toMatch(/start\.sh.*--no-browser/);
+			expect(swift).toMatch(/--no-browser/);
+			// Must not contain the old blocking call
+			expect(swift).not.toMatch(/ensureGateway\(\)/);
 		});
 
 		it("falls back to open-in-browser when swiftc unavailable", async () => {
@@ -510,6 +513,24 @@ describe.skipIf(process.platform !== "darwin")(
 			// Strip spaces so we match both "cffa edfe" and "cffa\tedfe" and "cffaedfe"
 			const hex = stdout.replace(/\s/g, "").toLowerCase();
 			expect(hex).toMatch(/cffa ?edfe|cefa ?edfe|bebafeca/i);
+		});
+
+		it("gateway is started async — no blocking ensureGateway() in source", async () => {
+			const src = await readFile(swiftSrc, "utf8");
+			// The old synchronous call must be gone
+			expect(src).not.toMatch(/ensureGateway\(\)/);
+			// The async replacement must be present
+			expect(src).toMatch(/startGatewayAsync\(\)/);
+		});
+
+		it("loading HTML is inline — window appears before gateway is ready", async () => {
+			const src = await readFile(swiftSrc, "utf8");
+			// loadHTMLString must be called before load(URLRequest)
+			const loadHTMLIdx = src.indexOf("loadHTMLString(");
+			const loadURLIdx = src.indexOf("load(URLRequest(");
+			expect(loadHTMLIdx).toBeGreaterThan(-1);
+			expect(loadURLIdx).toBeGreaterThan(-1);
+			expect(loadHTMLIdx).toBeLessThan(loadURLIdx);
 		});
 	},
 );
