@@ -113,6 +113,7 @@ export class ChatView extends LitElement {
   @state() private _availableModels: Array<{value: string; label: string}> = [];
   @state() private _selectedModel = "";
   @state() private _defaultModelDisplay = "";
+  @state() private _thinkingLevel = ""; // "" = use server default, "off"/"low"/"adaptive"/"high"
   @state() private _attachments: ChatAttachment[] = [];
   @state() private _isRecording = false;
   @state() private _interimTranscript = "";
@@ -127,6 +128,7 @@ export class ChatView extends LitElement {
   @state() private _newProjectCreating = false;
   private _cleanupChat: (() => void) | null = null;
   private _handleGatewayState: ((e: Event) => void) | null = null;
+  private _handleDefaultModelChanged: EventListener | null = null;
   /** Maps title-gen runId → original session UUID for pending LLM title requests. */
   private _titleGenRuns = new Map<string, string>();
   
@@ -1062,6 +1064,20 @@ export class ChatView extends LitElement {
       border-color: var(--ac-border);
       color: var(--ac-text);
     }
+    .input-thinking-select {
+      padding: 4px 8px; font-size: 12px; font-weight: 500;
+      background: var(--ac-bg-hover); border: 1px solid var(--ac-border-subtle);
+      border-radius: var(--ac-radius); color: var(--ac-text-muted); font-family: inherit;
+      max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      cursor: pointer; appearance: none; -webkit-appearance: none;
+      padding-right: 20px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 6px center;
+    }
+    .input-thinking-select:hover {
+      border-color: var(--ac-border);
+      color: var(--ac-text);
+    }
 
     .no-tabs-state {
       display: flex;
@@ -1158,6 +1174,12 @@ export class ChatView extends LitElement {
 
     // Load available models for the model selector
     this._loadModels();
+
+    // Listen for default model changes from API Keys view
+    this._handleDefaultModelChanged = (() => {
+      this._loadModels();
+    }) as EventListener;
+    window.addEventListener("default-model-changed", this._handleDefaultModelChanged);
   }
 
   override disconnectedCallback() {
@@ -1166,6 +1188,10 @@ export class ChatView extends LitElement {
     if (this._handleGatewayState) {
       gateway.removeEventListener("state-change", this._handleGatewayState);
       this._handleGatewayState = null;
+    }
+    if (this._handleDefaultModelChanged) {
+      window.removeEventListener("default-model-changed", this._handleDefaultModelChanged);
+      this._handleDefaultModelChanged = null;
     }
     this._cleanupChat?.();
     this._cleanupChat = null;
@@ -1363,7 +1389,7 @@ export class ChatView extends LitElement {
       sending: false,
       activeRunId: "",
       input: "",
-      sessionId: crypto.randomUUID(),
+      sessionId: agentId,
     };
 
     this._tabs = [...this._tabs, newTab];
@@ -1520,7 +1546,7 @@ export class ChatView extends LitElement {
       sending: false,
       activeRunId: "",
       input: "",
-      sessionId: crypto.randomUUID(),
+      sessionId: "main",
     };
   }
 
@@ -1716,6 +1742,7 @@ export class ChatView extends LitElement {
         sessionKey,
         message: text,
         idempotencyKey,
+        ...(this._thinkingLevel ? { thinking: this._thinkingLevel } : {}),
         ...(apiAttachments.length > 0 ? { attachments: apiAttachments } : {}),
       });
       if (res?.runId) {
@@ -1766,6 +1793,7 @@ export class ChatView extends LitElement {
   private _switchTab(agentId: string) {
     this._activeTabId = agentId;
     this._selectedModel = "";
+    this._thinkingLevel = "";
     this._tabs = [...this._tabs];
     this._persistTabs();
     this._fetchWorkdir(agentId);
@@ -2126,6 +2154,15 @@ export class ChatView extends LitElement {
                         <option value=${m.value} ?selected=${this._selectedModel === m.value}>${m.label}</option>
                       `)}
                     </select>
+                    <select class="input-thinking-select"
+                      .value=${this._thinkingLevel}
+                      @change=${this._onThinkingChange}>
+                      <option value="" ?selected=${this._thinkingLevel === ""}>${t("chat.thinkingDefault")}</option>
+                      <option value="off" ?selected=${this._thinkingLevel === "off"}>${t("chat.thinkingOff")}</option>
+                      <option value="low" ?selected=${this._thinkingLevel === "low"}>${t("chat.thinkingLow")}</option>
+                      <option value="adaptive" ?selected=${this._thinkingLevel === "adaptive"}>${t("chat.thinkingAdaptive")}</option>
+                      <option value="high" ?selected=${this._thinkingLevel === "high"}>${t("chat.thinkingHigh")}</option>
+                    </select>
                     <div class="input-actions">
                       <input type="file" accept="image/*" multiple style="display:none" @change=${this._onFileSelect} />
                       <button title="${t("chat.attach")}" @click=${this._triggerFileInput}>
@@ -2303,7 +2340,13 @@ export class ChatView extends LitElement {
         key: sessionKey,
         model: value || null,
       });
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.warn("[chat] sessions.patch model failed:", err instanceof Error ? err.message : err);
+    }
+  }
+
+  private _onThinkingChange(e: Event) {
+    this._thinkingLevel = (e.target as HTMLSelectElement).value;
   }
 
   private async _loadModels() {

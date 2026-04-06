@@ -17,7 +17,7 @@ set -euo pipefail
 
 ACACLAW_VERSION="0.1.0"
 ACACLAW_DIR="${ACACLAW_DIR:-$HOME/.acaclaw}"
-OPENCLAW_MIN_VERSION="2026.3.24"
+OPENCLAW_MIN_VERSION="2026.4.2"
 NODE_MIN_VERSION="22"
 ACACLAW_GITHUB_REPO="acaclaw/acaclaw"
 
@@ -702,6 +702,17 @@ cui['enabled'] = True
 cui.pop('root', None)
 cui['basePath'] = '/openclaw'
 cui.setdefault('dangerouslyDisableDeviceAuth', True)
+# Trust AcaClaw plugins so the gateway grants full HTTP route registration
+plugins = cfg.setdefault('plugins', {})
+plugins['allow'] = [
+    'acaclaw-academic-env',
+    'acaclaw-backup',
+    'acaclaw-compat-checker',
+    'acaclaw-logger',
+    'acaclaw-security',
+    'acaclaw-ui',
+    'acaclaw-workspace'
+]
 with open('${ACACLAW_CONFIG}', 'w') as f:
     json.dump(cfg, f, indent=2)
     f.write('\n')
@@ -965,15 +976,67 @@ SETUPJSON
 
 	SETUP_URL="http://localhost:2090/"
 
-	# Open browser based on OS
-	case "$OS" in
-		macos)  open "$SETUP_URL" 2>/dev/null || true ;;
-		linux)  xdg-open "$SETUP_URL" 2>/dev/null || true ;;
-		windows) start "$SETUP_URL" 2>/dev/null || true ;;
-	esac
+	# Try to open as a standalone app window (dock app) first.
+	# This gives a native-app feel (no address bar, no tabs).
+	# Falls back to a regular browser tab if no Chromium-based browser is found.
+	_open_app_window() {
+		local _app_profile="${ACACLAW_DIR}/browser-app"
+		local -a _app_flags=(
+			--user-data-dir="$_app_profile"
+			--app="$SETUP_URL"
+			--no-first-run
+			--no-default-browser-check
+			--disable-background-networking
+			--disable-component-update
+			--disable-sync
+			--disable-translate
+			--disable-default-apps
+			--disable-extensions
+			--disable-features=TranslateUI,OptimizationHints,MediaRouter
+			--password-store=basic
+		)
 
-	log "Setup wizard opened at: ${BOLD}${SETUP_URL}${NC}"
-	log "If the browser didn't open, visit the URL above manually."
+		case "$OS" in
+			macos)
+				if [[ -d "/Applications/Microsoft Edge.app" ]]; then
+					open -na "Microsoft Edge" --args --app="$SETUP_URL" 2>/dev/null && return 0
+				elif [[ -d "/Applications/Google Chrome.app" ]]; then
+					open -na "Google Chrome" --args --app="$SETUP_URL" 2>/dev/null && return 0
+				fi
+				;;
+			linux)
+				if [[ -z "${DISPLAY:-}" ]] && [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
+					return 1
+				fi
+				if [[ -x "/opt/microsoft/msedge/microsoft-edge" ]]; then
+					/opt/microsoft/msedge/microsoft-edge "${_app_flags[@]}" &>/dev/null &
+					return 0
+				elif [[ -x "/opt/google/chrome/google-chrome" ]]; then
+					/opt/google/chrome/google-chrome "${_app_flags[@]}" &>/dev/null &
+					return 0
+				elif command -v chromium-browser &>/dev/null; then
+					chromium-browser "${_app_flags[@]}" &>/dev/null &
+					return 0
+				fi
+				;;
+		esac
+		return 1
+	}
+
+	if _open_app_window; then
+		log "AcaClaw app opened — complete setup there"
+	else
+		# Fallback: open a regular browser tab
+		case "$OS" in
+			macos)   open "$SETUP_URL" 2>/dev/null || true ;;
+			linux)   xdg-open "$SETUP_URL" 2>/dev/null || true ;;
+			windows) start "$SETUP_URL" 2>/dev/null || true ;;
+		esac
+		log "Setup wizard opened in browser"
+	fi
+
+	log "Setup wizard: ${BOLD}${SETUP_URL}${NC}"
+	log "If nothing opened, visit the URL above manually."
 else
 	warn "OpenClaw not found — start the gateway manually:"
 	warn "  openclaw gateway run --bind loopback --port 2090"

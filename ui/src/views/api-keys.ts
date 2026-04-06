@@ -42,6 +42,7 @@ export class ApiKeysView extends LitElement {
   // Feedback
   @state() private _saving = false;
   @state() private _message = "";
+  @state() private _reconnecting = false;
 
   // Region selector for moonshot (.ai international vs .cn China)
   @state() private _moonshotRegion: "international" | "cn" = "international";
@@ -202,6 +203,10 @@ export class ApiKeysView extends LitElement {
       from { opacity: 0; transform: translateY(-2px); }
       to { opacity: 1; transform: translateY(0); }
     }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
   `;
 
   /* ── Lifecycle ── */
@@ -212,8 +217,13 @@ export class ApiKeysView extends LitElement {
       if (gateway.state === "disconnected") {
         // Gateway restarted (e.g. env change) — re-load on reconnect.
         this._loaded = false;
+        this._reconnecting = true;
+        this.requestUpdate();
       }
-      if (gateway.state === "connected" && gateway.authenticated) this._loadState();
+      if (gateway.state === "connected" && gateway.authenticated) {
+        this._reconnecting = false;
+        this._loadState();
+      }
     });
     if (gateway.state === "connected" && gateway.authenticated) this._loadState();
   }
@@ -227,6 +237,10 @@ export class ApiKeysView extends LitElement {
       this._loaded = true;
 
       const cfg = (snapshot.config as Record<string, unknown>) ?? snapshot;
+
+      // Clear stale sets before re-detecting — prevents accumulation after reconnect
+      this._configuredLlm = new Set();
+      this._configuredBrowser = new Set();
 
       // ── Detect configured LLM providers ──
       // Primary: env vars in config.env (new approach — plugins discover keys via env)
@@ -465,7 +479,14 @@ export class ApiKeysView extends LitElement {
       <!-- Default model -->
       <div class="card">
         <h2>${t("apikeys.defaultModel")}</h2>
-        ${this._allModels.length > 0
+        ${this._reconnecting
+          ? html`
+              <div class="empty-state">
+                <div class="icon" style="animation: pulse 1.5s ease-in-out infinite">⏳</div>
+                <div>${t("apikeys.reconnecting")}</div>
+              </div>
+            `
+          : this._allModels.length > 0
           ? this._savedModel && !this._changingModel
             ? html`
                 <div class="saved-model">
@@ -674,6 +695,8 @@ export class ApiKeysView extends LitElement {
       // so the existing state-change handler re-runs _loadState (including
       // model refresh) once the gateway reconnects.
       this._loaded = false;
+      this._modelsByProvider = new Map(); // Clear stale models
+      this._reconnecting = true;
       this._flash(t("apikeys.savedReconnecting"), 5000);
       window.dispatchEvent(new CustomEvent("keys-saved"));
     } catch {
@@ -816,6 +839,8 @@ export class ApiKeysView extends LitElement {
       this._savedModel = model;
       this._changingModel = false;
       this._flash(t("apikeys.savedModel"));
+      // Notify other views (e.g. chat) that the default model changed
+      window.dispatchEvent(new CustomEvent("default-model-changed", { detail: { model } }));
     } catch (err) {
       this._flash(`✗ ${err instanceof Error ? err.message : err}`, 4000);
     }

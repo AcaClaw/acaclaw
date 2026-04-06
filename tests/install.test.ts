@@ -489,7 +489,7 @@ WSREADME
 				ACACLAW_DIR="${acaclawDir}"
 				WORKSPACE_DIR="${workspaceDir}"
 				SECURITY_MODE="standard"
-				OPENCLAW_MIN_VERSION="2026.3.24"
+				OPENCLAW_MIN_VERSION="2026.4.2"
 				mkdir -p "\${ACACLAW_DIR}/config"
 				cat > "\${ACACLAW_DIR}/config/plugins.json" <<PLUGINJSON
 {

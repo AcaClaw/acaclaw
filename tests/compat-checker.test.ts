@@ -16,6 +16,10 @@ describe("@acaclaw/compat-checker", () => {
 			expect(c.checkOnStartup).toBe(true);
 		});
 
+		it("default minOpenClawVersion is 2026.4.2", () => {
+			expect(DEFAULT_CONFIG.minOpenClawVersion).toBe("2026.4.2");
+		});
+
 		it("overrides with provided values", () => {
 			const c = resolveConfig({ minOpenClawVersion: "2025.1.1", checkOnStartup: false });
 			expect(c.minOpenClawVersion).toBe("2025.1.1");
@@ -77,6 +81,22 @@ describe("@acaclaw/compat-checker", () => {
 		it("single-segment versions", () => {
 			expect(versionGte("2026", "2025")).toBe(true);
 			expect(versionGte("2025", "2026")).toBe(false);
+		});
+
+		it("4.2 passes minimum check against 4.2", () => {
+			expect(versionGte("2026.4.2", "2026.4.2")).toBe(true);
+		});
+
+		it("4.1 fails minimum check against 4.2", () => {
+			expect(versionGte("2026.4.1", "2026.4.2")).toBe(false);
+		});
+
+		it("3.24 fails minimum check against 4.2", () => {
+			expect(versionGte("2026.3.24", "2026.4.2")).toBe(false);
+		});
+
+		it("5.1 passes minimum check against 4.2", () => {
+			expect(versionGte("2026.5.1", "2026.4.2")).toBe(true);
 		});
 	});
 });

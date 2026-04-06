@@ -491,6 +491,7 @@ export const zhCN: Record<string, string> = {
   "apikeys.savedModel": "✓ 默认模型已保存",
   "apikeys.savedKeys": "✓ 密钥已保存",
   "apikeys.savedReconnecting": "✓ 密钥已保存 — 网关重载中…",
+  "apikeys.reconnecting": "正在重新连接网关…",
   "apikeys.removedReconnecting": "✓ 已移除 {0} — 网关重载中…",
   "apikeys.saveFailed": "⚠ 保存失败 — 网关是否在运行？",
   "apikeys.region": "区域",
@@ -683,6 +684,11 @@ export const zhCN: Record<string, string> = {
 
   // ── 对话工具栏 ──
   "chat.defaultModel": "默认模型",
+  "chat.thinkingDefault": "思考：自动",
+  "chat.thinkingOff": "⚡ 关闭（快速）",
+  "chat.thinkingLow": "💭 低",
+  "chat.thinkingAdaptive": "🧠 自适应",
+  "chat.thinkingHigh": "🔬 高（深度）",
   "chat.export": "导出",
   "chat.attach": "附加图片",
   "chat.voice": "语音输入",

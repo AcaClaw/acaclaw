@@ -124,6 +124,14 @@ const loggerPlugin = {
 			await journal.write("model.resolve", "debug", {});
 		});
 
+		// --- Agent reply (4.2) ---
+
+		api.on("before_agent_reply", async (event) => {
+			await journal.write("agent.reply", "debug", {
+				agentId: event.agentId,
+			});
+		});
+
 		// --- UI-forwarded events (connection, auth, API keys) ---
 
 		api.registerGatewayMethod(

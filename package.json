@@ -47,7 +47,7 @@
     "ws": "^8.20.0"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.3.24"
+    "openclaw": ">=2026.4.2"
   },
   "peerDependenciesMeta": {
     "openclaw": {

@@ -110,15 +110,13 @@ At the end, the script starts the OpenClaw gateway and opens the setup wizard in
 
 Once installation completes, your browser opens to `http://localhost:2090/` with the AcaClaw setup wizard.
 
-### Why browser instead of a native app window?
+### Why a web app wizard instead of a native binary?
 
-A terminal install script cannot safely launch a native GUI application:
+A terminal install script cannot safely launch a native GUI application across all OSes due to quarantines and smart screens. 
 
-- **macOS**: Gatekeeper quarantines unsigned downloaded applications
-- **Windows**: SmartScreen blocks unsigned executables
-- **Linux**: No universal restriction, but display server access varies
+Instead, the installer attempts to launch the setup wizard as a **Standalone App Window** (a "dock app" without browser tabs or address bars) using your existing Chrome or Edge installation. If a supported browser isn't found, it gracefully falls back to opening a standard browser tab.
 
-Opening a browser page has none of these problems — the browser is already installed and trusted by the OS. The setup wizard runs locally (nothing sent to the internet) through OpenClaw's built-in web UI.
+This provides a native app experience while remaining completely local and trusted by your OS.
 
 ### Wizard screens
 

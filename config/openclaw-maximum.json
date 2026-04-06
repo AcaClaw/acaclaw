@@ -19,7 +19,11 @@
         "mode": "all",
         "scope": "session",
         "workspaceAccess": "rw"
-      }
+      },
+      "compaction": {
+        "notifyUser": false
+      },
+      "params": {}
     }
   },
   "tools": {
@@ -30,7 +34,9 @@
       "applyPatch": {
         "workspaceOnly": true
       },
-      "pathPrepend": ["~/.acaclaw/miniforge3/bin"]
+      "pathPrepend": ["~/.acaclaw/miniforge3/bin"],
+      "security": "full",
+      "ask": "always"
     },
     "deny": [
       "gateway",
@@ -44,5 +50,16 @@
     "elevated": {
       "enabled": false
     }
+  },
+  "plugins": {
+    "allow": [
+      "acaclaw-academic-env",
+      "acaclaw-backup",
+      "acaclaw-compat-checker",
+      "acaclaw-logger",
+      "acaclaw-security",
+      "acaclaw-ui",
+      "acaclaw-workspace"
+    ]
   }
 }

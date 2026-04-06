@@ -492,6 +492,7 @@ export const en: Record<string, string> = {
   "apikeys.savedModel": "✓ Default model saved",
   "apikeys.savedKeys": "✓ Keys saved",
   "apikeys.savedReconnecting": "✓ Keys saved — gateway reloading…",
+  "apikeys.reconnecting": "Reconnecting to gateway…",
   "apikeys.removedReconnecting": "✓ {0} removed — gateway reloading…",
   "apikeys.saveFailed": "⚠ Save failed — is the gateway running?",
   "apikeys.region": "Region",
@@ -684,6 +685,11 @@ export const en: Record<string, string> = {
 
   // ── Chat toolbar ──
   "chat.defaultModel": "Default model",
+  "chat.thinkingDefault": "Thinking: Auto",
+  "chat.thinkingOff": "⚡ Off (fast)",
+  "chat.thinkingLow": "💭 Low",
+  "chat.thinkingAdaptive": "🧠 Adaptive",
+  "chat.thinkingHigh": "🔬 High (deep)",
   "chat.export": "Export",
   "chat.attach": "Attach image",
   "chat.voice": "Voice input",

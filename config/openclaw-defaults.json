@@ -18,7 +18,11 @@
       "thinkingDefault": "adaptive",
       "sandbox": {
         "mode": "off"
-      }
+      },
+      "compaction": {
+        "notifyUser": false
+      },
+      "params": {}
     },
     "list": [
       {
@@ -86,7 +90,9 @@
       "applyPatch": {
         "workspaceOnly": true
       },
-      "pathPrepend": ["~/.acaclaw/miniforge3/bin"]
+      "pathPrepend": ["~/.acaclaw/miniforge3/bin"],
+      "security": "full",
+      "ask": "always"
     },
     "deny": [
       "gateway",
@@ -96,6 +102,17 @@
       "mcp_install",
       "mcp_uninstall",
       "config_set"
+    ]
+  },
+  "plugins": {
+    "allow": [
+      "acaclaw-academic-env",
+      "acaclaw-backup",
+      "acaclaw-compat-checker",
+      "acaclaw-logger",
+      "acaclaw-security",
+      "acaclaw-ui",
+      "acaclaw-workspace"
     ]
   }
 }

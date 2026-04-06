@@ -6,7 +6,7 @@
   "license": "MIT",
   "author": "Cosinx AI",
   "peerDependencies": {
-    "openclaw": ">=2026.3.24"
+    "openclaw": ">=2026.4.2"
   },
   "peerDependenciesMeta": {
     "openclaw": {

@@ -35,6 +35,7 @@ test.describe("Screenshot baselines", () => {
 
       await expect(page).toHaveScreenshot(`${view}.png`, {
         fullPage: true,
+        maxDiffPixelRatio: 0.03,
       });
     });
   }

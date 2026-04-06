@@ -29,6 +29,7 @@ This document defines **what to test**, **how to test**, and **when to test**. F
   - [8. Integration Tests](#8-integration-tests)
 - [9. GUI Tests (DOM + Gateway Contract)](#9-gui-tests-dom--gateway-contract)
   - [Planned: Playwright Screenshot + E2E Tests](#planned-playwright-screenshot--e2e-tests)
+- [10. Chat Latency Tests](#10-chat-latency-tests)
 - [Writing Tests for Vibe-Coded Features](#writing-tests-for-vibe-coded-features)
 - [Coverage Requirements](#coverage-requirements)
 - [CI Pipeline](#ci-pipeline)
@@ -683,6 +684,68 @@ Gateway (port 2090)  ←───WebSocket───→  Lit SPA (served at /)
 
 ---
 
+### 10. Chat Latency Tests
+
+Chat latency tests measure the Time-To-First-Token (TTFT) for AcaClaw's chat to verify there is no regression in perceived responsiveness. These tests compare AcaClaw's end-to-end TTFT against the OpenClaw built-in UI and raw WebSocket baselines.
+
+#### Test Script: `tests/test-chat-latency.sh`
+
+A Bash script that measures chat TTFT at multiple levels:
+
+```bash
+# Run the latency test (requires gateway running on port 2090)
+./tests/test-chat-latency.sh
+```
+
+**What it tests:**
+
+| Level | Method | Expected TTFT |
+|---|---|---|
+| Raw WebSocket (cold) | Direct WS connect + `chat.send` | ~3,000–8,000 ms (first message) |
+| Raw WebSocket (warm) | Same session, subsequent message | ~2,000–3,500 ms |
+| Session key comparison | AcaClaw (`agent:main:web:main`) vs OpenClaw (`agent:main:main`) | Within 50% of each other |
+
+**Key metrics:**
+
+| Metric | Description |
+|---|---|
+| TTFT (cold) | First message in a new session — cold cache penalty |
+| TTFT (warm) | Subsequent message in the same session — cache warm |
+| Gateway overhead | Time from `chat.send` to first LLM API call (~500 ms) |
+
+#### Session Key Validation
+
+The test verifies that AcaClaw uses **deterministic session keys** for default tabs:
+
+```bash
+# Expected: sessionId is "main" (not a UUID)
+# Session key: agent:main:web:main
+```
+
+Random UUIDs for session keys cause cold-cache penalty on every page reload. Deterministic keys keep the LLM prompt cache warm across sessions.
+
+#### Running Latency Tests
+
+```bash
+# Prerequisites: gateway running (scripts/start.sh)
+# and at least one provider API key configured
+
+# Basic latency test
+./tests/test-chat-latency.sh
+
+# The script outputs a comparison table:
+#   AcaClaw warm TTFT:  ~2,200 ms
+#   OpenClaw warm TTFT: ~2,000 ms
+#   Ratio:              ~1.1x (acceptable)
+```
+
+**Pass criteria:**
+- Warm TTFT ratio (AcaClaw / OpenClaw) must be < 2.0×
+- Cold TTFT must be < 15,000 ms
+- Gateway overhead must be < 2,000 ms
+
+---
+
 ## Writing Tests for Vibe-Coded Features
 
 When AI generates a new function, follow this checklist:
@@ -823,6 +886,7 @@ stages:
 | `tests/ui-workspace.test.ts` | Gateway contract: project/folder/file CRUD RPC shapes | ✅ Implemented |
 | `tests/ui-skills.test.ts` | Gateway contract: skill install/toggle/filter RPC shapes | ✅ Implemented |
 | `tests/ui-staff.test.ts` | Gateway contract: staff customization, localStorage persistence | ✅ Implemented |
+| `tests/test-chat-latency.sh` | Chat latency: TTFT comparison, session key validation, cache warmth | ✅ Implemented |
 
 ---
 

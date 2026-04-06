@@ -139,6 +139,22 @@ const securityPlugin = {
 				}
 				return {};
 			});
+
+			// --- before_agent_reply: scrub credentials from final reply (4.2) ---
+			api.on("before_agent_reply", async (event) => {
+				if (typeof event.reply !== "string") return {};
+
+				const { scrubbed, count } = scrubCredentials(event.reply);
+				if (count > 0) {
+					await writeAuditEntry(config.auditLogDir, {
+						timestamp: new Date().toISOString(),
+						event: "credential_scrubbed",
+						detail: `Scrubbed ${count} credential pattern(s) from agent reply`,
+					});
+					return { reply: scrubbed };
+				}
+				return {};
+			});
 		}
 
 		// --- Tools ---

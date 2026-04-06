@@ -20,6 +20,7 @@ permalink: /en/chat-handling/
 - [Session and History](#session-and-history)
 - [AcaClaw UI Integration](#acaclaw-ui-integration)
 - [Chat Latency Analysis](#chat-latency-analysis)
+  - [Prompt Caching](#prompt-caching)
 - [Configuration Reference](#configuration-reference)
 
 ---
@@ -450,13 +451,26 @@ AcaClaw's `academic-env` plugin manages Conda environments for skill dependencie
 Every conversation is identified by a **session key** with the format:
 
 ```
-<agentId>:<channel>:<contactId>
+agent:<agentId>:<channel>:<sessionId>
 
 Examples:
-  main:web:default        — Default web chat with the main agent
-  biologist:web:default   — Web chat with the biologist agent
-  main:discord:@user123   — Discord DM with the main agent
+  agent:main:web:main           — Default web chat with the main agent
+  agent:biologist:web:biologist — Default web chat with the biologist agent
+  agent:main:web:a1b2c3d4       — User-created fresh chat (UUID session)
+  agent:main:main               — OpenClaw built-in UI session
 ```
+
+#### Deterministic vs. Random Session Keys
+
+AcaClaw uses **deterministic session IDs** for default tabs to maximize LLM prompt caching:
+
+| Scenario | Session ID | Session Key | Cache Behavior |
+|---|---|---|---|
+| Default general tab | `"main"` | `agent:main:web:main` | Deterministic — cache stays warm across reloads |
+| Agent tab (e.g., biologist) | `"biologist"` | `agent:biologist:web:biologist` | Deterministic — same benefit |
+| User clicks "+ Chat" | Random UUID | `agent:main:web:<uuid>` | Fresh conversation, cold cache |
+
+This design ensures that regular usage benefits from the LLM provider's prompt caching (see [Prompt Caching](#prompt-caching)), while the "+ Chat" button gives users a clean conversation when needed.
 
 ### Session Storage
 
@@ -726,6 +740,56 @@ To reduce TTFT, consider these approaches:
 | **Use provider caching** | Medium | Anthropic and OpenAI support system prompt caching natively |
 | **Shorter system prompt** | Medium | Trim agent description, reduce conversation rules |
 | **Local model** | Variable | Ollama/vLLM eliminates network round-trip but depends on hardware |
+
+### Prompt Caching
+
+LLM providers (OpenRouter, Anthropic, OpenAI) cache the **prefix** of the input prompt. When consecutive requests share the same prefix (system prompt + conversation history), the provider skips re-processing the cached portion, reducing TTFT significantly.
+
+#### How It Works
+
+```
+Request 1 (cold cache):
+  [system prompt: 15K tokens] + [user message: 20 tokens]
+  → Provider processes all 15,020 tokens → TTFT: ~8,000 ms
+
+Request 2 (warm cache, same session):
+  [system prompt: 15K tokens ← CACHED] + [history: 200 tokens] + [user message: 20 tokens]
+  → Provider processes only 220 new tokens → TTFT: ~2,000 ms
+```
+
+#### Session Key Impact
+
+The cache is keyed by the actual prompt content, but since the system prompt is identical for all sessions of the same agent, the cache is effectively shared across all sessions — **as long as the conversation history prefix matches**.
+
+For the default tab, AcaClaw uses a **deterministic session key** (`agent:main:web:main`), ensuring the same conversation history is reused across page reloads. This keeps the cache warm:
+
+| Session Type | Cache Behavior | Typical TTFT (warm) |
+|---|---|---|
+| Deterministic (`main`) | Shared prefix across all uses | ~2,200 ms |
+| Random UUID (fresh chat) | Cold cache, system prompt only | ~3,400 ms |
+| First ever message | Fully cold | ~8,000–10,000 ms |
+
+#### Measured Results (MiniMax M2.7 via OpenRouter)
+
+Before the deterministic session key fix:
+
+| Test | TTFT |
+|---|---|
+| AcaClaw UI (random UUID session) | **9,579 ms** |
+| OpenClaw built-in UI (fixed `agent:main:main`) | **3,156 ms** |
+
+After the fix:
+
+| Test | TTFT |
+|---|---|
+| AcaClaw UI (deterministic `agent:main:web:main`) | **2,247 ms** |
+| OpenClaw built-in UI (`agent:main:main`) | **3,156 ms** |
+
+The fix achieved a **4.3× improvement** in perceived TTFT.
+
+#### Cache Invalidation
+
+The prompt cache expires after provider-specific inactivity windows (typically 5–10 minutes for OpenRouter). After cache expiry, the first message in a session pays the cold-cache penalty again. Frequent use keeps the cache warm.
 
 ---
 

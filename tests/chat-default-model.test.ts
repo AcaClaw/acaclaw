@@ -230,3 +230,194 @@ describe("Chat model filtering", () => {
     cleanup(el);
   });
 });
+
+describe("Chat default model sync", () => {
+  it("updates default model when default-model-changed event fires", async () => {
+    // Start with kimi-coding as default
+    const el = await createChat(
+      { moonshot: { apiKey: "sk-test" }, anthropic: { apiKey: "sk-ant" } },
+      "kimi-coding/kimi-k2-thinking",
+    );
+
+    const view = el as unknown as { _defaultModelDisplay: string };
+    expect(view._defaultModelDisplay).toBe("Kimi K2 Thinking · kimi-coding");
+
+    // Simulate API Keys view saving a new default model
+    // Update the mock to return new default before dispatching event
+    const newCfg = mockConfig(
+      { moonshot: { apiKey: "sk-test" }, anthropic: { apiKey: "sk-ant" } },
+      "anthropic/claude-opus-4.6",
+    );
+    mockCall.mockImplementation(async (method: string) => {
+      if (method === "config.get") return newCfg;
+      if (method === "models.list") return { models: MOCK_MODELS };
+      if (method === "chat.history") return { messages: [] };
+      if (method === "acaclaw.workspace.getWorkdir") return { workdir: "~/AcaClaw" };
+      if (method === "acaclaw.env.list") return { environments: [] };
+      return undefined;
+    });
+
+    // Dispatch the event that api-keys.ts now fires
+    window.dispatchEvent(new CustomEvent("default-model-changed", {
+      detail: { model: "anthropic/claude-opus-4.6" },
+    }));
+
+    // Wait for the chat to re-load models
+    await new Promise((r) => setTimeout(r, 80));
+    await el.updateComplete;
+
+    expect(view._defaultModelDisplay).toBe("Claude Opus 4.6 · anthropic");
+
+    cleanup(el);
+  });
+
+  it("cleans up default-model-changed listener on disconnect", async () => {
+    const el = await createChat(
+      { moonshot: { apiKey: "sk-test" } },
+      "kimi-coding/kimi-k2-thinking",
+    );
+
+    const view = el as unknown as { _handleDefaultModelChanged: EventListener | null };
+    expect(view._handleDefaultModelChanged).not.toBeNull();
+
+    cleanup(el);
+
+    expect(view._handleDefaultModelChanged).toBeNull();
+  });
+});
+
+describe("Chat thinking toggle", () => {
+  it("defaults to empty (server default) thinking level", async () => {
+    const el = await createChat(
+      { moonshot: { apiKey: "sk-test" } },
+      "kimi-coding/kimi-k2-thinking",
+    );
+
+    const view = el as unknown as { _thinkingLevel: string };
+    expect(view._thinkingLevel).toBe("");
+
+    cleanup(el);
+  });
+
+  it("sends thinking parameter in chat.send when set", async () => {
+    const el = await createChat(
+      { moonshot: { apiKey: "sk-test" } },
+      "kimi-coding/kimi-k2-thinking",
+    );
+
+    const view = el as unknown as {
+      _thinkingLevel: string;
+      _tabs: Array<{
+        agentId: string;
+        input: string;
+        sending: boolean;
+        messages: unknown[];
+        activeRunId: string;
+        agent: { name: string };
+        sessionId?: string;
+      }>;
+      _send: () => Promise<void>;
+    };
+
+    // Set thinking to "off"
+    view._thinkingLevel = "off";
+
+    // Set input text and prepare mock for chat.send
+    const tab = view._tabs[0];
+    if (tab) {
+      tab.input = "test message";
+      mockCall.mockImplementation(async (method: string, params?: unknown) => {
+        if (method === "chat.send") {
+          const p = params as Record<string, unknown>;
+          // Verify thinking parameter is included
+          expect(p.thinking).toBe("off");
+          return { runId: "test-run-1" };
+        }
+        if (method === "config.get") return mockConfig({ moonshot: { apiKey: "sk-test" } }, "kimi-coding/kimi-k2-thinking");
+        if (method === "models.list") return { models: MOCK_MODELS };
+        if (method === "chat.history") return { messages: [] };
+        if (method === "acaclaw.workspace.getWorkdir") return { workdir: "~/AcaClaw" };
+        if (method === "acaclaw.env.list") return { environments: [] };
+        return undefined;
+      });
+
+      await view._send();
+    }
+
+    // Verify chat.send was called with thinking parameter
+    const chatCalls = mockCall.mock.calls.filter((c: unknown[]) => c[0] === "chat.send");
+    expect(chatCalls.length).toBe(1);
+    expect((chatCalls[0][1] as Record<string, unknown>).thinking).toBe("off");
+
+    cleanup(el);
+  });
+
+  it("omits thinking parameter when set to empty (default)", async () => {
+    const el = await createChat(
+      { moonshot: { apiKey: "sk-test" } },
+      "kimi-coding/kimi-k2-thinking",
+    );
+
+    const view = el as unknown as {
+      _thinkingLevel: string;
+      _tabs: Array<{
+        agentId: string;
+        input: string;
+        sending: boolean;
+        messages: unknown[];
+        activeRunId: string;
+        agent: { name: string };
+        sessionId?: string;
+      }>;
+      _send: () => Promise<void>;
+    };
+
+    // Leave thinking as default (empty)
+    view._thinkingLevel = "";
+
+    const tab = view._tabs[0];
+    if (tab) {
+      tab.input = "test message";
+      mockCall.mockImplementation(async (method: string) => {
+        if (method === "chat.send") return { runId: "test-run-2" };
+        if (method === "config.get") return mockConfig({ moonshot: { apiKey: "sk-test" } }, "kimi-coding/kimi-k2-thinking");
+        if (method === "models.list") return { models: MOCK_MODELS };
+        if (method === "chat.history") return { messages: [] };
+        if (method === "acaclaw.workspace.getWorkdir") return { workdir: "~/AcaClaw" };
+        if (method === "acaclaw.env.list") return { environments: [] };
+        return undefined;
+      });
+
+      await view._send();
+    }
+
+    const chatCalls = mockCall.mock.calls.filter((c: unknown[]) => c[0] === "chat.send");
+    expect(chatCalls.length).toBe(1);
+    // Thinking param should NOT be in the call
+    expect((chatCalls[0][1] as Record<string, unknown>)).not.toHaveProperty("thinking");
+
+    cleanup(el);
+  });
+
+  it("resets thinking level when switching tabs", async () => {
+    const el = await createChat(
+      { moonshot: { apiKey: "sk-test" } },
+      "kimi-coding/kimi-k2-thinking",
+    );
+
+    const view = el as unknown as {
+      _thinkingLevel: string;
+      _switchTab: (id: string) => void;
+    };
+
+    // Set thinking level
+    view._thinkingLevel = "high";
+    expect(view._thinkingLevel).toBe("high");
+
+    // Switch tab — should reset
+    view._switchTab("general");
+    expect(view._thinkingLevel).toBe("");
+
+    cleanup(el);
+  });
+});

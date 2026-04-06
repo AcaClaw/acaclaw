@@ -280,7 +280,7 @@ The Control UI receives bootstrap config from the gateway at `/__openclaw/contro
   "assistantName": "Aca",
   "assistantAvatar": "🎓",
   "assistantAgentId": "main",
-  "serverVersion": "2026.3.24"
+  "serverVersion": "2026.4.2"
 }
 ```
 

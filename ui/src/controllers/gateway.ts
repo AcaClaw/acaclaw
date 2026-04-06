@@ -30,6 +30,23 @@ class GatewayController extends EventTarget {
   private _challengeTimer: ReturnType<typeof setTimeout> | null = null;
   private _reconnectAttempts = 0;
 
+  constructor() {
+    super();
+    // Reconnect immediately when the tab regains focus (browser throttles
+    // WebSocket retries for background tabs).
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && this._state === "disconnected") {
+        this.reconnectNow();
+      }
+    });
+    // Reconnect immediately when the browser comes back online.
+    window.addEventListener("online", () => {
+      if (this._state === "disconnected") {
+        this.reconnectNow();
+      }
+    });
+  }
+
   get state(): GatewayState {
     return this._state;
   }
@@ -168,7 +185,6 @@ class GatewayController extends EventTarget {
         const msg = err instanceof Error ? err.message : String(err);
         console.error("[gateway] connect handshake failed:", msg);
         this._authenticated = false;
-        this._reconnectAttempts++;
         this._setState("disconnected");
         this._ws?.close();
       },
@@ -261,9 +277,14 @@ class GatewayController extends EventTarget {
 
   private _scheduleReconnect() {
     if (this._reconnectTimer) return;
-    // Exponential backoff: 2s, 4s, 8s, 16s, 30s max
-    const delay = Math.min(2000 * Math.pow(2, this._reconnectAttempts), 30_000);
-    console.log(`[gateway] reconnect in ${delay}ms (attempt ${this._reconnectAttempts + 1})`);
+    // Fast initial retries (500ms, 1s, 2s) then slower backoff (4s, 8s, 16s, 30s max).
+    // Gateway restarts typically take 1-3s, so fast retries avoid the previous
+    // 10+ second delay after config changes that trigger a restart.
+    const delay = this._reconnectAttempts < 3
+      ? 500 * Math.pow(2, this._reconnectAttempts)
+      : Math.min(2000 * Math.pow(2, this._reconnectAttempts - 2), 30_000);
+    this._reconnectAttempts++;
+    console.log(`[gateway] reconnect in ${delay}ms (attempt ${this._reconnectAttempts})`);
     this._reconnectTimer = setTimeout(() => {
       this._reconnectTimer = null;
       this.connect();

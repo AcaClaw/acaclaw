@@ -255,7 +255,7 @@ Control UI 从网关获取引导配置，地址为 `/__openclaw/control-ui-confi
   "assistantName": "Aca",
   "assistantAvatar": "🎓",
   "assistantAgentId": "main",
-  "serverVersion": "2026.3.24"
+  "serverVersion": "2026.4.2"
 }
 ```
 

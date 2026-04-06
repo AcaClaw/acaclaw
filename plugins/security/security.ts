@@ -69,6 +69,13 @@ const DANGEROUS_COMMAND_PATTERNS: readonly RegExp[] = [
 	/>\s*\/etc\/(passwd|shadow|hosts|sudoers)\b/,
 	/\biptables\b/,
 	/\bsystemctl\s+(disable|mask|stop)\b/,
+	// 4.2: Additional patterns from exec hardening
+	/\bPIP_INDEX_URL\s*=/i, // Python package index override
+	/\bNPM_CONFIG_REGISTRY\s*=/i, // npm registry override
+	/\bDOCKER_HOST\s*=/i, // Docker endpoint override
+	/\bHTTPS?_PROXY\s*=/i, // Proxy override in commands
+	/\bNODE_EXTRA_CA_CERTS\s*=/i, // TLS trust override
+	/\bSSL_CERT_FILE\s*=/i, // TLS cert override
 ];
 
 // Control-plane tools that should be denied in academic contexts
@@ -83,7 +90,7 @@ const DENIED_TOOLS = new Set([
 ]);
 
 // Tools whose commands need shell inspection
-const SHELL_TOOLS = new Set(["bash", "exec", "process", "run_command"]);
+const SHELL_TOOLS = new Set(["bash", "exec", "process", "run_command", "apply_patch"]);
 
 // --- Credential patterns for output scrubbing ---
 
@@ -99,6 +106,11 @@ const CREDENTIAL_PATTERNS: readonly RegExp[] = [
 	/\b([a-zA-Z0-9+/]{40,}={0,2})\b/g, // Long base64 (possible secrets)
 	/-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----/g,
 	/\b(AKIA|ABIA|ACCA|ASIA)[0-9A-Z]{16}\b/g, // AWS keys
+	// 4.2: Additional provider credential patterns
+	/\b(AIzaSy[a-zA-Z0-9_-]{33})\b/g, // Google/Gemini API keys
+	/\b(xai-[a-zA-Z0-9]{20,})\b/g, // xAI/Grok keys
+	/\b(sk-ant-[a-zA-Z0-9_-]{20,})\b/g, // Anthropic keys
+	/\b(sk-or-[a-zA-Z0-9_-]{20,})\b/g, // OpenRouter keys
 ];
 
 // --- Prompt injection patterns ---

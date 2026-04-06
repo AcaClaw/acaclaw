@@ -6,7 +6,7 @@ export interface CompatConfig {
 }
 
 export const DEFAULT_CONFIG: CompatConfig = {
-	minOpenClawVersion: "2026.3.24",
+	minOpenClawVersion: "2026.4.2",
 	checkOnStartup: true,
 };
 

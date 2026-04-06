@@ -283,3 +283,70 @@ describe("Default model save", () => {
     cleanup(el);
   });
 });
+
+describe("Stale provider set after reconnect", () => {
+  it("clears configured providers on reload instead of accumulating", async () => {
+    // First load: moonshot + anthropic configured
+    const el = await createWithConfig({
+      moonshot: { apiKey: "sk-test" },
+      anthropic: { apiKey: "sk-ant" },
+    });
+
+    const view = el as unknown as {
+      _configuredLlm: Set<string>;
+      _loaded: boolean;
+      _loadState: () => Promise<void>;
+    };
+    expect(view._configuredLlm.has("moonshot")).toBe(true);
+    expect(view._configuredLlm.has("anthropic")).toBe(true);
+
+    // Simulate reconnect: reset _loaded, reconfigure with only moonshot
+    view._loaded = false;
+    const updatedCfg = makeConfig({ moonshot: { apiKey: "sk-test" } });
+    mockCall.mockImplementation(async (method: string) => {
+      if (method === "config.get") return updatedCfg;
+      if (method === "models.list") return MOCK_MODELS;
+      return undefined;
+    });
+    await view._loadState();
+
+    // After reconnect, anthropic should be gone (key was removed)
+    expect(view._configuredLlm.has("moonshot")).toBe(true);
+    expect(view._configuredLlm.has("anthropic")).toBe(false);
+
+    cleanup(el);
+  });
+
+  it("does not show models from removed providers after reconnect", async () => {
+    // First load: moonshot + anthropic
+    const el = await createWithConfig({
+      moonshot: { apiKey: "sk-test" },
+      anthropic: { apiKey: "sk-ant" },
+    });
+
+    const options1 = qa(el, ".model-select option") as NodeListOf<HTMLOptionElement>;
+    const values1 = Array.from(options1).map((o) => o.value);
+    expect(values1).toContain("anthropic/claude-opus-4.6");
+    expect(values1).toContain("kimi-coding/kimi-k2-thinking");
+
+    // Simulate reconnect: only moonshot remains
+    const view = el as unknown as { _loaded: boolean; _loadState: () => Promise<void> };
+    view._loaded = false;
+    mockCall.mockImplementation(async (method: string) => {
+      if (method === "config.get") return makeConfig({ moonshot: { apiKey: "sk-test" } });
+      if (method === "models.list") return MOCK_MODELS;
+      return undefined;
+    });
+    await view._loadState();
+    await el.updateComplete;
+
+    const options2 = qa(el, ".model-select option") as NodeListOf<HTMLOptionElement>;
+    const values2 = Array.from(options2).map((o) => o.value);
+
+    // Anthropic models should be gone
+    expect(values2).toContain("kimi-coding/kimi-k2-thinking");
+    expect(values2).not.toContain("anthropic/claude-opus-4.6");
+
+    cleanup(el);
+  });
+});
