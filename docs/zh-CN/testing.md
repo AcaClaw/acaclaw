@@ -701,3 +701,42 @@ stages:
 5. **每个配置文件** → 模式校验 + 跨配置一致性
 6. **提交前运行** → `npm run check && npm test`
 7. **在 CI 中运行** → 合并前所有阶段须通过
+
+## 11. 独立桌面应用（Dock 应用）测试
+
+AcaClaw 利用“独立应用”模式（本质上是 PWA 或 Dock 应用），在通过桌面快捷方式（Linux/macOS）或安装后的设置向导启动时提供类似原生应用的体验。在底层，这会启动基于 Chromium 的浏览器（如 Edge、Chrome），并传递 \`--app\` 标志和隔离的用户数据目录。
+
+为了明确测试 AcaClaw 在这种受限的应用窗口模式下（而不是带有地址栏的标准浏览器标签页）能正确渲染和运行，请使用以下 Playwright 架构：
+
+### 1. 隔离的持久上下文
+由于应用依赖隔离的 \`--user-data-dir\`（在真实应用中为 \`~/.acaclaw/browser-app\`），Playwright 测试必须镜像这种隔离环境。不要使用默认的临时 Playwright \`test\` 实例，因为它们使用的是标准隐身标签页：
+
+```typescript
+import { chromium } from "@playwright/test";
+import { mkdtemp } from "fs/promises";
+import { join } from "path";
+import { tmpdir } from "os";
+
+// 1. 启动真正的持久上下文 
+const userDataDir = await mkdtemp(join(tmpdir(), 'acaclaw-app-test-'));
+const browserApp = await chromium.launchPersistentContext(userDataDir, {
+  args: [
+    '--app=http://localhost:2090/',
+    '--disable-extensions',
+    '--no-default-browser-check'
+  ],
+  headless: false, // 可以在 CI 环境下设置为 true，但在调试时 false 可直观确认无浏览器外观
+});
+
+const page = browserApp.pages()[0]; 
+```
+
+### 2. 视觉回归与 Chrome 限制
+标准浏览器标签页有大型工具栏、URL 地址栏和扩展栏。在测试独立 Dock 应用时，断言必须验证原生应用布局没有遭到破坏：
+- **响应式布局检查**：断言视口大小与无外壳窗口的预期内部尺寸完全匹配，证明没有注入浏览器 UI。
+- **路由检查**：断言点击内部导航链接纯粹是操作 History API（Hash 路由），并且不会将 \`--app\` 会话意外跳转到标准的系统浏览器标签页！
+
+### 3. 文件系统弹窗
+由于 Dock 应用隐藏了 URL 栏，任何意外的下载触发或原生浏览器对话框（如备份恢复的“选择文件”弹窗）的行为都会略有不同。E2E 测试必须模拟 \`page.setInputFiles\` 并验证由于 \`--app\` 窗口固有的浏览器锁定策略，不会发生“静默失败”。
+
+通过在本地测试独立启动脚本而不是通过 URL 深度链接，我们可以确保初次启动设置向导和日常启动器都能完美运行。

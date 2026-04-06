@@ -30,6 +30,7 @@ This document defines **what to test**, **how to test**, and **when to test**. F
 - [9. GUI Tests (DOM + Gateway Contract)](#9-gui-tests-dom--gateway-contract)
   - [Planned: Playwright Screenshot + E2E Tests](#planned-playwright-screenshot--e2e-tests)
 - [10. Chat Latency Tests](#10-chat-latency-tests)
+- [11. Standalone Desktop App (Dock App) Testing](#11-standalone-desktop-app-dock-app-testing)
 - [Writing Tests for Vibe-Coded Features](#writing-tests-for-vibe-coded-features)
 - [Coverage Requirements](#coverage-requirements)
 - [CI Pipeline](#ci-pipeline)
@@ -902,3 +903,42 @@ For vibe-coded projects, testing is the quality firewall. The AI writes code; th
 6. **Every GUI view** → DOM render test (happy-dom) + gateway contract test
 7. **Run before commit** → `npm run check && npm test`
 8. **Run in CI** → all stages must pass before merge
+
+## 11. Standalone Desktop App (Dock App) Testing
+
+AcaClaw utilizes a "Standalone App" mode (essentially a PWA or dock app) to provide a native-like experience when launched from desktop shortcuts (Linux/macOS) or via the post-installation setup wizard. Under the hood, this invokes a Chromium-based browser (Edge, Chrome) passing the \`--app\` flag and an isolated user data directory.
+
+To definitively test that AcaClaw renders and functions correctly inside this constrained app window mode rather than a standard omnibox-equipped browser tab, use the following Playwright architecture:
+
+### 1. Isolated Persistent Context
+Since the app relies on an isolated \`--user-data-dir\` (in the real app, \`~/.acaclaw/browser-app\`), Playwright tests must mirror this isolation. Do not use the default ephemeral Playwright \`test\` instances, as they use standard incognito tabs:
+
+```typescript
+import { chromium } from "@playwright/test";
+import { mkdtemp } from "fs/promises";
+import { join } from "path";
+import { tmpdir } from "os";
+
+// 1. Launch a real persistent context 
+const userDataDir = await mkdtemp(join(tmpdir(), 'acaclaw-app-test-'));
+const browserApp = await chromium.launchPersistentContext(userDataDir, {
+  args: [
+    '--app=http://localhost:2090/',
+    '--disable-extensions',
+    '--no-default-browser-check'
+  ],
+  headless: false, // Or true for CI, but false visually confirms the chrome-less window
+});
+
+const page = browserApp.pages()[0]; 
+```
+
+### 2. Visual Regression and Chrome Constraints
+Standard browser tabs have large toolbars, URL omniboxes, and extension bars. When testing the standalone dock app, assertions must verify the native app layout hasn't broken:
+- **Responsive Layout Check:** Assert that the viewport size exactly matches the inner dimensions expected for a chromeless window, proving no browser UI was injected.
+- **Routing:** Assert that clicking internal navigation links purely manipulates the History API (hash routing) and does not bounce the `--app` session out into a standard system browser tab!
+
+### 3. File System Modals
+Since dock apps hide the URL bar, any accidental download triggers or native browser dialogues (like the "Choose File" popup for backup restoration) behave slightly differently. An E2E test must mock \`page.setInputFiles\` and verify no "silent failure" occurs due to browser lockdown policies inherent to \`--app\` windows.
+
+By testing the standalone launch script locally rather than via deep URL deep linking, we ensure the first-boot setup wizard and day-to-day launcher behaves flawlessly.
