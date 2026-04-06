@@ -453,3 +453,163 @@ DESKTOP
 		});
 	});
 });
+
+// ---------------------------------------------------------------
+// macOS: swiftc compile (skipped on non-macOS)
+// ---------------------------------------------------------------
+describe.skipIf(process.platform !== "darwin")(
+	"macOS swiftc compile",
+	() => {
+		const swiftSrc = resolve(__dirname, "../scripts/AcaClaw.swift");
+		let tmpDir: string;
+		let binaryPath: string;
+
+		beforeEach(async () => {
+			tmpDir = await mkdtemp(join(tmpdir(), "acaclaw-swift-test-"));
+			binaryPath = join(tmpDir, "AcaClaw");
+		});
+
+		afterEach(async () => {
+			await rm(tmpDir, { recursive: true, force: true });
+		});
+
+		it("swiftc is available on this machine", async () => {
+			const { code } = await runBash(`command -v swiftc`);
+			expect(code).toBe(0);
+		});
+
+		it("compiles AcaClaw.swift without errors", async () => {
+			const { code, stderr } = await runBash(
+				`swiftc -O -framework Cocoa -framework WebKit "${swiftSrc}" -o "${binaryPath}"`,
+				{ timeout: 60_000 },
+			);
+			expect(stderr).not.toMatch(/error:/);
+			expect(code).toBe(0);
+		});
+
+		it("compiled binary exists and is executable", async () => {
+			await runBash(
+				`swiftc -O -framework Cocoa -framework WebKit "${swiftSrc}" -o "${binaryPath}"`,
+				{ timeout: 60_000 },
+			);
+			const s = await stat(binaryPath);
+			// Must be executable (owner execute bit)
+			expect(s.mode & 0o100).not.toBe(0);
+		});
+
+		it("compiled binary is a Mach-O executable (not a shell script)", async () => {
+			await runBash(
+				`swiftc -O -framework Cocoa -framework WebKit "${swiftSrc}" -o "${binaryPath}"`,
+				{ timeout: 60_000 },
+			);
+			// Read first 4 bytes — Mach-O magic: 0xCFFAEDFE (arm64) or 0xCEFAEDFE (x86_64)
+			// or 0xBEBAFECA (fat binary). xxd output: "cffa edfe" or "cffa\tedfe" depending on version.
+			const { stdout } = await runBash(
+				`xxd -l 4 "${binaryPath}" | head -1`,
+			);
+			// Strip spaces so we match both "cffa edfe" and "cffa\tedfe" and "cffaedfe"
+			const hex = stdout.replace(/\s/g, "").toLowerCase();
+			expect(hex).toMatch(/cffa ?edfe|cefa ?edfe|bebafeca/i);
+		});
+	},
+);
+
+// ---------------------------------------------------------------
+// start.sh gateway restart behaviour
+// ---------------------------------------------------------------
+describe("start.sh gateway restart", () => {
+	const startScript = resolve(__dirname, "../scripts/start.sh");
+	let tmpDir: string;
+
+	beforeEach(async () => {
+		tmpDir = await mkdtemp(join(tmpdir(), "acaclaw-start-test-"));
+	});
+
+	afterEach(async () => {
+		await rm(tmpDir, { recursive: true, force: true });
+	});
+
+	it("is_gateway_running returns false when PID file is absent", async () => {
+		const pidFile = join(tmpDir, "gateway.pid");
+		const { code } = await runBash(`
+			ACACLAW_PID_FILE="${pidFile}"
+			gateway_pid() {
+				if [[ -f "$ACACLAW_PID_FILE" ]]; then
+					local pid
+					pid="$(cat "$ACACLAW_PID_FILE" 2>/dev/null)"
+					if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+						echo "$pid"; return 0
+					fi
+					rm -f "$ACACLAW_PID_FILE"
+				fi
+				return 1
+			}
+			is_gateway_running() { gateway_pid &>/dev/null; }
+			is_gateway_running && echo "RUNNING" || echo "NOT_RUNNING"
+		`);
+		// code is always 0 because the subshell echoes; check stdout implicitly via runBash
+		const { stdout } = await runBash(`
+			ACACLAW_PID_FILE="${pidFile}"
+			gateway_pid() {
+				if [[ -f "$ACACLAW_PID_FILE" ]]; then
+					local pid
+					pid="$(cat "$ACACLAW_PID_FILE" 2>/dev/null)"
+					if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+						echo "$pid"; return 0
+					fi
+					rm -f "$ACACLAW_PID_FILE"
+				fi
+				return 1
+			}
+			is_gateway_running() { gateway_pid &>/dev/null; }
+			is_gateway_running && echo "RUNNING" || echo "NOT_RUNNING"
+		`);
+		expect(stdout.trim()).toBe("NOT_RUNNING");
+	});
+
+	it("is_gateway_running cleans up stale PID file (non-existent PID)", async () => {
+		const pidFile = join(tmpDir, "gateway.pid");
+		// Write a PID that is guaranteed to not exist
+		await writeFile(pidFile, "999999");
+
+		const { stdout } = await runBash(`
+			ACACLAW_PID_FILE="${pidFile}"
+			gateway_pid() {
+				if [[ -f "$ACACLAW_PID_FILE" ]]; then
+					local pid
+					pid="$(cat "$ACACLAW_PID_FILE" 2>/dev/null)"
+					if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+						echo "$pid"; return 0
+					fi
+					rm -f "$ACACLAW_PID_FILE"
+				fi
+				return 1
+			}
+			is_gateway_running() { gateway_pid &>/dev/null; }
+			is_gateway_running && echo "RUNNING" || echo "NOT_RUNNING"
+			[[ -f "$ACACLAW_PID_FILE" ]] && echo "PID_FILE_EXISTS" || echo "PID_FILE_REMOVED"
+		`);
+		expect(stdout).toContain("NOT_RUNNING");
+		expect(stdout).toContain("PID_FILE_REMOVED");
+	});
+
+	it("start.sh has the zombie-gateway restart branch", async () => {
+		const content = await readFile(startScript, "utf-8");
+		// The fix: when process alive but port not responding, warn and restart
+		expect(content).toMatch(/not responding on port.*restarting/);
+		expect(content).toMatch(/kill.*pid/i);
+		expect(content).toMatch(/rm -f.*ACACLAW_PID_FILE/);
+	});
+
+	it("start.sh restart branch runs a new openclaw gateway run", async () => {
+		const content = await readFile(startScript, "utf-8");
+		// After killing the zombie, it must start a new gateway with --config
+		const restartBlock = content.slice(
+			content.indexOf("not responding on port"),
+			content.indexOf("elif [[ \"$USE_SERVICE\""),
+		);
+		expect(restartBlock).toMatch(/openclaw gateway run/);
+		expect(restartBlock).toMatch(/--config/);
+		expect(restartBlock).toMatch(/--bind loopback/);
+	});
+});
