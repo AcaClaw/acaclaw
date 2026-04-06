@@ -157,8 +157,11 @@ install_macos() {
     mkdir -p "$app_dir"
 
     # Layer 1: .app via osacompile
+    # The applet launches start.sh in the background (&) so it exits immediately
+    # instead of stalling while start.sh waits for the gateway.
+    # start.sh handles gateway startup + browser open on its own.
     log "Layer 1: Creating AcaClaw.app..."
-    osacompile -o "$app_bundle" -e "do shell script \"bash '${start_script}'\"" 2>/dev/null
+    osacompile -o "$app_bundle" -e "do shell script \"bash '${start_script}' &> /dev/null &\"" 2>/dev/null
 
     if [[ -d "$app_bundle" ]]; then
         local resources_dir="${app_bundle}/Contents/Resources"

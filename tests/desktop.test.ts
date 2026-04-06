@@ -329,6 +329,20 @@ DESKTOP
 	// macOS: app bundle creation path
 	// ---------------------------------------------------------------
 	describe("macOS app bundle", () => {
+		it("osacompile runs start.sh in background to avoid stall", async () => {
+			const script = await readFile(DESKTOP_SCRIPT, "utf-8");
+			// The osacompile command must background start.sh so the applet exits immediately
+			// instead of blocking while start.sh waits for the gateway.
+			const osaLine = script
+				.split("\n")
+				.find((l) => l.includes("osacompile") && l.includes("-o"));
+			expect(osaLine).toBeDefined();
+			// Must contain '&' to background the bash process inside do shell script
+			expect(osaLine).toMatch(/&/);
+			// Must redirect output to avoid blocking on stdout/stderr
+			expect(osaLine).toMatch(/&>/);
+		});
+
 		it("creates ~/Applications directory", async () => {
 			const appDir = join(fakeHome, "Applications");
 
