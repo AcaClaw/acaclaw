@@ -444,21 +444,15 @@ DESKTOP
 			expect(scriptContent).toContain("nvm");
 		});
 
-		it("launcher script uses child process for browser (not exec)", async () => {
+		it("launcher script uses exec for browser (single Dock icon)", async () => {
 			const scriptContent = await readFile(DESKTOP_SCRIPT, "utf-8");
 
-			// Must launch browser as child (keeps wrapper alive for Dock relaunch)
-			// Should NOT use exec (loses ability to handle second Dock click)
-			expect(scriptContent).toContain('"$EDGE_BIN" "${APP_FLAGS[@]}" &');
-			expect(scriptContent).toContain('"$CHROME_BIN" "${APP_FLAGS[@]}" &');
-			expect(scriptContent).toContain("BROWSER_PID=$!");
-			expect(scriptContent).toContain('wait "$BROWSER_PID"');
-			// Should NOT use the old osacompile or exec pattern
-			expect(scriptContent).not.toMatch(/^\s*osacompile\b/m);
+			// Must use exec so process inherits .app bundle Dock identity
+			expect(scriptContent).toMatch(/exec "\$EDGE_BIN"/);
+			expect(scriptContent).toMatch(/exec "\$CHROME_BIN"/);
+			// osacompile may appear in comments, but must not be used as a command
+			expect(scriptContent).not.toMatch(/^\s+osacompile\b/m);
 			expect(scriptContent).not.toMatch(/^\s*open -na\b/m);
-			// exec should only appear in comments, not as a command for Edge/Chrome
-			expect(scriptContent).not.toMatch(/^\s*exec "\$EDGE_BIN"/m);
-			expect(scriptContent).not.toMatch(/^\s*exec "\$CHROME_BIN"/m);
 		});
 
 		it("launcher script has single-instance lock", async () => {
@@ -466,8 +460,9 @@ DESKTOP
 
 			expect(scriptContent).toContain("LOCK_FILE");
 			expect(scriptContent).toContain(".app-lock");
-			expect(scriptContent).toContain("_activate_existing");
 			expect(scriptContent).toContain("Already running");
+			// Uses osascript inline to activate existing window
+			expect(scriptContent).toContain("activating window");
 		});
 
 		it("launcher script has gateway startup logic", async () => {
@@ -499,6 +494,27 @@ DESKTOP
 			const scriptContent = await readFile(DESKTOP_SCRIPT, "utf-8");
 
 			expect(scriptContent).toContain('open "$URL"');
+		});
+
+		it("main executable is a bash script (not AppleScript applet)", async () => {
+			const scriptContent = await readFile(DESKTOP_SCRIPT, "utf-8");
+
+			// The LAUNCHER heredoc should be written to AcaClaw executable
+			expect(scriptContent).toMatch(/cat > .*AcaClaw.*<<'LAUNCHER'/);
+			// Must be bash, not an AppleScript applet
+			expect(scriptContent).toContain("#!/usr/bin/env bash");
+		});
+
+		it("launcher handles second Dock click via lock file + osascript", async () => {
+			const scriptContent = await readFile(DESKTOP_SCRIPT, "utf-8");
+
+			// Lock file check for single-instance behavior
+			expect(scriptContent).toContain("LOCK_FILE");
+			expect(scriptContent).toContain(".app-lock");
+			expect(scriptContent).toContain("Already running");
+			// Uses osascript inline to bring window to front
+			expect(scriptContent).toContain("osascript -e");
+			expect(scriptContent).toContain("set frontmost of proc to true");
 		});
 	});
 

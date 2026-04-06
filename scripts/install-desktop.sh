@@ -206,24 +206,28 @@ install_macos() {
 </plist>
 PLIST
 
-    # --- Main executable (AppleScript wrapper + bash launcher) ---
+    # --- Main executable (bash script, directly) ---
     # Architecture:
-    #   AcaClaw (AppleScript applet, compiled) handles macOS events:
-    #     - on run: calls the bash launcher script to start gateway + browser
-    #     - on reopen: brings existing AcaClaw window to front (Dock click)
-    #   AcaClaw-launcher.sh (bash) does the heavy lifting:
-    #     - PATH bootstrap, gateway startup, browser launch
+    #   Contents/MacOS/AcaClaw is a bash script that:
+    #   1. Bootstraps PATH (Homebrew, fnm, nvm, etc.)
+    #   2. Ensures gateway is running on port 2090
+    #   3. Checks single-instance lock file
+    #      - If lock held by live PID → brings existing window to front → exits
+    #      - If no lock / stale lock → writes lock → exec into Edge
+    #   4. exec replaces the bash process with Edge, so macOS sees the
+    #      .app bundle as the process owner → single AcaClaw Dock icon
     #
-    # This two-layer approach solves the Dock-relaunch problem:
-    # pure bash can't handle Apple Events, so clicking the Dock icon
-    # a second time would either do nothing or open a regular Edge window.
+    # Why not AppleScript?
+    #   - AppleScript's "do shell script" always spawns a subshell, so exec
+    #     from within it doesn't replace the applet process → two Dock icons
+    #   - A stay-open applet stays alive alongside Edge → two Dock icons
+    #   - Bash can call osascript inline for window activation on relaunch
 
-    # --- Bash launcher script (does the actual work) ---
-    cat > "${macos_dir}/AcaClaw-launcher.sh" <<'LAUNCHER'
+    cat > "${macos_dir}/AcaClaw" <<'LAUNCHER'
 #!/usr/bin/env bash
-# AcaClaw.app launcher — exec into Chromium so macOS keeps this bundle's dock icon
-# NOTE: .app bundles on macOS run with a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin).
-# We must bootstrap PATH before calling curl, openclaw, etc.
+# AcaClaw.app main executable
+# exec's into Edge/Chrome so macOS keeps this bundle's Dock icon.
+# On second launch (lock file exists), brings existing window to front instead.
 
 ACACLAW_PORT="${ACACLAW_PORT:-2090}"
 ACACLAW_DATA_DIR="${HOME}/.acaclaw"
@@ -232,7 +236,7 @@ URL="http://localhost:${ACACLAW_PORT}/"
 # Log for debugging launch issues
 LAUNCH_LOG="${ACACLAW_DATA_DIR}/app-launch.log"
 mkdir -p "$ACACLAW_DATA_DIR"
-echo "=== $(date) ===" > "$LAUNCH_LOG"
+echo "=== $(date) ===" >> "$LAUNCH_LOG"
 
 # --- PATH bootstrap (essential for .app context) ---
 export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH}"
@@ -250,7 +254,6 @@ if [[ -d "$FNM_PATH" ]]; then
     export PATH="${FNM_PATH}:${PATH}"
     eval "$(${FNM_PATH}/fnm env 2>/dev/null)" 2>/dev/null || true
 fi
-# fnm via Homebrew
 if command -v fnm &>/dev/null; then
     eval "$(fnm env 2>/dev/null)" 2>/dev/null || true
 fi
@@ -282,7 +285,6 @@ if ! _port_ok; then
         nohup openclaw gateway run --bind loopback --port "$ACACLAW_PORT" --force \
             >> "${ACACLAW_DATA_DIR}/gateway.log" 2>&1 &
     fi
-    # Wait up to 15s for the gateway to start
     for _i in $(seq 1 30); do
         _port_ok && break
         sleep 0.5
@@ -291,55 +293,43 @@ fi
 echo "Gateway check done, port responding: $(_port_ok && echo yes || echo no)" >> "$LAUNCH_LOG"
 
 # --- Single-instance lock ---
-# When clicked a second time from Dock, macOS launches a new process.
-# If the browser is already running, just bring its window to front and exit.
 LOCK_FILE="${ACACLAW_DATA_DIR}/.app-lock"
-BROWSER_PID_FILE="${ACACLAW_DATA_DIR}/.browser-pid"
-
-_activate_existing() {
-    # Try to bring the existing AcaClaw window to front
-    osascript -e '
-        tell application "System Events"
-            set appUrl to "localhost:'"${ACACLAW_PORT}"'"
-            set found to false
-            repeat with proc in (every process whose background only is false)
-                try
-                    repeat with win in (every window of proc)
-                        if name of win contains appUrl or name of win contains "AcaClaw" then
-                            set found to true
-                            set frontmost of proc to true
-                            exit repeat
-                        end if
-                    end repeat
-                end try
-                if found then exit repeat
-            end repeat
-            if not found then
-                -- Fallback: open URL in default browser
-                open location "'"${URL}"'"
-            end if
-        end tell
-    ' 2>/dev/null || open "$URL"
-}
 
 if [[ -f "$LOCK_FILE" ]]; then
     existing_pid=$(cat "$LOCK_FILE" 2>/dev/null || echo "")
     if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
         echo "Already running (pid $existing_pid), activating window" >> "$LAUNCH_LOG"
-        _activate_existing
+        # Bring existing AcaClaw window to front via AppleScript
+        osascript -e '
+            tell application "System Events"
+                set appUrl to "localhost:'"${ACACLAW_PORT}"'"
+                set found to false
+                repeat with proc in (every process whose background only is false)
+                    try
+                        repeat with win in (every window of proc)
+                            if name of win contains appUrl or name of win contains "AcaClaw" then
+                                set found to true
+                                set frontmost of proc to true
+                                exit repeat
+                            end if
+                        end repeat
+                    end try
+                    if found then exit repeat
+                end repeat
+                if not found then
+                    open location "'"${URL}"'"
+                end if
+            end tell
+        ' 2>/dev/null || open "$URL"
         exit 0
     else
-        # Stale lock — clean up and continue with fresh launch
         rm -f "$LOCK_FILE"
     fi
 fi
 
-# Write lock with our PID
+# Write lock with our PID (will become Edge's PID after exec)
 echo $$ > "$LOCK_FILE"
-_cleanup_lock() {
-    rm -f "$LOCK_FILE" "$BROWSER_PID_FILE"
-}
-trap _cleanup_lock EXIT
+trap 'rm -f "$LOCK_FILE"' EXIT
 
 # --- Browser profile (isolated from user's Edge sessions) ---
 APP_PROFILE="${ACACLAW_DATA_DIR}/browser-app"
@@ -363,110 +353,27 @@ APP_FLAGS=(
     --password-store=basic
 )
 
-# Launch the browser as a child process (not exec) so this wrapper stays alive.
-# This prevents the Dock-relaunch problem: when macOS launches a second instance,
-# we detect the lock file above and bring the existing window to front instead.
+# exec replaces this bash process with Edge/Chrome.
+# Since exec preserves the PID and the .app bundle context, macOS shows
+# AcaClaw's Dock icon (not Edge's) — only ONE Dock icon appears.
 EDGE_BIN="/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"
 CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 if [[ -x "$EDGE_BIN" ]]; then
-    echo "launching Edge (child process)" >> "$LAUNCH_LOG"
-    "$EDGE_BIN" "${APP_FLAGS[@]}" &
-    BROWSER_PID=$!
+    echo "exec into Edge" >> "$LAUNCH_LOG"
+    exec "$EDGE_BIN" "${APP_FLAGS[@]}"
 elif [[ -x "$CHROME_BIN" ]]; then
-    echo "launching Chrome (child process)" >> "$LAUNCH_LOG"
-    "$CHROME_BIN" "${APP_FLAGS[@]}" &
-    BROWSER_PID=$!
+    echo "exec into Chrome" >> "$LAUNCH_LOG"
+    exec "$CHROME_BIN" "${APP_FLAGS[@]}"
 else
-    # No Chromium browser — fall back to default browser (loses app-mode)
     echo "fallback: open URL" >> "$LAUNCH_LOG"
     open "$URL"
-    # Keep the wrapper alive briefly so the Dock icon shows
     sleep 2
     exit 0
 fi
-
-echo "$BROWSER_PID" > "$BROWSER_PID_FILE"
-echo "Browser PID: $BROWSER_PID" >> "$LAUNCH_LOG"
-
-# Wait for the browser to exit — this keeps the .app "running" in the Dock.
-# When the user closes the browser window, this process also exits, removing
-# AcaClaw from the Dock naturally.
-wait "$BROWSER_PID" 2>/dev/null || true
 LAUNCHER
-    chmod +x "${macos_dir}/AcaClaw-launcher.sh"
-
-    # --- AppleScript main executable ---
-    # Handles macOS Apple Events (run, reopen) and delegates to the bash launcher.
-    local applescript_src
-    applescript_src="$(mktemp).applescript"
-    cat > "$applescript_src" <<'APPLESCRIPT'
--- AcaClaw.app main executable
--- Handles macOS Dock click (reopen) by bringing existing window to front
--- Delegates first-launch to the bash launcher script
-
-property acaclawPort : 2090
-property launcherRunning : false
-
-on run
-    set myDir to (POSIX path of (path to me)) & "Contents/MacOS/"
-    set launcherPath to myDir & "AcaClaw-launcher.sh"
-
-    -- Launch the bash script in background
-    set launcherRunning to true
-    do shell script "bash " & quoted form of launcherPath & " &> /dev/null &"
-end run
-
-on reopen
-    -- Dock icon clicked while already running: bring window to front
-    activateAcaClawWindow()
-end reopen
-
-on activateAcaClawWindow()
-    tell application "System Events"
-        set appUrl to "localhost:" & (acaclawPort as text)
-        set found to false
-        repeat with proc in (every process whose background only is false)
-            try
-                repeat with win in (every window of proc)
-                    if name of win contains appUrl or name of win contains "AcaClaw" then
-                        set found to true
-                        set frontmost of proc to true
-                        exit repeat
-                    end if
-                end repeat
-            end try
-            if found then exit repeat
-        end repeat
-        if not found then
-            -- Window not found — open URL in default browser
-            tell application "Finder" to open location ("http://localhost:" & (acaclawPort as text) & "/")
-        end if
-    end tell
-end activateAcaClawWindow
-APPLESCRIPT
-
-    # Compile the AppleScript into the bundle
-    # osacompile -o writes a .app bundle, but we only need the compiled script
-    # resource from it. We compile to a temp .app then extract what we need.
-    local temp_applet
-    temp_applet="$(mktemp -d)/AcaClawApplet.app"
-    if osacompile -o "$temp_applet" "$applescript_src" 2>/dev/null; then
-        # Copy the applet executable into our bundle
-        cp "${temp_applet}/Contents/MacOS/applet" "${macos_dir}/AcaClaw"
-        chmod +x "${macos_dir}/AcaClaw"
-        # Copy the compiled script resources
-        if [[ -d "${temp_applet}/Contents/Resources" ]]; then
-            cp -R "${temp_applet}/Contents/Resources/Scripts" "${resources_dir}/" 2>/dev/null || true
-        fi
-        log "  ✓ AppleScript wrapper compiled (handles Dock reopen)"
-    else
-        # Fallback: use the bash launcher directly as the executable
-        warn "  ⚠ osacompile failed — using bash launcher directly (Dock reopen won't work)"
-        cp "${macos_dir}/AcaClaw-launcher.sh" "${macos_dir}/AcaClaw"
-        chmod +x "${macos_dir}/AcaClaw"
-    fi
-    rm -rf "$applescript_src" "$temp_applet" 2>/dev/null || true
+    chmod +x "${macos_dir}/AcaClaw"
+    log "  ✓ Launcher script created (exec into Edge/Chrome, single Dock icon)"
 
     # --- App icon ---
     if icon_src="$(find_icon)" && command -v sips &>/dev/null && command -v iconutil &>/dev/null; then
