@@ -369,6 +369,17 @@ DESKTOP
 			expect(script).toMatch(/rm -rf.*app_bundle/);
 		});
 
+		it("detects SingletonLock to bring existing window to front on relaunch", async () => {
+			const script = await readFile(DESKTOP_SCRIPT, "utf-8");
+			// When the .app is clicked again while already running,
+			// the launcher must detect the Chromium SingletonLock file
+			// and activate the existing window via osascript instead
+			// of exec'ing into Edge again (which drops --app flag)
+			expect(script).toMatch(/SingletonLock/);
+			expect(script).toMatch(/osascript.*frontmost/s);
+			expect(script).toMatch(/exit 0/);
+		});
+
 		it("icon file matches CFBundleIconFile", async () => {
 			const script = await readFile(DESKTOP_SCRIPT, "utf-8");
 			// CFBundleIconFile says "AcaClaw" (value on next line in plist heredoc)

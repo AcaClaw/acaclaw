@@ -230,6 +230,23 @@ APP_PROFILE="\$HOME/.acaclaw/browser-app"
 mkdir -p "\$APP_PROFILE"
 touch "\$APP_PROFILE/First Run"
 
+# If AcaClaw browser is already running, bring existing window to front
+# instead of exec'ing into Edge again (which would open a regular window
+# because the IPC handoff to the running instance drops the --app flag).
+LOCK_FILE="\$APP_PROFILE/SingletonLock"
+if [[ -e "\$LOCK_FILE" ]]; then
+    osascript -e '
+        tell application "System Events"
+            set edgeProcs to every process whose unix id is in ¬
+                (do shell script "pgrep -f \"user-data-dir=.*\\.acaclaw/browser-app\" 2>/dev/null || echo -1")
+            if (count of edgeProcs) > 0 then
+                set frontmost of item 1 of edgeProcs to true
+            end if
+        end tell
+    ' 2>/dev/null
+    exit 0
+fi
+
 APP_FLAGS=(
     --user-data-dir="\$APP_PROFILE"
     --app="http://localhost:2090/"
