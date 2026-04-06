@@ -161,6 +161,9 @@ install_macos() {
     # instead of stalling while start.sh waits for the gateway.
     # start.sh handles gateway startup + browser open on its own.
     log "Layer 1: Creating AcaClaw.app..."
+    # Remove any previous .app first — leftover files from an older install
+    # can confuse osacompile (it overlays, not replaces).
+    [[ -d "$app_bundle" ]] && rm -rf "$app_bundle"
     osacompile -o "$app_bundle" -e "do shell script \"bash '${start_script}' &> /dev/null &\"" 2>/dev/null
 
     if [[ -d "$app_bundle" ]]; then
