@@ -779,8 +779,9 @@ SETUPJSON
 					"${INSTALL_SCRIPT}" > /tmp/_test_func_$$.sh
 
 				# Patch the binary path check to use our fake binary
-				sed -i 's|/opt/microsoft/msedge/microsoft-edge|${fakeBinDir}/microsoft-edge|g' /tmp/_test_func_$$.sh
-				sed -i 's|/opt/google/chrome/google-chrome|/nonexistent/chrome|g' /tmp/_test_func_$$.sh
+				# Use perl for cross-platform in-place edits (macOS sed -i requires '' arg)
+				perl -pi -e 's|/opt/microsoft/msedge/microsoft-edge|${fakeBinDir}/microsoft-edge|g' /tmp/_test_func_$$.sh
+				perl -pi -e 's|/opt/google/chrome/google-chrome|/nonexistent/chrome|g' /tmp/_test_func_$$.sh
 
 				source /tmp/_test_func_$$.sh
 				rm -f /tmp/_test_func_$$.sh
@@ -788,8 +789,9 @@ SETUPJSON
 				_open_app_window
 				echo "EXIT_$?"
 
-				# Wait for the backgrounded process to write
-				sleep 0.2
+				# Wait for the backgrounded process to finish writing
+				wait
+				sleep 0.1
 
 				# Verify First Run sentinel was created
 				if [[ -f "${acaclawDir}/browser-app/First Run" ]]; then
@@ -999,6 +1001,149 @@ EOF
 			const { code } = await runBash(
 				`grep -q -- '--registry=' "${INSTALL_SCRIPT}"`,
 			);
+			expect(code).toBe(0);
+		});
+	});
+
+	// ---------------------------------------------------------------
+	// GitHub clone mirror fallback
+	// ---------------------------------------------------------------
+	describe("GitHub clone mirror fallback", () => {
+		it("defines GITHUB_MIRROR with ghproxy.com default", async () => {
+			const { stdout, code } = await runBash(
+				`grep 'GITHUB_MIRROR=' "${INSTALL_SCRIPT}" | head -1`,
+			);
+			expect(code).toBe(0);
+			expect(stdout).toContain("ghproxy.com");
+		});
+
+		it("GITHUB_MIRROR is overridable via environment variable", async () => {
+			const { stdout } = await runBash(
+				`grep 'GITHUB_MIRROR=' "${INSTALL_SCRIPT}" | head -1`,
+			);
+			expect(stdout).toContain('${GITHUB_MIRROR:-');
+		});
+
+		it("clone sequence tries HTTPS → mirror proxy → SSH", async () => {
+			// Verify the order: GitHub HTTPS first, then mirror proxy, then SSH
+			const { stdout, code } = await runBash(`
+				awk '/_resolve_repo_root/,/^}/' "${INSTALL_SCRIPT}" | grep -n 'github.com\\|GITHUB_MIRROR\\|git@' | head -10
+			`);
+			expect(code).toBe(0);
+			const lines = stdout.trim().split("\n");
+			const httpsLine = lines.findIndex((l: string) => l.includes("github.com") && !l.includes("GITHUB_MIRROR") && !l.includes("git@"));
+			const mirrorLine = lines.findIndex((l: string) => l.includes("GITHUB_MIRROR"));
+			const sshLine = lines.findIndex((l: string) => l.includes("git@github.com"));
+			expect(httpsLine).toBeGreaterThanOrEqual(0);
+			expect(mirrorLine).toBeGreaterThan(httpsLine);
+			expect(sshLine).toBeGreaterThan(mirrorLine);
+		});
+
+		it("mirror proxy URL is constructed correctly", async () => {
+			const { stdout, code } = await runBash(
+				`grep 'GITHUB_MIRROR.*https://github.com' "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+			// Should be ${GITHUB_MIRROR}/https://github.com/...
+			expect(stdout).toContain("/https://github.com/");
+		});
+	});
+
+	// ---------------------------------------------------------------
+	// npm install timeout and shared mirror helper
+	// ---------------------------------------------------------------
+	describe("npm install timeout and mirror helper", () => {
+		it("defines NETWORK_TIMEOUT with 60s default", async () => {
+			const { stdout, code } = await runBash(
+				`grep 'NETWORK_TIMEOUT=' "${INSTALL_SCRIPT}" | head -1`,
+			);
+			expect(code).toBe(0);
+			expect(stdout).toContain("60");
+		});
+
+		it("NETWORK_TIMEOUT is overridable via environment variable", async () => {
+			const { stdout } = await runBash(
+				`grep 'NETWORK_TIMEOUT=' "${INSTALL_SCRIPT}" | head -1`,
+			);
+			expect(stdout).toContain('${NETWORK_TIMEOUT:-');
+		});
+
+		it("defines _npm_install_with_mirror as shared helper", async () => {
+			const { code } = await runBash(
+				`grep -q '_npm_install_with_mirror()' "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+		});
+
+		it("_npm_install_with_mirror uses timeout command", async () => {
+			const { code } = await runBash(
+				`awk '/_npm_install_with_mirror\\(\\)/,/^}/' "${INSTALL_SCRIPT}" | grep -q 'timeout'`,
+			);
+			expect(code).toBe(0);
+		});
+
+		it("_npm_install_openclaw delegates to _npm_install_with_mirror", async () => {
+			const { code } = await runBash(
+				`awk '/_npm_install_openclaw\\(\\)/,/^}/' "${INSTALL_SCRIPT}" | grep -q '_npm_install_with_mirror'`,
+			);
+			expect(code).toBe(0);
+		});
+
+		it("clawhub CLI install uses _npm_install_with_mirror", async () => {
+			const { code } = await runBash(
+				`grep -A2 'Installing ClawHub CLI' "${INSTALL_SCRIPT}" | grep -q '_npm_install_with_mirror'`,
+			);
+			expect(code).toBe(0);
+		});
+	});
+
+	// ---------------------------------------------------------------
+	// ClawHub skill mirror fallback
+	// ---------------------------------------------------------------
+	describe("ClawHub skill mirror fallback", () => {
+		it("defines CLAWHUB_MIRROR with cn.clawhub-mirror.com default", async () => {
+			const { stdout, code } = await runBash(
+				`grep 'CLAWHUB_MIRROR' "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+			expect(stdout).toContain("cn.clawhub-mirror.com");
+		});
+
+		it("defines CLAWHUB_SKILL_TIMEOUT with 15s default", async () => {
+			const { stdout, code } = await runBash(
+				`grep 'CLAWHUB_SKILL_TIMEOUT' "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+			expect(stdout).toContain("15");
+		});
+
+		it("defines _clawhub_install function with mirror fallback", async () => {
+			const { code } = await runBash(
+				`grep -q '_clawhub_install()' "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+		});
+
+		it("_clawhub_install passes --registry to mirror on primary failure", async () => {
+			const { stdout, code } = await runBash(
+				`grep -A5 'trying mirror' "${INSTALL_SCRIPT}" | grep -q -- '--registry'`,
+			);
+			expect(code).toBe(0);
+		});
+
+		it("CLAWHUB_MIRROR is overridable via environment variable", async () => {
+			const { stdout } = await runBash(
+				`grep 'CLAWHUB_MIRROR=' "${INSTALL_SCRIPT}" | head -1`,
+			);
+			expect(stdout).toContain('${CLAWHUB_MIRROR:-');
+		});
+
+		it("install loop uses _clawhub_install instead of direct clawhub call", async () => {
+			const script = `
+				# The install loop should call _clawhub_install, not clawhub install directly
+				awk '/for skill_name in/,/done/' "${INSTALL_SCRIPT}" | grep -q '_clawhub_install'
+			`;
+			const { code } = await runBash(script);
 			expect(code).toBe(0);
 		});
 	});

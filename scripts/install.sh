@@ -20,6 +20,10 @@ ACACLAW_DIR="${ACACLAW_DIR:-$HOME/.acaclaw}"
 OPENCLAW_MIN_VERSION="2026.4.2"
 NODE_MIN_VERSION="22"
 ACACLAW_GITHUB_REPO="acaclaw/acaclaw"
+GITHUB_MIRROR="${GITHUB_MIRROR:-https://ghproxy.com}"
+CLAWHUB_MIRROR="${CLAWHUB_MIRROR:-https://cn.clawhub-mirror.com}"
+CLAWHUB_SKILL_TIMEOUT="${CLAWHUB_SKILL_TIMEOUT:-15}"
+NETWORK_TIMEOUT="${NETWORK_TIMEOUT:-60}"
 
 # AcaClaw runs using the default OpenClaw directory
 OPENCLAW_DIR="${HOME}/.openclaw"
@@ -101,7 +105,18 @@ _resolve_repo_root() {
 	fi
 	rm -rf "$ACACLAW_CLONE_DIR"
 	ACACLAW_CLONE_DIR="$(mktemp -d)"
-	log "HTTPS failed or timed out, trying SSH..."
+
+	# GitHub mirror proxy (useful when GitHub is slow/blocked)
+	log "GitHub HTTPS failed or timed out, trying mirror proxy (${GITHUB_MIRROR})..."
+	if timeout "$_clone_timeout" git clone --depth 1 --progress \
+		"${GITHUB_MIRROR}/https://github.com/${ACACLAW_GITHUB_REPO}.git" "$ACACLAW_CLONE_DIR" 2>&1; then
+		REPO_ROOT="$ACACLAW_CLONE_DIR"
+		return
+	fi
+	rm -rf "$ACACLAW_CLONE_DIR"
+	ACACLAW_CLONE_DIR="$(mktemp -d)"
+
+	log "Mirror failed, trying SSH..."
 	if timeout "$_clone_timeout" git clone --depth 1 --progress \
 		"git@github.com:${ACACLAW_GITHUB_REPO}.git" "$ACACLAW_CLONE_DIR" 2>&1; then
 		REPO_ROOT="$ACACLAW_CLONE_DIR"
@@ -246,17 +261,25 @@ _pick_npm_registry() {
 	return 0
 }
 
-_npm_install_openclaw() {
-	local _pkg="openclaw@${OPENCLAW_MIN_VERSION}"
+_npm_install_with_mirror() {
+	local _pkg="$1"
 	local _registry
 	_registry="$(_pick_npm_registry)"
+	local _timeout="${NETWORK_TIMEOUT}"
 
 	if [[ -n "$_registry" && "$_registry" != "https://registry.npmjs.org" ]]; then
 		log "Using npm mirror: ${_registry}"
-		npm install -g "$_pkg" --registry="$_registry"
-	else
-		npm install -g "$_pkg"
+		if timeout "$_timeout" npm install -g "$_pkg" --registry="$_registry" 2>&1; then
+			return 0
+		fi
+		warn "npm mirror install failed, trying official registry..."
 	fi
+
+	timeout "$_timeout" npm install -g "$_pkg" 2>&1
+}
+
+_npm_install_openclaw() {
+	_npm_install_with_mirror "openclaw@${OPENCLAW_MIN_VERSION}"
 }
 
 if check_command openclaw; then
@@ -564,7 +587,7 @@ header "Step 4: Essential Skills"
 # Install clawhub CLI if not present
 if ! check_command clawhub; then
 	log "Installing ClawHub CLI..."
-	npm install -g clawhub
+	_npm_install_with_mirror clawhub
 	log "ClawHub CLI installed ✓"
 else
 	log "ClawHub CLI ✓"
@@ -579,6 +602,27 @@ elif command -v uv &>/dev/null; then
 	log "uv ✓"
 fi
 
+# Install a single skill from ClawHub with timeout and mirror fallback.
+# Usage: _clawhub_install <skill_name>
+_clawhub_install() {
+	local _skill="$1"
+	local _timeout="${CLAWHUB_SKILL_TIMEOUT}"
+
+	# Try primary registry with timeout
+	if timeout "$_timeout" clawhub install "$_skill" --workdir "${OPENCLAW_DIR}" --force 2>/dev/null; then
+		return 0
+	fi
+
+	# Primary failed or timed out — try mirror
+	warn "${_skill}: primary ClawHub slow/unavailable, trying mirror (${CLAWHUB_MIRROR})..."
+	if timeout "$_timeout" clawhub install "$_skill" --workdir "${OPENCLAW_DIR}" --force \
+		--registry "${CLAWHUB_MIRROR}" 2>/dev/null; then
+		return 0
+	fi
+
+	return 1
+}
+
 # Install agent-required skills from ClawHub into the AcaClaw profile.
 # These skills are defined in skills.json and needed by all agents.
 CORE_SKILLS=("nano-pdf" "xurl" "summarize" "humanizer")
@@ -586,10 +630,10 @@ SKILL_COUNT=0
 
 for skill_name in "${CORE_SKILLS[@]}"; do
 	log "Installing skill: ${skill_name}..."
-	if clawhub install "$skill_name" --workdir "${OPENCLAW_DIR}" --force 2>/dev/null; then
+	if _clawhub_install "$skill_name"; then
 		SKILL_COUNT=$((SKILL_COUNT + 1))
 	else
-		warn "Failed to install ${skill_name}"
+		warn "Failed to install ${skill_name} (tried primary + mirror)"
 	fi
 done
 

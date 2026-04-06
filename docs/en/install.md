@@ -14,6 +14,7 @@ permalink: /en/install/
 - [After Install: Adding Skills and Packages](#after-install-adding-skills-and-packages)
 - [Platform-Specific Notes](#platform-specific-notes)
 - [What the Installer Does](#what-the-installer-does)
+  - [Network Mirrors & Timeout Configuration](#network-mirrors--timeout-configuration)
 - [Uninstall](#uninstall)
 
 ---
@@ -226,10 +227,10 @@ For transparency, here is exactly what the install script does:
 
 | Step | Action | Location |
 |---|---|---|
-| 1 | Installs OpenClaw via npm (auto-selects fastest registry) | Global (`npm install -g openclaw`) |
+| 1 | Installs OpenClaw via npm (auto-selects fastest registry, with timeout) | Global (`npm install -g openclaw`) |
 | 2 | Installs Miniforge (Conda) (GitHub + Tsinghua/BFSU mirrors) | `~/.acaclaw/miniforge3/` |
 | 3 | Copies AcaClaw plugins | `~/.openclaw/extensions/` |
-| 4 | Installs academic skills from ClawHub | `~/.openclaw/skills/` |
+| 4 | Installs academic skills from ClawHub (with mirror fallback) | `~/.openclaw/skills/` |
 | 5 | Writes AcaClaw config | `~/.openclaw/openclaw.json` (copies existing API keys) |
 | 6 | Registers systemd user service | `~/.config/systemd/user/acaclaw-gateway.service` |
 | 7 | Starts gateway, opens browser wizard | `openclaw gateway run` → `http://localhost:2090/` |
@@ -243,6 +244,44 @@ The browser wizard then:
 | 10 | Creates workspace directory structure | `~/AcaClaw/` |
 
 Nothing is installed outside these directories. Nothing is sent to the internet (except npm/conda package downloads and the API key test).
+
+### Network Mirrors & Timeout Configuration
+
+The installer automatically falls back to faster mirrors when primary sources are slow or unreachable. This is especially useful behind firewalls or in regions where GitHub/npm are throttled.
+
+**Fallback chain per source:**
+
+| Source | Primary | Mirror fallback(s) |
+|---|---|---|
+| **Git clone** | `github.com` HTTPS | GitHub proxy (`ghproxy.com`) → SSH |
+| **npm packages** | `registry.npmjs.org` | `registry.npmmirror.com` |
+| **Miniforge** | `github.com` releases | Tsinghua mirror → BFSU mirror |
+| **Conda channels** | `conda-forge` (official) | Tsinghua mirror → BFSU mirror |
+| **ClawHub skills** | `clawhub.com` | `cn.clawhub-mirror.com` |
+
+**Override via environment variables:**
+
+All mirror URLs and timeouts are configurable. Set these before running the install script:
+
+```bash
+# GitHub mirror proxy (for git clone when github.com is slow)
+export GITHUB_MIRROR="https://ghproxy.com"          # default
+
+# ClawHub skill registry mirror
+export CLAWHUB_MIRROR="https://cn.clawhub-mirror.com"  # default
+
+# Per-skill install timeout (seconds) before falling back to mirror
+export CLAWHUB_SKILL_TIMEOUT=15                      # default
+
+# npm install timeout (seconds) for openclaw and clawhub CLI
+export NETWORK_TIMEOUT=60                            # default
+```
+
+Example: use a custom GitHub mirror and longer timeouts on a slow connection:
+
+```bash
+GITHUB_MIRROR="https://mirror.ghproxy.com" NETWORK_TIMEOUT=120 bash install.sh
+```
 
 **If you already have OpenClaw installed:** AcaClaw never modifies `~/.openclaw/`. Your existing config, plugins, and sessions are untouched. AcaClaw inherits your API keys read-only via `$include`. However, **uninstalling AcaClaw removes both AcaClaw and OpenClaw** (`~/.acaclaw/` and `~/.openclaw/`).
 

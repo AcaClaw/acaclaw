@@ -14,6 +14,7 @@ permalink: /zh-CN/install/
 - [安装后：添加技能与软件包](#安装后添加技能与软件包)
 - [各平台说明](#各平台说明)
 - [安装脚本做了什么](#安装脚本做了什么)
+  - [网络镜像与超时配置](#网络镜像与超时配置)
 - [卸载](#卸载)
 
 ---
@@ -163,15 +164,53 @@ curl -fsSL https://acaclaw.com/install.sh | bash
 
 | 步骤 | 操作 | 位置 |
 |---|---|---|
-| 1 | 通过 npm 安装 OpenClaw（自动选择最快的 npm 源） | 全局 `npm install -g openclaw` |
+| 1 | 通过 npm 安装 OpenClaw（自动选择最快源，带超时） | 全局 `npm install -g openclaw` |
 | 2 | 安装 Miniforge（GitHub + 清华/北外镜像） | `~/.acaclaw/miniforge3/` |
 | 3 | 复制 AcaClaw 插件 | `~/.openclaw/extensions/` |
-| 4 | 从 ClawHub 安装学术技能 | `~/.openclaw/skills/` |
+| 4 | 从 ClawHub 安装学术技能（带镜像回退） | `~/.openclaw/skills/` |
 | 5 | 写入 AcaClaw 配置 | `~/.openclaw/openclaw.json`（复制已有 API 密钥） |
 | 6 | 注册 systemd 用户服务 | `~/.config/systemd/user/acaclaw-gateway.service` |
 | 7 | 启动网关并打开向导 | `openclaw gateway run` → `http://localhost:2090/` |
 
 向导随后创建 Conda 环境、保存配置、创建 `~/AcaClaw/` 结构。除包下载与密钥测试外，不向互联网发送你的私密数据。
+
+### 网络镜像与超时配置
+
+安装脚本在主源响应过慢或不可达时，自动回退到更快的镜像。这在防火墙后或 GitHub/npm 被限速的地区尤其有用。
+
+**各来源的回退链：**
+
+| 来源 | 主源 | 镜像回退 |
+|---|---|---|
+| **Git clone** | `github.com` HTTPS | GitHub 代理（`ghproxy.com`）→ SSH |
+| **npm 包** | `registry.npmjs.org` | `registry.npmmirror.com` |
+| **Miniforge** | `github.com` releases | 清华镜像 → 北外镜像 |
+| **Conda 频道** | `conda-forge`（官方） | 清华镜像 → 北外镜像 |
+| **ClawHub 技能** | `clawhub.com` | `cn.clawhub-mirror.com` |
+
+**通过环境变量覆盖：**
+
+所有镜像地址和超时值均可配置，在运行安装脚本前设置即可：
+
+```bash
+# GitHub 镜像代理（github.com 克隆慢时使用）
+export GITHUB_MIRROR="https://ghproxy.com"          # 默认值
+
+# ClawHub 技能注册表镜像
+export CLAWHUB_MIRROR="https://cn.clawhub-mirror.com"  # 默认值
+
+# 单个技能安装超时（秒），超时后回退到镜像
+export CLAWHUB_SKILL_TIMEOUT=15                      # 默认值
+
+# npm 安装超时（秒），用于 openclaw 和 clawhub CLI
+export NETWORK_TIMEOUT=60                            # 默认值
+```
+
+示例：使用自定义 GitHub 镜像和更长的超时时间：
+
+```bash
+GITHUB_MIRROR="https://mirror.ghproxy.com" NETWORK_TIMEOUT=120 bash install.sh
+```
 
 **若已安装 OpenClaw**：AcaClaw **不会修改** `~/.openclaw/`。卸载 AcaClaw 后，你的 OpenClaw 配置保持不变。
 
