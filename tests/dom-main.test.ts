@@ -99,8 +99,8 @@ describe("AcaClawApp DOM", () => {
   it("renders nav items for all routes", async () => {
     const el = await createElement();
     const navItems = qa(el, ".nav-item");
-    // Should have: chat, staff, monitor, api-keys, channels, usage, skills, workspace, environment, backup, settings = 11
-    expect(navItems.length).toBe(11);
+    // Should have: chat, staff, monitor, api-keys, usage, skills, workspace, environment, backup, settings = 10
+    expect(navItems.length).toBe(10);
     cleanup(el);
   });
 
@@ -256,8 +256,8 @@ describe("API Key Gate", () => {
   it("nav items except api-keys are locked when no keys configured", async () => {
     const el = await createWithConfig({ auth: { profiles: {} }, models: {} });
     const locked = qa(el, ".nav-item.locked");
-    // 11 nav items total, only api-keys is unlocked → 10 locked
-    expect(locked.length).toBe(10);
+    // 10 nav items total, only api-keys is unlocked → 9 locked
+    expect(locked.length).toBe(9);
     cleanup(el);
   });
 
@@ -322,7 +322,7 @@ describe("API Key Gate", () => {
     const el = await createWithConfig(null);
     expect((el as unknown as Record<string, string>)._route).toBe("api-keys");
     const locked = qa(el, ".nav-item.locked");
-    expect(locked.length).toBe(10);
+    expect(locked.length).toBe(9);
     cleanup(el);
   });
 });

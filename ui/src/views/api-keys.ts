@@ -16,7 +16,7 @@ import {
 export class ApiKeysView extends LitElement {
   private _lc = new LocaleController(this);
 
-  @state() private _tab: "llm" | "browser" = "llm";
+  @state() private _tab: "llm" | "browser" | "channels" = "llm";
   @state() private _loaded = false;
 
   // Provider state: which providers have keys configured
@@ -352,9 +352,14 @@ export class ApiKeysView extends LitElement {
           ${t("apikeys.tab.browser")}
           ${browserCount > 0 ? html`<span class="count">${browserCount}</span>` : nothing}
         </div>
+        <div class="tab ${this._tab === "channels" ? "active" : ""}" @click=${() => { this._tab = "channels"; void import("./channels.js"); }}>
+          ${t("apikeys.tab.channels")}
+        </div>
       </div>
 
-      ${this._tab === "llm" ? this._renderLlmTab() : this._renderBrowserTab()}
+      ${this._tab === "llm" ? this._renderLlmTab()
+        : this._tab === "browser" ? this._renderBrowserTab()
+        : html`<acaclaw-channels></acaclaw-channels>`}
     `;
   }
 

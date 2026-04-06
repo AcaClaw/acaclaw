@@ -460,6 +460,7 @@ export const en: Record<string, string> = {
   "apikeys.subtitle": "Configure your AI provider keys. Managed by OpenClaw, stored locally on your machine.",
   "apikeys.tab.llm": "LLM Providers",
   "apikeys.tab.browser": "Browser / Search",
+  "apikeys.tab.channels": "Channels",
   "apikeys.provider": "Provider",
   "apikeys.searchProvider": "Search Provider",
   "apikeys.apiKeys": "{0} — API Keys",

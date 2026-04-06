@@ -18,7 +18,6 @@ const lazyViews: Record<string, () => Promise<unknown>> = {
   backup: () => import("./views/backup.js"),
   settings: () => import("./views/settings.js"),
   "api-keys": () => import("./views/api-keys.js"),
-  channels: () => import("./views/channels.js"),
   onboarding: () => import("./views/onboarding.js"),
   staff: () => import("./views/staff.js"),
 };
@@ -45,7 +44,6 @@ type Route =
   | "staff"
   | "monitor"
   | "api-keys"
-  | "channels"
   | "usage"
   | "skills"
   | "workspace"
@@ -66,7 +64,6 @@ const NAV_ICONS: Record<Route, unknown> = {
   staff: svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="6" r="2.5"/><path d="M2 16v-1a4 4 0 014-4h2a4 4 0 014 4v1"/><circle cx="14" cy="5" r="2"/><path d="M14 11a3.5 3.5 0 013.5 3.5V16"/></svg>`,
   monitor: svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="16" height="11" rx="2"/><path d="M10 13v4"/><path d="M6 17h8"/></svg>`,
   "api-keys": svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="7.5" r="3.5"/><path d="M10 10l7 7"/><path d="M14 14l2-2"/><path d="M16 16l2-2"/></svg>`,
-  channels: svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="6" height="10" rx="1.5"/><rect x="12" y="5" width="6" height="10" rx="1.5"/><path d="M8 10h4"/></svg>`,
   usage: svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17V10"/><path d="M7 17V6"/><path d="M11 17V9"/><path d="M15 17V3"/></svg>`,
   skills: svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v4M10 14v4M2 10h4m8 0h4"/><circle cx="10" cy="10" r="3"/></svg>`,
   workspace: svg`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h5l2 2h5a1 1 0 011 1v8a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z"/></svg>`,
@@ -94,7 +91,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: "monitor", label: "Monitor", description: "System dashboard" },
       { id: "api-keys", label: "API Config", description: "Providers & keys" },
-      { id: "channels", label: "Channels", description: "Messaging services" },
       { id: "usage", label: "Usage", description: "Costs & tokens" },
       { id: "skills", label: "Skills", description: "Tools & abilities" },
     ]
@@ -639,9 +635,6 @@ export class AcaClawApp extends LitElement {
         break;
       case "api-keys":
         otherView = html`<acaclaw-api-keys></acaclaw-api-keys>`;
-        break;
-      case "channels":
-        otherView = html`<acaclaw-channels></acaclaw-channels>`;
         break;
       case "usage":
         otherView = html`<acaclaw-usage></acaclaw-usage>`;

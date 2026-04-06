@@ -459,6 +459,7 @@ export const zhCN: Record<string, string> = {
   "apikeys.subtitle": "配置你的 AI 服务商密钥。由 OpenClaw 管理，存储在本地。",
   "apikeys.tab.llm": "LLM 服务商",
   "apikeys.tab.browser": "浏览器 / 搜索",
+  "apikeys.tab.channels": "消息渠道",
   "apikeys.provider": "服务商",
   "apikeys.searchProvider": "搜索服务商",
   "apikeys.apiKeys": "{0} — API 密钥",

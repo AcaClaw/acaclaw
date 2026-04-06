@@ -350,7 +350,7 @@ describe("ChannelsView DOM", () => {
 // ── main.ts nav wiring ──────────────────────────────────────────────────────
 
 describe("main.ts channels nav wiring", () => {
-  it("channels route is in lazyViews", async () => {
+  it("acaclaw-channels custom element is defined", () => {
     const el = document.createElement("acaclaw-channels");
     expect(el).toBeInstanceOf(HTMLElement);
   });
@@ -362,17 +362,22 @@ describe("main.ts channels nav wiring", () => {
     expect(src).not.toMatch(/"API Keys"/);
   });
 
-  it("Channels nav item exists in source with correct description", async () => {
+  it("Channels is embedded as a tab in api-keys view, not a top-level nav item", async () => {
     const { readFile } = await import("fs/promises");
-    const src = await readFile("ui/src/main.ts", "utf8");
-    expect(src).toMatch(/id: "channels"/);
-    expect(src).toMatch(/label: "Channels"/);
-    expect(src).toMatch(/Messaging services/);
+    const [mainSrc, apiKeysSrc] = await Promise.all([
+      readFile("ui/src/main.ts", "utf8"),
+      readFile("ui/src/views/api-keys.ts", "utf8"),
+    ]);
+    // Channels must NOT be a top-level nav route
+    expect(mainSrc).not.toMatch(/id: "channels"/);
+    // But must exist as a tab inside api-keys
+    expect(apiKeysSrc).toMatch(/"channels"/);
+    expect(apiKeysSrc).toMatch(/<acaclaw-channels>/);
   });
 
-  it("channels view outlet renders acaclaw-channels element", async () => {
+  it("channels tab triggers lazy import of channels.js", async () => {
     const { readFile } = await import("fs/promises");
-    const src = await readFile("ui/src/main.ts", "utf8");
-    expect(src).toMatch(/<acaclaw-channels>/);
+    const src = await readFile("ui/src/views/api-keys.ts", "utf8");
+    expect(src).toMatch(/import.*channels\.js/);
   });
 });

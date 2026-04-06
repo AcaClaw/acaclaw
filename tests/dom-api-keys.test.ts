@@ -59,10 +59,14 @@ describe("ApiKeysView DOM", () => {
     cleanup(el);
   });
 
-  it("renders LLM and Browser tabs", async () => {
+  it("renders LLM, Browser and Channels tabs", async () => {
     const el = await createElement();
     const tabs = qa(el, ".tab");
-    expect(tabs.length).toBe(2);
+    expect(tabs.length).toBe(3);
+    const labels = Array.from(tabs).map((t) => t.textContent?.trim());
+    expect(labels.some((l) => /llm|provider/i.test(l ?? ""))).toBe(true);
+    expect(labels.some((l) => /browser/i.test(l ?? ""))).toBe(true);
+    expect(labels.some((l) => /channel/i.test(l ?? ""))).toBe(true);
     cleanup(el);
   });
 
