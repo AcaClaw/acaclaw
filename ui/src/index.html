@@ -7,11 +7,17 @@
     <title>AcaClaw</title>
     <link rel="stylesheet" href="/fonts/inter.css" />
     <link rel="icon" type="image/svg+xml" href="/logo/AcaClaw.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0d9488" />
     <link rel="stylesheet" href="/styles/base.css" />
   </head>
   <body>
     <acaclaw-app></acaclaw-app>
     <script type="module" src="/main.ts"></script>
-    
+    <script>
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("/sw.js").catch(() => {});
+      }
+    </script>
   </body>
 </html>

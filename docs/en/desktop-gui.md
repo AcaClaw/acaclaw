@@ -1276,19 +1276,37 @@ AcaClaw update (install.sh --upgrade)
   └── Does NOT touch: ~/.openclaw/ (OpenClaw's config, plugins, sessions)
 ```
 
-### Future: Electron or Tauri Wrapper (Linux / Windows)
+### Desktop Wrapper Strategy
 
-On macOS, AcaClaw already ships a native `.app` bundle using `WKWebView` (the system WebKit engine). The compiled Swift binary (~60 KB) shows AcaClaw's icon in the Dock, handles Dock relaunch natively, and quits when the window is closed — no browser dependency at runtime.
+AcaClaw uses different approaches per platform to give users a proper app window without requiring code signing or large binaries.
 
-For Linux and Windows, if AcaClaw needs system tray, native notifications, or auto-start on login, a desktop wrapper can load the same SPA in a native window. The Lit components are identical — the wrapper just replaces the browser tab.
+**macOS** uses a compiled Swift binary (~60 KB, built locally at install time by `swiftc`) that wraps `localhost:2090` in a native `WKWebView` window. Because the binary is compiled on the user's machine it is never quarantined by Gatekeeper — no Apple Developer ID or notarization required. The wrapper also manages gateway lifecycle: it probes port 2090 on launch and starts the gateway automatically if it is not running.
 
-| Option | Pros | Cons |
-|---|---|---|
-| **WKWebView (Swift)** | ~60 KB, native Dock icon, no browser needed | macOS only **(current)** |
-| **Electron** | Cross-platform, system tray, native notifications | 150+ MB overhead, Chromium bundle |
-| **Tauri** | ~5 MB binary, uses OS webview, Rust IPC | Younger ecosystem, webview compatibility varies |
+**Windows and Linux** use a PWA (Progressive Web App). The SPA ships a `manifest.webmanifest`, two PNG icons (192 × 192 and 512 × 512), and a Service Worker (`sw.js`). Chrome and Edge show an install button in the address bar when users visit `localhost:2090`; after installing, the app opens in a standalone window with the AcaClaw icon pinned to the Taskbar or GNOME/KDE launcher. No signing, no binary distribution, no Rust or C# toolchain required.
 
-Linux and Windows wrappers are not planned for initial release. The browser-based SPA covers all required functionality on those platforms.
+| | **WKWebView (Swift)** | **PWA** | **Tauri** | **Electron** |
+|---|---|---|---|---|
+| **macOS signing** | ✗ (compiled locally — never quarantined) | ✗ | ✓ (notarization + Developer ID) | ✓ (Gatekeeper) |
+| **Windows signing** | N/A | ✗ | ✓ (Smart Screen / EV cert) | ✓ (Smart Screen) |
+| **Linux** | ✗ (Swift is macOS-only) | ✓ (Chromium PWA) | ✓ (WebKitGTK — older engine, CSS quirks) | ✓ |
+| **Windows** | ✗ | ✓ (Chrome / Edge — best API coverage) | ✓ (WebView2 ≈ Chromium) | ✓ |
+| **Web engine** | WKWebView (locked to macOS Safari version) | User's default browser engine | WKWebView / WebView2 / WebKitGTK per platform | Bundled Chromium (pinned version) |
+| **Engine consistency** | ✓ (always WebKit) | Varies by user's browser | Varies by platform | ✓ (always same Chromium) |
+| **Standalone window / Dock–Taskbar icon** | ✓ (`NSWindow`, native) | ✓ (browser-managed) | ✓ (native) | ✓ (native) |
+| **Gateway auto-start** | ✓ (Swift wrapper polls port 2090, runs `start.sh`) | ✗ (user must start gateway separately) | Possible (Rust sidecar, but complex) | Possible (Node child-process) |
+| **Native FS / shell access** | ✗ | Partial (File System Access API — Chrome/Edge only) | ✓ (full Tauri APIs) | ✓ (Node.js built-in) |
+| **Binary to ship** | None (compiled in‑place at install) | None | Yes (`.dmg` / `.msi` / `.AppImage`) | Yes (`.dmg` / `.exe` / `.deb`, ~200 MB) |
+| **Binary size** | ~60 KB | 0 | ~3–10 MB | ~150–200 MB |
+| **Build complexity** | `swiftc` (bundled with Xcode CLT) | None — manifest + SW only | Rust toolchain + per-platform CI matrix | Node + Electron builder + per-platform CI |
+| **Auto-update** | Gateway redeploy (SPA updated automatically) | Service Worker update-on-refresh | Tauri updater (pull from update server) | Electron auto-updater |
+| **App store eligible** | ✗ | ✗ | ✓ (with signing + entitlements) | ✓ (with signing + entitlements) |
+| **Status in AcaClaw** | **Current** (macOS) | **Current** (Windows, Linux, macOS fallback) | Not planned | Not planned |
+
+**Why Electron and Tauri are not planned:** PWA covers Windows and Linux with zero signing overhead and no per-platform CI matrix. The Swift wrapper covers macOS with a smaller binary than either alternative and without requiring an Apple Developer ID. Tauri or Electron would only become worth the cost if AcaClaw needed app-store distribution, deep OS integration beyond what the gateway already provides, or a bundled offline-capable installer.
+
+#### PWA Service Worker strategy
+
+The SW uses **network-first for `index.html`** because the gateway's HTTP handler injects an auth token into that file server-side. Caching a stale copy would break authentication. All other static assets (JS, CSS, fonts, icons) use cache-first. Gateway API paths (`/api/`, `/health`, `/ready`) bypass the SW entirely. When the gateway is unreachable, navigation requests fall back to a minimal offline page that prompts the user to start the gateway.
 
 ### Phased Rollout
 
@@ -1321,7 +1339,9 @@ When AcaClaw ships signed platform packages, replace the terminal script with na
 
 | Platform | Installer type | Status |
 |---|---|---|
-| macOS | `.app` with WKWebView (compiled from Swift) | **Current** — native window, Dock icon, no browser dependency |
+| macOS | `.app` with WKWebView (compiled from Swift) | **Current** — native window, Dock icon, gateway auto-start, no browser dependency |
+| Windows | PWA via Chrome / Edge | **Current** — install from address bar, standalone window, Taskbar icon, no signing |
+| Linux | PWA via Chrome / Chromium | **Current** — install from address bar, standalone window, app launcher entry, no signing |
 | macOS | `.dmg` (signed + notarized) | Future |
 | Windows | `.exe` (signed) | Future |
 | Linux | `.AppImage` or `.deb`/`.rpm` | Future |
@@ -1331,7 +1351,7 @@ When AcaClaw ships signed platform packages, replace the terminal script with na
 
 ## Desktop Launch
 
-AcaClaw runs as a local web app: the gateway serves the UI, and the user accesses it through a native window or browser. On macOS, `install-desktop.sh` compiles a ~60 KB Swift binary that opens a native `WKWebView` window — no browser required. On other platforms, `start.sh` opens the UI in the default browser. For the full authentication flow, token lifecycle, and WebSocket handshake details, see [Authentication and App Launch](/en/auth-and-app-launch/).
+AcaClaw runs as a local web app: the gateway serves the UI, and the user accesses it through a native window or browser. On macOS, `install-desktop.sh` compiles a ~60 KB Swift binary that opens a native `WKWebView` window — no browser required. On Windows and Linux, `start.sh` opens the UI in the default browser; Chrome and Edge users can install it as a PWA for a standalone window with the AcaClaw icon. For the full authentication flow, token lifecycle, and WebSocket handshake details, see [Authentication and App Launch](/en/auth-and-app-launch/).
 
 ### Scripts
 
@@ -1345,8 +1365,9 @@ AcaClaw runs as a local web app: the gateway serves the UI, and the user accesse
 
 | Platform | Desktop shortcut | Launch method | Notes |
 |---|---|---|---|
-| **Linux** | `.desktop` file in `~/.local/share/applications/` | `xdg-open` | Appears in GNOME, KDE, XFCE app launchers |
+| **Linux** | `.desktop` file in `~/.local/share/applications/` | `xdg-open` → browser; or install as PWA in Chrome/Chromium | Appears in GNOME, KDE, XFCE launchers. Chrome/Chromium users can install as PWA for a standalone window |
 | **macOS** | `.app` bundle in `~/Applications/` | Native WKWebView window | Compiled Swift binary; shows AcaClaw icon in Dock, handles Dock relaunch, no browser needed. Falls back to `open URL` if `swiftc` unavailable |
+| **Windows** | PWA via Chrome / Edge | `start.sh` opens browser; Chrome/Edge show install prompt | Install from address bar → standalone window pinned to Taskbar, no signing |
 | **WSL2** | `.lnk` shortcut on Windows Desktop | `powershell.exe Start-Process` | Runs gateway inside WSL, opens Windows browser |
 | **Headless/SSH** | N/A | Prints URL to terminal | User visits URL from any browser |
 
