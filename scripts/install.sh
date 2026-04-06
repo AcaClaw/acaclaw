@@ -832,6 +832,12 @@ plugins['allow'] = [
     'acaclaw-ui',
     'acaclaw-workspace'
 ]
+# Normalize every provider entry: validator requires models to be an array.
+# This is independent of which providers are configured — the app launch
+# must never fail because a provider is missing a field.
+for prov in cfg.get('models', {}).get('providers', {}).values():
+    if isinstance(prov, dict) and not isinstance(prov.get('models'), list):
+        prov['models'] = []
 with open('${ACACLAW_CONFIG}', 'w') as f:
     json.dump(cfg, f, indent=2)
     f.write('\n')
@@ -1102,6 +1108,13 @@ SETUPJSON
 
 	SETUP_URL="http://localhost:2090/"
 
+	# On macOS: compile AcaClaw.app now so it can be used as the launch target.
+	# (Desktop Integration step runs after this section, but we need the binary now.)
+	if [[ "$OS" == "macos" ]] && [[ -f "${SCRIPT_DIR}/install-desktop.sh" ]]; then
+		bash "${SCRIPT_DIR}/install-desktop.sh" 2>/dev/null || true
+		DESKTOP_INSTALLED="true"
+	fi
+
 	# Try to open as a standalone app window (dock app) first.
 	# This gives a native-app feel (no address bar, no tabs).
 	# Falls back to a regular browser tab if no Chromium-based browser is found.
@@ -1136,6 +1149,10 @@ SETUPJSON
 
 		case "$OS" in
 			macos)
+				# Prefer the native WKWebView wrapper (compiled at install time, no signing needed)
+				if [[ -d "${HOME}/Applications/AcaClaw.app" ]]; then
+					open -a "${HOME}/Applications/AcaClaw.app" 2>/dev/null && return 0
+				fi
 				if [[ -d "/Applications/Microsoft Edge.app" ]]; then
 					open -na "Microsoft Edge" --args "${_app_flags[@]}" 2>/dev/null && return 0
 				elif [[ -d "/Applications/Google Chrome.app" ]]; then
@@ -1186,7 +1203,9 @@ fi
 header "Desktop Integration"
 
 DESKTOP_SCRIPT="${SCRIPT_DIR}/install-desktop.sh"
-if [[ -f "$DESKTOP_SCRIPT" ]]; then
+if [[ "${DESKTOP_INSTALLED:-false}" == "true" ]]; then
+	log "Desktop shortcut already installed (done during gateway launch step)"
+elif [[ -f "$DESKTOP_SCRIPT" ]]; then
 	log "Installing desktop shortcut..."
 	bash "$DESKTOP_SCRIPT" 2>/dev/null || warn "Desktop shortcut install failed (non-fatal)"
 else

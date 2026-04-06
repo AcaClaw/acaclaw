@@ -312,6 +312,35 @@ if [[ -n "$GATEWAY_SERVICE" ]] && [[ -f "$SYSTEMD_UNIT" ]] && command -v systemc
 fi
 _tlog "service detection done"
 
+# --- Pre-flight: ensure config is valid before starting the gateway ---
+# The app launch must not depend on any model provider config being well-formed.
+# Normalize every provider entry so the validator never rejects the config on startup.
+if [[ -f "${ACACLAW_CONFIG}" ]] && command -v python3 &>/dev/null; then
+    python3 - "${ACACLAW_CONFIG}" <<'PYEOF' 2>/dev/null || true
+import json, sys
+path = sys.argv[1]
+try:
+    cfg = json.load(open(path))
+    changed = False
+    for prov in cfg.get('models', {}).get('providers', {}).values():
+        if isinstance(prov, dict) and not isinstance(prov.get('models'), list):
+            prov['models'] = []
+            changed = True
+    # Enforce loopback-safe auth: gateway binds 127.0.0.1 only, no token needed
+    gw = cfg.get('gateway', {})
+    if gw.get('auth', {}).get('mode') != 'none':
+        cfg.setdefault('gateway', {}).setdefault('auth', {})['mode'] = 'none'
+        cfg['gateway']['auth'].pop('token', None)
+        changed = True
+    if changed:
+        with open(path, 'w') as f:
+            json.dump(cfg, f, indent=2)
+            f.write('\n')
+except Exception:
+    pass
+PYEOF
+fi
+
 # --- Start gateway ---
 _tlog "gateway check start"
 if is_gateway_running && is_port_responding; then
@@ -346,7 +375,7 @@ elif [[ "$USE_SERVICE" == "true" ]]; then
             log "Gateway service is starting (managed by systemd) — may need a moment"
         else
             warn "systemd service stopped unexpectedly — falling back to direct start"
-            nohup openclaw gateway run \
+            nohup OPENCLAW_CONFIG_PATH="${ACACLAW_CONFIG}" openclaw gateway run \
                 --bind loopback --port "$ACACLAW_PORT" --force \
                 >> "$ACACLAW_LOG_FILE" 2>&1 &
             echo "$!" > "$ACACLAW_PID_FILE"
@@ -354,7 +383,7 @@ elif [[ "$USE_SERVICE" == "true" ]]; then
         fi
     else
         warn "systemd start failed — falling back to direct start"
-        nohup openclaw gateway run \
+        nohup OPENCLAW_CONFIG_PATH="${ACACLAW_CONFIG}" openclaw gateway run \
             --bind loopback --port "$ACACLAW_PORT" --force \
             >> "$ACACLAW_LOG_FILE" 2>&1 &
         echo "$!" > "$ACACLAW_PID_FILE"
@@ -363,7 +392,7 @@ elif [[ "$USE_SERVICE" == "true" ]]; then
 else
     log "Starting AcaClaw gateway on port ${ACACLAW_PORT}..."
 
-    nohup openclaw gateway run \
+    nohup OPENCLAW_CONFIG_PATH="${ACACLAW_CONFIG}" openclaw gateway run \
         --bind loopback --port "$ACACLAW_PORT" --force \
         >> "$ACACLAW_LOG_FILE" 2>&1 &
     GATEWAY_PID=$!
