@@ -108,7 +108,8 @@
   "models": {
     "providers": {
       "modelstudio": {
-        "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "models": []
       }
     }
   },
