@@ -24,6 +24,7 @@ GITHUB_MIRROR="${GITHUB_MIRROR:-https://ghproxy.com}"
 CLAWHUB_MIRROR="${CLAWHUB_MIRROR:-https://cn.clawhub-mirror.com}"
 CLAWHUB_SKILL_TIMEOUT="${CLAWHUB_SKILL_TIMEOUT:-15}"
 NETWORK_TIMEOUT="${NETWORK_TIMEOUT:-60}"
+NPM_INSTALL_TIMEOUT="${NPM_INSTALL_TIMEOUT:-300}"
 
 # AcaClaw runs using the default OpenClaw directory
 OPENCLAW_DIR="${HOME}/.openclaw"
@@ -94,21 +95,24 @@ _resolve_repo_root() {
 		return
 	fi
 
-	# Detect local checkout (used as final fallback if network fails)
+	# Detect local checkout — prefer it when running directly from a git clone.
+	# Only clone from GitHub when piped via curl (BASH_SOURCE is empty or
+	# /dev/stdin), so `bash scripts/install.sh` always uses the local files.
 	local _local_root=""
 	local _script_path
-	_script_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || true
+	_script_path="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd)" || true
 	if [[ -n "$_script_path" && -f "${_script_path}/install.sh" && -f "${_script_path}/../package.json" ]]; then
 		_local_root="$(cd "${_script_path}/.." && pwd)"
 	fi
 
-	# Clone from GitHub (requires git)
+	# Use local checkout directly — no clone needed.
+	if [[ -n "$_local_root" ]]; then
+		REPO_ROOT="$_local_root"
+		return
+	fi
+
+	# Reached only via curl | bash — clone from GitHub.
 	if ! command -v git &>/dev/null; then
-		if [[ -n "$_local_root" ]]; then
-			warn "git not found — using local checkout at ${_local_root}"
-			REPO_ROOT="$_local_root"
-			return
-		fi
 		error "git is required for remote install. Install git and try again."
 		exit 1
 	fi
@@ -144,13 +148,6 @@ _resolve_repo_root() {
 	fi
 	rm -rf "$ACACLAW_CLONE_DIR"
 	ACACLAW_CLONE_DIR=""
-
-	# Network failed — fall back to local checkout if available
-	if [[ -n "$_local_root" ]]; then
-		warn "GitHub unreachable — using local checkout at ${_local_root}"
-		REPO_ROOT="$_local_root"
-		return
-	fi
 
 	error "Could not download AcaClaw from GitHub (both HTTPS and SSH failed)."
 	error "Check your network connection and try again."
@@ -285,7 +282,7 @@ _npm_install_with_mirror() {
 	local _pkg="$1"
 	local _registry
 	_registry="$(_pick_npm_registry)"
-	local _timeout="${NETWORK_TIMEOUT}"
+	local _timeout="${NPM_INSTALL_TIMEOUT}"
 
 	if [[ -n "$_registry" && "$_registry" != "https://registry.npmjs.org" ]]; then
 		log "Using npm mirror: ${_registry}"
