@@ -64,7 +64,7 @@ beforeEach(() => {
   gateway.disconnect();
   lastCreatedWs = null;
   createdSockets = [];
-  globalThis.fetch = vi.fn(async () => ({ ok: false })) as typeof fetch;
+  globalThis.fetch = vi.fn(async () => ({ ok: false })) as unknown as typeof fetch;
   vi.useRealTimers();
 });
 
@@ -317,7 +317,7 @@ describe("GatewayController", () => {
 
     it("reconnects as soon as health recovers instead of waiting for max backoff", async () => {
       vi.useFakeTimers();
-      globalThis.fetch = vi.fn(async () => ({ ok: true })) as typeof fetch;
+      globalThis.fetch = vi.fn(async () => ({ ok: true })) as unknown as typeof fetch;
 
       gateway.connect();
       const ws1 = lastCreatedWs!;
