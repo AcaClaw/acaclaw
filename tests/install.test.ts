@@ -922,4 +922,84 @@ EOF
 			expect(code).toBe(0);
 		});
 	});
+
+	// ---------------------------------------------------------------
+	// npm registry mirror fallback
+	// ---------------------------------------------------------------
+	describe("npm registry mirror fallback", () => {
+		it("defines _pick_npm_registry with official + npmmirror.com", async () => {
+			const { code } = await runBash(
+				`grep -q "registry.npmmirror.com" "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+		});
+
+		it("defines _npm_install_openclaw using registry from _pick_npm_registry", async () => {
+			const { code } = await runBash(
+				`grep -q "_npm_install_openclaw" "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+		});
+
+		it("_pick_npm_registry returns official registry when reachable", async () => {
+			const script = `
+				# Extract the function
+				awk '/_pick_npm_registry\\(\\) \\{/{found=1} found{print} found && /^\\}$/{exit}' \
+					"${INSTALL_SCRIPT}" > /tmp/_pick_test_$$.sh
+
+				# Override curl to simulate official registry being reachable
+				curl() {
+					if [[ "$*" == *"registry.npmjs.org"* ]]; then
+						return 0
+					fi
+					return 1
+				}
+				export -f curl
+				warn() { :; }
+
+				source /tmp/_pick_test_$$.sh
+				rm -f /tmp/_pick_test_$$.sh
+
+				result=$(_pick_npm_registry)
+				echo "REGISTRY=$result"
+			`;
+			const { stdout } = await runBash(script);
+			expect(stdout.trim()).toBe("REGISTRY=https://registry.npmjs.org");
+		});
+
+		it("_pick_npm_registry falls back to npmmirror when official is slow", async () => {
+			const script = `
+				awk '/_pick_npm_registry\\(\\) \\{/{found=1} found{print} found && /^\\}$/{exit}' \
+					"${INSTALL_SCRIPT}" > /tmp/_pick_test_$$.sh
+
+				# Override curl to simulate official failing, mirror succeeding
+				curl() {
+					if [[ "$*" == *"registry.npmjs.org"* ]]; then
+						return 1
+					fi
+					if [[ "$*" == *"registry.npmmirror.com"* ]]; then
+						return 0
+					fi
+					return 1
+				}
+				export -f curl
+				warn() { :; }
+
+				source /tmp/_pick_test_$$.sh
+				rm -f /tmp/_pick_test_$$.sh
+
+				result=$(_pick_npm_registry)
+				echo "REGISTRY=$result"
+			`;
+			const { stdout } = await runBash(script);
+			expect(stdout.trim()).toBe("REGISTRY=https://registry.npmmirror.com");
+		});
+
+		it("passes --registry flag when using mirror", async () => {
+			const { code } = await runBash(
+				`grep -q -- '--registry=' "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+		});
+	});
 });

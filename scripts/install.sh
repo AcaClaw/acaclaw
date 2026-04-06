@@ -224,18 +224,53 @@ log "npm $(npm --version) ✓"
 
 header "Step 1: OpenClaw"
 
+# npm registry mirror fallback — try official first, fall back to faster mirrors
+# if the connection is slow. Uses a quick HEAD request to test latency.
+_pick_npm_registry() {
+	local _registries=(
+		"https://registry.npmjs.org"
+		"https://registry.npmmirror.com"
+	)
+	local _timeout=5  # seconds for connectivity+latency test
+
+	for _reg in "${_registries[@]}"; do
+		if curl -fsSL --max-time "$_timeout" --head "${_reg}/openclaw" &>/dev/null; then
+			echo "$_reg"
+			return 0
+		fi
+		warn "npm registry ${_reg} slow or unreachable, trying next..."
+	done
+
+	# All mirrors failed — return empty, let npm use its default
+	echo ""
+	return 0
+}
+
+_npm_install_openclaw() {
+	local _pkg="openclaw@${OPENCLAW_MIN_VERSION}"
+	local _registry
+	_registry="$(_pick_npm_registry)"
+
+	if [[ -n "$_registry" && "$_registry" != "https://registry.npmjs.org" ]]; then
+		log "Using npm mirror: ${_registry}"
+		npm install -g "$_pkg" --registry="$_registry"
+	else
+		npm install -g "$_pkg"
+	fi
+}
+
 if check_command openclaw; then
 	OC_VERSION="$(openclaw --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")"
 	if version_ge "$OC_VERSION" "$OPENCLAW_MIN_VERSION"; then
 		log "OpenClaw ${OC_VERSION} ✓"
 	else
 		log "Upgrading OpenClaw to ${OPENCLAW_MIN_VERSION}..."
-		npm install -g "openclaw@${OPENCLAW_MIN_VERSION}"
+		_npm_install_openclaw
 		log "OpenClaw ${OPENCLAW_MIN_VERSION} installed ✓"
 	fi
 else
 	log "Installing OpenClaw ${OPENCLAW_MIN_VERSION}..."
-	npm install -g "openclaw@${OPENCLAW_MIN_VERSION}"
+	_npm_install_openclaw
 	log "OpenClaw ${OPENCLAW_MIN_VERSION} installed ✓"
 fi
 

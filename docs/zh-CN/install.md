@@ -163,8 +163,8 @@ curl -fsSL https://acaclaw.com/install.sh | bash
 
 | 步骤 | 操作 | 位置 |
 |---|---|---|
-| 1 | 通过 npm 安装 OpenClaw | 全局 `npm install -g openclaw` |
-| 2 | 安装 Miniforge | `~/.acaclaw/miniforge3/` |
+| 1 | 通过 npm 安装 OpenClaw（自动选择最快的 npm 源） | 全局 `npm install -g openclaw` |
+| 2 | 安装 Miniforge（GitHub + 清华/北外镜像） | `~/.acaclaw/miniforge3/` |
 | 3 | 复制 AcaClaw 插件 | `~/.openclaw/extensions/` |
 | 4 | 从 ClawHub 安装学术技能 | `~/.openclaw/skills/` |
 | 5 | 写入 AcaClaw 配置 | `~/.openclaw/openclaw.json`（复制已有 API 密钥） |

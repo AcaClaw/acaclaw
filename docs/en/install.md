@@ -226,8 +226,8 @@ For transparency, here is exactly what the install script does:
 
 | Step | Action | Location |
 |---|---|---|
-| 1 | Installs OpenClaw via npm | Global (`npm install -g openclaw`) |
-| 2 | Installs Miniforge (Conda) | `~/.acaclaw/miniforge3/` |
+| 1 | Installs OpenClaw via npm (auto-selects fastest registry) | Global (`npm install -g openclaw`) |
+| 2 | Installs Miniforge (Conda) (GitHub + Tsinghua/BFSU mirrors) | `~/.acaclaw/miniforge3/` |
 | 3 | Copies AcaClaw plugins | `~/.openclaw/extensions/` |
 | 4 | Installs academic skills from ClawHub | `~/.openclaw/skills/` |
 | 5 | Writes AcaClaw config | `~/.openclaw/openclaw.json` (copies existing API keys) |
