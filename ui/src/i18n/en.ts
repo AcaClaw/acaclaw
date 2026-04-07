@@ -699,6 +699,69 @@ export const en: Record<string, string> = {
   "chat.speak": "Read aloud",
   "chat.clearHistory": "Clear history",
 
+  // ── Channels ──
+  "ch.select": "Select a channel",
+  "ch.loading": "Loading…",
+  "ch.probe": "Probe",
+  "ch.probing": "Probing…",
+  "ch.refresh": "Refresh",
+  "ch.logout": "Logout",
+  "ch.save": "Save",
+  "ch.reload": "Reload",
+  "ch.configured": "Configured",
+  "ch.running": "Running",
+  "ch.connected": "Connected",
+  "ch.linked": "Linked",
+  "ch.lastStart": "Last start",
+  "ch.lastProbe": "Last probe",
+  "ch.lastConnect": "Last connect",
+  "ch.lastMessage": "Last message",
+  "ch.authAge": "Auth age",
+  "ch.yes": "Yes",
+  "ch.no": "No",
+  "ch.na": "n/a",
+  "ch.accounts": "Accounts",
+  "ch.working": "Working…",
+  "ch.rawSnapshot": "Raw snapshot",
+  // WeChat
+  "ch.wechat.title": "WeChat",
+  "ch.wechat.subtitle": "Tencent iLink Bot plugin — private chats via QR login.",
+  "ch.wechat.loginQr": "Login QR",
+  "ch.wechat.starting": "Starting WeChat QR login…",
+  "ch.wechat.scanning": "Waiting for scan…",
+  "ch.wechat.scanPrompt": "Scan the QR code with WeChat…",
+  "ch.wechat.qrFailed": "Failed to get QR code.",
+  "ch.wechat.connected": "Connected!",
+  "ch.wechat.timedOut": "Timed out.",
+  "ch.wechat.loggedOut": "Logged out.",
+  "ch.wechat.disabled": "Channel disabled. Re-enable via config to reconnect.",
+  // WhatsApp
+  "ch.whatsapp.title": "WhatsApp",
+  "ch.whatsapp.subtitle": "Link WhatsApp Web and monitor connection health.",
+  "ch.whatsapp.showQr": "Show QR",
+  "ch.whatsapp.relink": "Relink",
+  "ch.whatsapp.waitScan": "Wait for scan",
+  // Discord
+  "ch.discord.title": "Discord",
+  "ch.discord.subtitle": "Bot status and channel configuration.",
+  // Telegram
+  "ch.telegram.title": "Telegram",
+  "ch.telegram.subtitle": "Bot status and channel configuration.",
+  // Signal
+  "ch.signal.title": "Signal",
+  "ch.signal.subtitle": "Signal Messenger bridge status.",
+  // Slack
+  "ch.slack.title": "Slack",
+  "ch.slack.subtitle": "Workspace app connection and configuration.",
+  // iMessage
+  "ch.imessage.title": "iMessage",
+  "ch.imessage.subtitle": "macOS Messages bridge status.",
+  // Google Chat
+  "ch.googlechat.title": "Google Chat",
+  "ch.googlechat.subtitle": "Google Workspace chat integration.",
+  // Generic
+  "ch.generic.subtitle": "Bot status and channel configuration.",
+
   // ── Command palette ──
   "palette.title": "Command Palette",
   "palette.search": "Search",

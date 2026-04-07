@@ -124,6 +124,7 @@ export const zhCN: Record<string, string> = {
   "settings.uninstall.log": "卸载日志",
   "settings.uninstall.manual.title": "手动卸载",
   "settings.uninstall.manual.desc": "也可复制以下命令在终端中运行",
+  "settings.uninstall.manual.acaclawOnly": "仅移除 AcaClaw（保留 OpenClaw）",
   "settings.uninstall.manual.everything": "全部移除（AcaClaw + OpenClaw）",
   "settings.uninstall.copy": "复制",
   "settings.uninstall.copied": "已复制！",
@@ -697,6 +698,69 @@ export const zhCN: Record<string, string> = {
   "chat.copy": "复制",
   "chat.speak": "朗读",
   "chat.clearHistory": "清除历史",
+
+  // ── 消息渠道 ──
+  "ch.select": "选择渠道",
+  "ch.loading": "加载中…",
+  "ch.probe": "探测",
+  "ch.probing": "探测中…",
+  "ch.refresh": "刷新",
+  "ch.logout": "退出登录",
+  "ch.save": "保存",
+  "ch.reload": "重新加载",
+  "ch.configured": "已配置",
+  "ch.running": "运行中",
+  "ch.connected": "已连接",
+  "ch.linked": "已绑定",
+  "ch.lastStart": "上次启动",
+  "ch.lastProbe": "上次探测",
+  "ch.lastConnect": "上次连接",
+  "ch.lastMessage": "上次消息",
+  "ch.authAge": "认证有效期",
+  "ch.yes": "是",
+  "ch.no": "否",
+  "ch.na": "无",
+  "ch.accounts": "账号",
+  "ch.working": "处理中…",
+  "ch.rawSnapshot": "原始数据",
+  // 微信
+  "ch.wechat.title": "微信",
+  "ch.wechat.subtitle": "腾讯智链Bot插件 — 扫码登录私聊。",
+  "ch.wechat.loginQr": "扫码登录",
+  "ch.wechat.starting": "正在启动微信扫码登录…",
+  "ch.wechat.scanning": "等待扫描…",
+  "ch.wechat.scanPrompt": "请使用微信扫描二维码…",
+  "ch.wechat.qrFailed": "获取二维码失败。",
+  "ch.wechat.connected": "连接成功！",
+  "ch.wechat.timedOut": "已超时。",
+  "ch.wechat.loggedOut": "已退出登录。",
+  "ch.wechat.disabled": "渠道已禁用。重新启用配置以恢复连接。",
+  // WhatsApp
+  "ch.whatsapp.title": "WhatsApp",
+  "ch.whatsapp.subtitle": "连接 WhatsApp Web 并监控连接状态。",
+  "ch.whatsapp.showQr": "显示二维码",
+  "ch.whatsapp.relink": "重新连接",
+  "ch.whatsapp.waitScan": "等待扫描",
+  // Discord
+  "ch.discord.title": "Discord",
+  "ch.discord.subtitle": "机器人状态和频道配置。",
+  // Telegram
+  "ch.telegram.title": "Telegram",
+  "ch.telegram.subtitle": "机器人状态和频道配置。",
+  // Signal
+  "ch.signal.title": "Signal",
+  "ch.signal.subtitle": "Signal Messenger 桥接状态。",
+  // Slack
+  "ch.slack.title": "Slack",
+  "ch.slack.subtitle": "工作区应用连接和配置。",
+  // iMessage
+  "ch.imessage.title": "iMessage",
+  "ch.imessage.subtitle": "macOS 信息桥接状态。",
+  // Google Chat
+  "ch.googlechat.title": "Google Chat",
+  "ch.googlechat.subtitle": "Google Workspace 聊天集成。",
+  // 通用
+  "ch.generic.subtitle": "机器人状态和渠道配置。",
 
   // ── 命令面板 ──
   "palette.title": "命令面板",

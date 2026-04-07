@@ -7,6 +7,7 @@ import {
   renderSingleAccountChannelCard,
   resolveChannelConfigured,
 } from "./channels.shared.js";
+import { t } from "../i18n.js";
 
 export function renderWeChatCard(params: {
   props: ChannelsProps;
@@ -31,20 +32,20 @@ export function renderWeChatCard(params: {
   const configured = resolveChannelConfigured("openclaw-weixin", props);
 
   return renderSingleAccountChannelCard({
-    title: "WeChat",
-    subtitle: "Tencent iLink Bot plugin — private chats via QR login.",
+    title: t("ch.wechat.title"),
+    subtitle: t("ch.wechat.subtitle"),
     accountCountLabel,
     statusRows: [
-      { label: "Configured", value: formatNullableBoolean(configured) },
-      { label: "Running", value: wechat?.running ? "Yes" : "No" },
-      { label: "Connected", value: wechat?.connected ? "Yes" : "No" },
+      { label: t("ch.configured"), value: formatNullableBoolean(configured) },
+      { label: t("ch.running"), value: wechat?.running ? t("ch.yes") : t("ch.no") },
+      { label: t("ch.connected"), value: wechat?.connected ? t("ch.yes") : t("ch.no") },
       {
-        label: "Last start",
-        value: wechat?.lastStartAt ? formatRelativeTimestamp(wechat.lastStartAt) : "n/a",
+        label: t("ch.lastStart"),
+        value: wechat?.lastStartAt ? formatRelativeTimestamp(wechat.lastStartAt) : t("ch.na"),
       },
       {
-        label: "Last probe",
-        value: wechat?.lastProbeAt ? formatRelativeTimestamp(wechat.lastProbeAt) : "n/a",
+        label: t("ch.lastProbe"),
+        value: wechat?.lastProbeAt ? formatRelativeTimestamp(wechat.lastProbeAt) : t("ch.na"),
       },
     ],
     lastError: wechat?.lastError,
@@ -65,16 +66,16 @@ export function renderWeChatCard(params: {
         ?disabled=${loginBusy ?? false}
         @click=${() => onLogin?.()}
       >
-        ${loginBusy ? "Working…" : "Login QR"}
+        ${loginBusy ? t("ch.working") : t("ch.wechat.loginQr")}
       </button>
       <button
         class="btn danger"
         ?disabled=${loginBusy ?? false}
         @click=${() => onLogout?.()}
       >
-        Logout
+        ${t("ch.logout")}
       </button>
-      <button class="btn" @click=${() => props.onRefresh(true)}>Refresh</button>
+      <button class="btn" @click=${() => props.onRefresh(true)}>${t("ch.refresh")}</button>
     </div>`,
   });
 }

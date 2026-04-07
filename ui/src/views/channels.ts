@@ -15,7 +15,7 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { configFormStyles } from "../styles/config-form.css.js";
 import { gateway, updateConfig } from "../controllers/gateway.js";
-import { LocaleController } from "../i18n.js";
+import { t, LocaleController } from "../i18n.js";
 import type {
   ChannelsStatusSnapshot,
   ChannelsProps,
@@ -267,7 +267,7 @@ export class ChannelsView extends LitElement {
   private async _wechatLogin() {
     if (this._wechatBusy) return;
     this._wechatBusy = true;
-    this._wechatMessage = "Starting WeChat QR login…";
+    this._wechatMessage = t("ch.wechat.starting");
     this._wechatQr = null;
     try {
       // Step 1: request a QR code via the standard web.login.start method.
@@ -280,19 +280,19 @@ export class ChannelsView extends LitElement {
         sessionKey?: string;
       }>("web.login.start", { force: true, timeoutMs: 30_000 });
 
-      this._wechatMessage = startRes?.message ?? "Scan the QR code with WeChat…";
+      this._wechatMessage = startRes?.message ?? t("ch.wechat.scanPrompt");
       this._wechatQr = startRes?.qrDataUrl ?? null;
 
       if (!startRes?.qrDataUrl) {
         // No QR code — can't proceed with login.
-        this._wechatMessage = startRes?.message ?? "Failed to get QR code.";
+        this._wechatMessage = startRes?.message ?? t("ch.wechat.qrFailed");
         return;
       }
 
       // Step 2: poll for scan result.
       // Do NOT send sessionKey — the gateway rejects unknown properties.
       // The plugin resolves the session via its internal accountToSession map.
-      this._wechatMessage = "Waiting for scan…";
+      this._wechatMessage = t("ch.wechat.scanning");
       const waitRes = await gateway.call<{
         connected?: boolean;
         message?: string;
@@ -301,7 +301,7 @@ export class ChannelsView extends LitElement {
         timeoutMs: 120_000,
       });
 
-      this._wechatMessage = waitRes?.message ?? (waitRes?.connected ? "Connected!" : "Timed out.");
+      this._wechatMessage = waitRes?.message ?? (waitRes?.connected ? t("ch.wechat.connected") : t("ch.wechat.timedOut"));
       if (waitRes?.connected) {
         this._wechatQr = null;
       }
@@ -322,7 +322,7 @@ export class ChannelsView extends LitElement {
         channel: "openclaw-weixin",
       });
       this._wechatQr = null;
-      this._wechatMessage = "Logged out.";
+      this._wechatMessage = t("ch.wechat.loggedOut");
     } catch (err) {
       // If logout is unsupported, disable the channel via config instead.
       try {
@@ -332,7 +332,7 @@ export class ChannelsView extends LitElement {
           ],
         });
         this._wechatQr = null;
-        this._wechatMessage = "Channel disabled. Re-enable via config to reconnect.";
+        this._wechatMessage = t("ch.wechat.disabled");
       } catch {
         this._wechatMessage = String(err);
       }
@@ -699,10 +699,10 @@ export class ChannelsView extends LitElement {
             @change=${(e: Event) => {
               this._selectedChannel = (e.target as HTMLSelectElement).value || null;
             }}
-            aria-label="Select a channel"
+            aria-label=${t("ch.select")}
           >
             <option value="" ?disabled=${true} ?selected=${!this._selectedChannel}>
-              ${this._loading ? "Loading…" : "Select a channel…"}
+              ${this._loading ? t("ch.loading") : t("ch.select")}
             </option>
             ${sorted.map((id) => {
               const enabled = channelEnabled(id, props);
@@ -720,7 +720,7 @@ export class ChannelsView extends LitElement {
           ?disabled=${this._loading}
           @click=${() => void this._loadChannels(true)}
         >
-          ${this._loading ? "Probing…" : "Probe"}
+          ${this._loading ? t("ch.probing") : t("ch.probe")}
         </button>
 
         ${this._lastRefreshedAt
@@ -739,7 +739,7 @@ export class ChannelsView extends LitElement {
           <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
             <path d="${this._rawExpanded ? "M5 8l5 5 5-5z" : "M8 5l5 5-5 5z"}"/>
           </svg>
-          Raw snapshot
+          ${t("ch.rawSnapshot")}
         </button>
         ${this._rawExpanded
           ? html`<pre class="code-block">${JSON.stringify(this._snapshot, null, 2)}</pre>`
