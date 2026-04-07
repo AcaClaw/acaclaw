@@ -16,9 +16,7 @@
   "dependencies": {},
   "openclaw": {
     "extensions": [
-      {
-        "entry": "./index.ts"
-      }
+      "./index.ts"
     ]
   }
 }

@@ -175,9 +175,16 @@ describe("channels.config.ts: core rendering parity", () => {
     expect(acaclawFn).not.toBeNull();
     expect(openclawFn).not.toBeNull();
 
-    // The only expected diff: AcaClaw uses `as JsonSchema` cast
-    // where OpenClaw assigns directly. Normalize that.
-    const normalizedAcaclaw = acaclawFn!.replace(/\s+as JsonSchema/g, "");
+    // The only expected diffs:
+    // 1. AcaClaw uses `as JsonSchema` cast where OpenClaw assigns directly
+    // 2. AcaClaw adds an empty-schema guard for WeChat/plugin channels
+    // 3. AcaClaw imports `nothing` from lit (OpenClaw doesn't need it here)
+    const normalizedAcaclaw = acaclawFn!
+      .replace(/\s+as JsonSchema/g, "")
+      .replace(
+        /\/\/ Plugin channels with empty configSchema[\s\S]*?return nothing;\s*\}\s*/,
+        "",
+      );
     const normalizedOpenclaw = openclawFn!.replace(/\s+as JsonSchema/g, "");
 
     expect(normalizedAcaclaw).toBe(normalizedOpenclaw);

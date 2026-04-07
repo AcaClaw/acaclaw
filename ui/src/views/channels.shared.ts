@@ -179,8 +179,11 @@ export function renderChannelAccountCount(
 // ─── Channel ordering ────────────────────────────────────────────────
 
 const FALLBACK_CHANNEL_ORDER: ChannelKey[] = [
-  "whatsapp", "telegram", "discord", "googlechat",
-  "slack", "signal", "imessage", "nostr", "openclaw-weixin",
+  "whatsapp", "telegram", "discord", "slack", "signal",
+  "googlechat", "imessage", "nostr", "openclaw-weixin",
+  "matrix", "msteams", "line", "feishu", "qqbot",
+  "bluebubbles", "irc", "mattermost", "nextcloud-talk",
+  "synology-chat", "tlon", "twitch", "zalo", "zalouser",
 ];
 
 export function resolveChannelOrder(snapshot: ChannelsStatusSnapshot | null): ChannelKey[] {
@@ -197,11 +200,34 @@ export function resolveChannelOrder(snapshot: ChannelsStatusSnapshot | null): Ch
 
 const CHANNEL_DISPLAY_LABELS: Record<string, string> = {
   "openclaw-weixin": "WeChat",
+  "bluebubbles": "BlueBubbles",
+  "discord": "Discord",
+  "feishu": "Feishu",
+  "googlechat": "Google Chat",
+  "imessage": "iMessage",
+  "irc": "IRC",
+  "line": "LINE",
+  "matrix": "Matrix",
+  "mattermost": "Mattermost",
+  "msteams": "MS Teams",
+  "nextcloud-talk": "Nextcloud Talk",
+  "nostr": "Nostr",
+  "qqbot": "QQ Bot",
+  "signal": "Signal",
+  "slack": "Slack",
+  "synology-chat": "Synology Chat",
+  "telegram": "Telegram",
+  "tlon": "Tlon",
+  "twitch": "Twitch",
+  "whatsapp": "WhatsApp",
+  "zalo": "Zalo",
+  "zalouser": "Zalo User",
 };
 
 export function resolveChannelLabel(snapshot: ChannelsStatusSnapshot | null, key: string): string {
+  if (CHANNEL_DISPLAY_LABELS[key]) return CHANNEL_DISPLAY_LABELS[key];
   const meta = resolveChannelMetaMap(snapshot)[key];
-  return meta?.label ?? snapshot?.channelLabels?.[key] ?? CHANNEL_DISPLAY_LABELS[key] ?? key;
+  return meta?.label ?? snapshot?.channelLabels?.[key] ?? key;
 }
 
 function resolveChannelMetaMap(

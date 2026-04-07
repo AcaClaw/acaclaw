@@ -69,7 +69,7 @@ test.describe("Channels tab", () => {
     }
 
     // At least one known channel should be present
-    const knownChannels = ["whatsapp", "telegram", "discord", "slack", "signal", "nostr", "imessage", "googlechat"];
+    const knownChannels = ["whatsapp", "telegram", "discord", "slack", "signal", "nostr", "imessage", "googlechat", "wechat", "weixin"];
     const hasKnown = knownChannels.some(ch => values.some(v => v.includes(ch)));
     expect(hasKnown).toBe(true);
   });
@@ -111,6 +111,44 @@ test.describe("Channels tab", () => {
     // "0s ago" is rendered inside the shadow DOM — use getByText which pierces shadow DOM
     const agoText = page.getByText(/\d+s? ago/);
     await expect(agoText.first()).toBeVisible({ timeout: 5000 });
+  });
+
+  test("WeChat card renders without errors", async ({ page }) => {
+    const reachable = await navigateToChannelsTab(page);
+    test.skip(!reachable, "Channels tab not reachable");
+
+    // Check if WeChat is in the dropdown
+    const options = page.locator("acaclaw-channels select option");
+    const count = await options.count();
+    let hasWeChat = false;
+    for (let i = 0; i < count; i++) {
+      const label = (await options.nth(i).textContent()) ?? "";
+      if (/wechat/i.test(label)) {
+        hasWeChat = true;
+        // Select WeChat
+        const val = await options.nth(i).getAttribute("value");
+        if (val) await page.locator("acaclaw-channels select").selectOption(val);
+        break;
+      }
+    }
+    test.skip(!hasWeChat, "WeChat not in channel list");
+
+    await page.waitForTimeout(2000);
+
+    // WeChat card should show status rows without "Unsupported type" or "unknown method" errors
+    const iLinkText = page.getByText("iLink Bot");
+    await expect(iLinkText.first()).toBeVisible({ timeout: 5000 });
+
+    const loginBtn = page.getByText("Login QR");
+    await expect(loginBtn.first()).toBeVisible();
+
+    // No "Unsupported type" error
+    const unsupported = page.getByText("Unsupported type");
+    await expect(unsupported).toHaveCount(0);
+
+    // No "unknown method" error
+    const unknownMethod = page.getByText("unknown method");
+    await expect(unknownMethod).toHaveCount(0);
   });
 
   test("screenshot: channels tab baseline", async ({ page }) => {

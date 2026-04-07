@@ -267,15 +267,44 @@ export class ChannelsView extends LitElement {
   private async _wechatLogin() {
     if (this._wechatBusy) return;
     this._wechatBusy = true;
-    this._wechatMessage = null;
+    this._wechatMessage = "Starting WeChat QR login…";
     this._wechatQr = null;
     try {
-      const res = await gateway.call<{ message?: string; qrDataUrl?: string }>(
-        "channels.login",
-        { channel: "openclaw-weixin", timeoutMs: 30000 },
-      );
-      this._wechatMessage = res?.message ?? null;
-      this._wechatQr = res?.qrDataUrl ?? null;
+      // Step 1: request a QR code via the standard web.login.start method.
+      // The gateway dispatches to the first channel plugin with
+      //   gatewayMethods: ["web.login.start", "web.login.wait"]
+      // and calls its gateway.loginWithQrStart hook.
+      const startRes = await gateway.call<{
+        qrDataUrl?: string;
+        message?: string;
+        sessionKey?: string;
+      }>("web.login.start", { force: true, timeoutMs: 30_000 });
+
+      this._wechatMessage = startRes?.message ?? "Scan the QR code with WeChat…";
+      this._wechatQr = startRes?.qrDataUrl ?? null;
+
+      if (!startRes?.qrDataUrl) {
+        // No QR code — can't proceed with login.
+        this._wechatMessage = startRes?.message ?? "Failed to get QR code.";
+        return;
+      }
+
+      // Step 2: poll for scan result.
+      // Do NOT send sessionKey — the gateway rejects unknown properties.
+      // The plugin resolves the session via its internal accountToSession map.
+      this._wechatMessage = "Waiting for scan…";
+      const waitRes = await gateway.call<{
+        connected?: boolean;
+        message?: string;
+        accountId?: string;
+      }>("web.login.wait", {
+        timeoutMs: 120_000,
+      });
+
+      this._wechatMessage = waitRes?.message ?? (waitRes?.connected ? "Connected!" : "Timed out.");
+      if (waitRes?.connected) {
+        this._wechatQr = null;
+      }
     } catch (err) {
       this._wechatMessage = String(err);
     } finally {
@@ -288,11 +317,25 @@ export class ChannelsView extends LitElement {
     if (this._wechatBusy) return;
     this._wechatBusy = true;
     try {
-      await gateway.call("channels.logout", { channel: "openclaw-weixin" });
+      // Try channels.logout — may fail if the plugin lacks logoutAccount.
+      await gateway.call("channels.logout", {
+        channel: "openclaw-weixin",
+      });
       this._wechatQr = null;
       this._wechatMessage = "Logged out.";
     } catch (err) {
-      this._wechatMessage = String(err);
+      // If logout is unsupported, disable the channel via config instead.
+      try {
+        await gateway.call("config.patch", {
+          patches: [
+            { op: "replace", path: ["channels", "openclaw-weixin", "enabled"], value: false },
+          ],
+        });
+        this._wechatQr = null;
+        this._wechatMessage = "Channel disabled. Re-enable via config to reconnect.";
+      } catch {
+        this._wechatMessage = String(err);
+      }
     } finally {
       this._wechatBusy = false;
       void this._loadChannels(true);
@@ -610,9 +653,33 @@ export class ChannelsView extends LitElement {
     }
   `];
 
+  /**
+   * Merge channel IDs from channels.status (configured) with all channels
+   * available in the config schema, so unconfigured channels also appear
+   * in the dropdown for initial setup.
+   */
+  private _mergedChannelOrder(): string[] {
+    const statusOrder = resolveChannelOrder(this._snapshot);
+    const seen = new Set(statusOrder);
+    // Extract channel IDs from config schema
+    const schemaChannels =
+      (this._configSchema as Record<string, unknown>)?.properties &&
+      ((this._configSchema as Record<string, Record<string, unknown>>).properties
+        .channels as Record<string, unknown>)?.properties;
+    const schemaIds = schemaChannels ? Object.keys(schemaChannels as Record<string, unknown>) : [];
+    // Append schema channels not already in status
+    for (const id of schemaIds) {
+      if (!seen.has(id)) {
+        statusOrder.push(id);
+        seen.add(id);
+      }
+    }
+    return statusOrder;
+  }
+
   override render() {
     const props = this._buildProps();
-    const order = resolveChannelOrder(this._snapshot);
+    const order = this._mergedChannelOrder();
     const sorted = [...order].sort((a, b) => {
       const ae = channelEnabled(a, props);
       const be = channelEnabled(b, props);

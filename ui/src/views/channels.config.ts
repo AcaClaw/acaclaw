@@ -1,4 +1,4 @@
-import { html } from "lit";
+import { html, nothing } from "lit";
 import { formatChannelExtraValue, resolveChannelConfigValue } from "./channel-config-extras.js";
 import { analyzeConfigSchema } from "./config-form.analyze.js";
 import { renderNode } from "./config-form.node.js";
@@ -92,6 +92,22 @@ export function renderChannelConfigForm(props: ChannelConfigFormProps) {
   const node = resolveSchemaNode(normalized, ["channels", props.channelId]);
   if (!node) {
     return html` <div class="callout danger">Channel config schema unavailable.</div> `;
+  }
+  // Plugin channels with empty configSchema produce a node with no type or
+  // empty properties — skip rendering instead of showing "Unsupported type".
+  const nodeType =
+    typeof (node as Record<string, unknown>).type === "string"
+      ? ((node as Record<string, unknown>).type as string)
+      : "";
+  const nodeProps = (node as Record<string, unknown>).properties;
+  if (
+    !nodeType ||
+    (nodeType === "object" &&
+      nodeProps &&
+      typeof nodeProps === "object" &&
+      Object.keys(nodeProps).length === 0)
+  ) {
+    return nothing;
   }
   const configValue = props.configValue ?? {};
   const value = resolveChannelValue(configValue, props.channelId);
