@@ -16,6 +16,7 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { gateway, updateConfig } from "../controllers/gateway.js";
 import { t, LocaleController } from "../i18n.js";
+import { renderChannelConfigSection } from "./channels.config.js";
 
 // ─── Types (1:1 with OpenClaw's channel types) ────────────────────────────
 
@@ -268,7 +269,6 @@ export class ChannelsView extends LitElement {
   @state() private _rawExpanded = false;
 
   // Collapsible array sections: key = path.join(".")
-  @state() private _collapsed: Set<string> = new Set();
 
   // ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -1100,222 +1100,19 @@ export class ChannelsView extends LitElement {
   }
 
   private _renderConfigPanel(channelId: string) {
-    const schemaNode = resolveSchemaNode(this._configSchema, ["channels", channelId]);
-    const configValue = this._configForm ? resolveChannelConfigValue(this._configForm, channelId) : {};
-
-    return html`
-      <div class="panel">
-        <div class="panel-title">Configuration</div>
-
-        ${this._configSchemaLoading
-          ? html`<span class="muted">Loading schema…</span>`
-          : schemaNode
-            ? this._renderSchemaForm(schemaNode, configValue, ["channels", channelId])
-            : this._renderRawConfigForm(configValue, channelId)}
-
-        <div class="form-actions" style="margin-top:16px;">
-          <button
-            class="btn primary"
-            ?disabled=${this._configSaving || !this._configDirty}
-            @click=${() => void this._saveConfig()}
-          >${this._configSaving ? "Saving…" : "Save"}</button>
-          <button
-            class="btn"
-            ?disabled=${this._configSaving}
-            @click=${() => void this._reloadConfig()}
-          >Reload</button>
-        </div>
-      </div>
-    `;
+    return renderChannelConfigSection({
+      channelId,
+      configForm: this._configForm,
+      configSchema: this._configSchema,
+      configSchemaLoading: this._configSchemaLoading,
+      configSaving: this._configSaving,
+      configDirty: this._configDirty,
+      onPatch: (path, value) => this._patchConfig(path, value),
+      onSave: () => void this._saveConfig(),
+      onReload: () => void this._reloadConfig(),
+    });
   }
 
-  /** Schema-driven form: renders string/number/boolean/object/array fields. */
-  private _renderSchemaForm(
-    node: Record<string, unknown>,
-    value: Record<string, unknown>,
-    path: string[],
-  ): unknown {
-    const props = node.properties as Record<string, Record<string, unknown>> | undefined;
-    if (!props) return html`<span class="muted">No configurable fields.</span>`;
-
-    return html`
-      <div class="config-form">
-        ${Object.entries(props).map(([key, fieldSchema]) => {
-          if (!fieldSchema) return nothing;
-          const ftype = fieldSchema.type as string | undefined;
-          const label = (fieldSchema.title as string) ?? key;
-          const hint = fieldSchema.description as string | undefined;
-          const fieldPath = [...path, key];
-          const current = value[key];
-
-          if (ftype === "string" || ftype === "number" || !ftype) {
-            const isSecret = (fieldSchema.format === "password") ||
-              key.toLowerCase().includes("token") ||
-              key.toLowerCase().includes("secret") ||
-              key.toLowerCase().includes("key");
-            return html`
-              <div class="form-field">
-                <label class="form-label">${label}</label>
-                ${hint ? html`<span class="muted" style="font-size:11px;">${hint}</span>` : nothing}
-                <input
-                  class="form-input"
-                  type=${isSecret ? "password" : "text"}
-                  .value=${String(current ?? "")}
-                  @input=${(e: Event) =>
-                    this._patchConfig(fieldPath, (e.target as HTMLInputElement).value)}
-                />
-              </div>
-            `;
-          }
-          if (ftype === "boolean") {
-            return html`
-              <div class="form-field" style="flex-direction:row; align-items:center; gap:10px;">
-                <input
-                  type="checkbox"
-                  id="field-${key}"
-                  .checked=${Boolean(current)}
-                  @change=${(e: Event) =>
-                    this._patchConfig(fieldPath, (e.target as HTMLInputElement).checked)}
-                />
-                <label class="form-label" for="field-${key}" style="margin:0;">${label}</label>
-              </div>
-            `;
-          }
-          if (ftype === "object") {
-            return html`
-              <div class="form-field">
-                <span class="form-label">${label}</span>
-                ${this._renderSchemaForm(
-                  fieldSchema,
-                  (current as Record<string, unknown>) ?? {},
-                  fieldPath,
-                )}
-              </div>
-            `;
-          }
-          if (ftype === "array") {
-            return this._renderArrayField(label, hint, fieldSchema, current, fieldPath);
-          }
-          return nothing;
-        })}
-      </div>
-    `;
-  }
-
-  /**
-   * Render an array field with collapsible header, per-item forms, add/remove.
-   * String arrays: one text input per item.
-   * Object arrays: nested form per item.
-   */
-  private _renderArrayField(
-    label: string,
-    hint: string | undefined,
-    fieldSchema: Record<string, unknown>,
-    current: unknown,
-    fieldPath: string[],
-  ): unknown {
-    const items = (Array.isArray(current) ? current : []) as unknown[];
-    const pathKey = fieldPath.join(".");
-    const collapsed = this._collapsed.has(pathKey);
-    const itemSchema = fieldSchema.items as Record<string, unknown> | undefined;
-    const itemType = itemSchema?.type as string | undefined;
-
-    const toggle = () => {
-      const next = new Set(this._collapsed);
-      if (collapsed) next.delete(pathKey); else next.add(pathKey);
-      this._collapsed = next;
-    };
-
-    const addItem = () => {
-      const def = itemType === "object" ? {} : "";
-      this._patchConfig(fieldPath, [...items, def]);
-    };
-
-    const removeItem = (i: number) => {
-      const next = [...items];
-      next.splice(i, 1);
-      this._patchConfig(fieldPath, next);
-    };
-
-    return html`
-      <div class="array-section">
-        <div class="array-header" @click=${toggle}>
-          <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
-            <path d="${collapsed ? "M8 5l5 5-5 5z" : "M5 8l5 5 5-5z"}"/>
-          </svg>
-          <span class="form-label" style="margin:0;">${label}</span>
-          <span class="array-count">${items.length} item${items.length !== 1 ? "s" : ""}</span>
-        </div>
-
-        ${collapsed ? nothing : html`
-          <div class="array-body">
-            ${hint ? html`<span class="muted" style="font-size:11px; display:block; margin-bottom:8px;">${hint}</span>` : nothing}
-
-            ${items.length === 0
-              ? html`<span class="muted">No items yet. Click "Add" to create one.</span>`
-              : items.map((item, i) => {
-                  const itemPath = [...fieldPath, i] as (string | number)[];
-                  if (itemType === "object" && itemSchema) {
-                    return html`
-                      <div class="array-item">
-                        <div class="array-item-head">
-                          <span class="muted" style="font-size:11px;">Item ${i + 1}</span>
-                          <button class="btn" style="padding:2px 8px; font-size:11px;"
-                            @click=${() => removeItem(i)}>Remove</button>
-                        </div>
-                        ${this._renderSchemaForm(
-                          itemSchema,
-                          (item as Record<string, unknown>) ?? {},
-                          itemPath as string[],
-                        )}
-                      </div>
-                    `;
-                  }
-                  return html`
-                    <div class="array-item" style="display:flex; gap:8px; align-items:center;">
-                      <input
-                        class="form-input"
-                        style="flex:1;"
-                        .value=${String(item ?? "")}
-                        @input=${(e: Event) =>
-                          this._patchConfig(itemPath, (e.target as HTMLInputElement).value)}
-                      />
-                      <button class="btn" style="padding:2px 8px; font-size:11px;"
-                        @click=${() => removeItem(i)}>✕</button>
-                    </div>
-                  `;
-                })
-            }
-
-            <button class="btn" style="margin-top:8px;" @click=${addItem}>+ Add</button>
-          </div>
-        `}
-      </div>
-    `;
-  }
-
-  /** Fallback: render raw key=value fields when schema is unavailable. */
-  private _renderRawConfigForm(value: Record<string, unknown>, channelId: string): unknown {
-    const entries = Object.entries(value);
-    if (entries.length === 0) {
-      return html`<span class="muted">No config for this channel yet. Save to initialise.</span>`;
-    }
-    return html`
-      <div class="config-form">
-        ${entries.map(([key, val]) => html`
-          <div class="form-field">
-            <label class="form-label">${key}</label>
-            <input
-              class="form-input"
-              .value=${String(val ?? "")}
-              @input=${(e: Event) =>
-                this._patchConfig(["channels", channelId, key], (e.target as HTMLInputElement).value)}
-            />
-          </div>
-        `)}
-      </div>
-    `;
-  }
 }
 
 declare global {
@@ -1323,3 +1120,4 @@ declare global {
     "acaclaw-channels": ChannelsView;
   }
 }
+

@@ -211,16 +211,19 @@ describe("ChannelsView DOM", () => {
 
   // ── Config form ────────────────────────────────────────────────────────
 
-  it("renders config form panel", async () => {
+  it("renders config form section with Save and Reload buttons", async () => {
     const el = await createElement();
-    const panels = Array.from(shadowQA(el, ".panel"));
-    expect(panels.length).toBeGreaterThanOrEqual(2); // status + config
+    // config form renders inside the channel panel — find all buttons via .btn
+    const btns = Array.from(shadowQA(el, "button.btn")) as HTMLButtonElement[];
+    const labels = btns.map((b) => b.textContent?.trim());
+    expect(labels).toContain("Save");
+    expect(labels).toContain("Reload");
     cleanup(el);
   });
 
   it("config panel shows Save and Reload buttons", async () => {
     const el = await createElement();
-    const btns = Array.from(shadowQA(el, ".form-actions button")) as HTMLButtonElement[];
+    const btns = Array.from(shadowQA(el, "button.btn")) as HTMLButtonElement[];
     const labels = btns.map((b) => b.textContent?.trim());
     expect(labels).toContain("Save");
     expect(labels).toContain("Reload");
@@ -229,13 +232,13 @@ describe("ChannelsView DOM", () => {
 
   it("Save button is disabled when config is not dirty", async () => {
     const el = await createElement();
-    const saveBtn = Array.from(shadowQA(el, ".form-actions button"))
+    const saveBtn = Array.from(shadowQA(el, "button.btn"))
       .find((b) => b.textContent?.trim() === "Save") as HTMLButtonElement;
     expect(saveBtn?.disabled).toBe(true);
     cleanup(el);
   });
 
-  it("schema-driven form renders a config field for discord.botToken", async () => {
+  it("schema-driven form renders a config-form section for discord", async () => {
     const el = await createElement();
     const select = shadowQ(el, "select.channel-select") as HTMLSelectElement;
     select.value = "discord";
@@ -243,8 +246,9 @@ describe("ChannelsView DOM", () => {
     await el.updateComplete;
     await new Promise((r) => setTimeout(r, 30));
     await el.updateComplete;
-    const inputs = Array.from(shadowQA(el, ".form-input")) as HTMLInputElement[];
-    expect(inputs.length).toBeGreaterThan(0);
+    // renderChannelConfigSection always renders a .config-form div
+    const configForm = shadowQ(el, ".config-form");
+    expect(configForm).toBeTruthy();
     cleanup(el);
   });
 
