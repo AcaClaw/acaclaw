@@ -7,8 +7,8 @@ export const en: Record<string, string> = {
   "nav.staff.desc": "Your digital team",
   "nav.monitor": "Monitor",
   "nav.monitor.desc": "System dashboard",
-  "nav.api-keys": "API Keys",
-  "nav.api-keys.desc": "Providers & keys",
+  "nav.api-keys": "API Config",
+  "nav.api-keys.desc": "Providers, keys & channels",
   "nav.usage": "Usage",
   "nav.usage.desc": "Costs & tokens",
   "nav.skills": "Skills",
@@ -455,9 +455,9 @@ export const en: Record<string, string> = {
   "usage.header.calls": "Calls",
   "usage.since": "Since {0}",
 
-  // ── API Keys page ──
-  "apikeys.title": "API Keys",
-  "apikeys.subtitle": "Configure your AI provider keys. Managed by OpenClaw, stored locally on your machine.",
+  // ── API Config page ──
+  "apikeys.title": "API Config",
+  "apikeys.subtitle": "Configure providers, keys, and messaging channels. Managed by OpenClaw, stored locally.",
   "apikeys.tab.llm": "LLM Providers",
   "apikeys.tab.browser": "Browser / Search",
   "apikeys.tab.channels": "Channels",

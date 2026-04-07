@@ -110,9 +110,9 @@ describe("ChannelsView DOM", () => {
 
   // ── Heading ────────────────────────────────────────────────────────────
 
-  it("renders page heading", async () => {
+  it("does not render its own heading (embedded in api-keys tab)", async () => {
     const el = await createElement();
-    expect(shadowQ(el, "h1")?.textContent).toMatch(/channel/i);
+    expect(shadowQ(el, "h1")).toBeNull();
     cleanup(el);
   });
 
@@ -177,15 +177,19 @@ describe("ChannelsView DOM", () => {
 
   it("status panel shows channel display name", async () => {
     const el = await createElement();
-    const panelTitle = shadowQ(el, ".panel-title");
+    const panelTitle = shadowQ(el, ".card-title") ?? shadowQ(el, ".panel-title");
     expect(["Discord", "WhatsApp"]).toContain(panelTitle?.textContent?.trim());
     cleanup(el);
   });
 
   it("status panel shows Configured status value", async () => {
     const el = await createElement();
-    const values = Array.from(shadowQA(el, ".status-value"));
-    const texts = values.map((v) => v.textContent?.trim());
+    // Per-channel cards use .status-list > div > span (OpenClaw pattern)
+    const statusDivs = Array.from(shadowQA(el, ".status-list > div"));
+    const texts = statusDivs.map((d) => {
+      const spans = d.querySelectorAll("span");
+      return spans[spans.length - 1]?.textContent?.trim();
+    });
     expect(texts.some((t) => t === "Yes" || t === "No" || t === "n/a")).toBe(true);
     cleanup(el);
   });
@@ -260,7 +264,7 @@ describe("ChannelsView DOM", () => {
     select.value = "telegram";
     select.dispatchEvent(new Event("change"));
     await el.updateComplete;
-    const panelTitle = shadowQ(el, ".panel-title");
+    const panelTitle = shadowQ(el, ".card-title") ?? shadowQ(el, ".panel-title");
     expect(panelTitle?.textContent?.trim()).toBe("Telegram");
     cleanup(el);
   });

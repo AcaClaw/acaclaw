@@ -123,7 +123,13 @@ const SENSITIVE_KEY_WHITELIST_SUFFIXES = [
   "passwordfile",
 ] as const;
 
-const SENSITIVE_PATTERNS = [/token$/i, /password/i, /secret/i, /api.?key/i, /serviceaccount(?:ref)?$/i];
+const SENSITIVE_PATTERNS = [
+  /token$/i,
+  /password/i,
+  /secret/i,
+  /api.?key/i,
+  /serviceaccount(?:ref)?$/i,
+];
 
 const ENV_VAR_PLACEHOLDER_PATTERN = /^\$\{[^}]*\}$/;
 
@@ -158,16 +164,55 @@ export function hasSensitiveConfigData(
   const key = pathKey(path);
   const hint = hintForPath(path, hints);
   const pathIsSensitive = isHintSensitive(hint) || isSensitiveConfigPath(key);
+
   if (pathIsSensitive && isSensitiveLeafValue(value)) {
     return true;
   }
+
   if (Array.isArray(value)) {
     return value.some((item, index) => hasSensitiveConfigData(item, [...path, index], hints));
   }
+
   if (value && typeof value === "object") {
     return Object.entries(value as Record<string, unknown>).some(([childKey, childValue]) =>
       hasSensitiveConfigData(childValue, [...path, childKey], hints),
     );
   }
+
   return false;
+}
+
+export function countSensitiveConfigValues(
+  value: unknown,
+  path: Array<string | number>,
+  hints: ConfigUiHints,
+): number {
+  if (value == null) {
+    return 0;
+  }
+
+  const key = pathKey(path);
+  const hint = hintForPath(path, hints);
+  const pathIsSensitive = isHintSensitive(hint) || isSensitiveConfigPath(key);
+
+  if (pathIsSensitive && isSensitiveLeafValue(value)) {
+    return 1;
+  }
+
+  if (Array.isArray(value)) {
+    return value.reduce(
+      (count, item, index) => count + countSensitiveConfigValues(item, [...path, index], hints),
+      0,
+    );
+  }
+
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).reduce(
+      (count, [childKey, childValue]) =>
+        count + countSensitiveConfigValues(childValue, [...path, childKey], hints),
+      0,
+    );
+  }
+
+  return 0;
 }

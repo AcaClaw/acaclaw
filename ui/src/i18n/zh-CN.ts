@@ -7,8 +7,8 @@ export const zhCN: Record<string, string> = {
   "nav.staff.desc": "你的数字团队",
   "nav.monitor": "监控",
   "nav.monitor.desc": "系统仪表盘",
-  "nav.api-keys": "API 密钥",
-  "nav.api-keys.desc": "服务商与密钥",
+  "nav.api-keys": "API 配置",
+  "nav.api-keys.desc": "服务商、密钥与渠道",
   "nav.usage": "用量",
   "nav.usage.desc": "费用与 Token",
   "nav.skills": "技能",
@@ -455,7 +455,7 @@ export const zhCN: Record<string, string> = {
   "usage.since": "自 {0} 起",
 
   // ── API 密钥页面 ──
-  "apikeys.title": "API 密钥",
+  "apikeys.title": "API 配置",
   "apikeys.subtitle": "配置你的 AI 服务商密钥。由 OpenClaw 管理，存储在本地。",
   "apikeys.tab.llm": "LLM 服务商",
   "apikeys.tab.browser": "浏览器 / 搜索",

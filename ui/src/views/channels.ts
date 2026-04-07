@@ -8,236 +8,59 @@
  *   config.get       →  configForm + configSchema
  *   config.set       →  save patched config
  *
- * Per-channel config fields are rendered via the JSON schema form:
- * schema.channels.<channelId>.  WhatsApp is the only channel that needs
- * bespoke UI (QR/login flow).
+ * Per-channel rendering is delegated to the same per-channel card modules
+ * that OpenClaw uses (channels.whatsapp.ts, channels.telegram.ts, etc.).
  */
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { configFormStyles } from "../styles/config-form.css.js";
 import { gateway, updateConfig } from "../controllers/gateway.js";
-import { t, LocaleController } from "../i18n.js";
+import { LocaleController } from "../i18n.js";
+import type {
+  ChannelsStatusSnapshot,
+  ChannelsProps,
+  ChannelKey,
+  ChannelsChannelData,
+  NostrProfile,
+  WhatsAppStatus,
+  TelegramStatus,
+  DiscordStatus,
+  GoogleChatStatus,
+  SlackStatus,
+  SignalStatus,
+  IMessageStatus,
+  NostrStatus,
+  WeChatStatus,
+  ChannelAccountSnapshot,
+} from "./channels.types.js";
+import type { NostrProfileFormState } from "./channels.nostr-profile-form.js";
+import { createNostrProfileFormState } from "./channels.nostr-profile-form.js";
+import {
+  channelEnabled,
+  formatRelativeTimestamp,
+  formatNullableBoolean,
+  resolveChannelDisplayState,
+  resolveChannelOrder,
+  resolveChannelLabel,
+  renderChannelAccountCount,
+} from "./channels.shared.js";
 import { renderChannelConfigSection } from "./channels.config.js";
-
-// ─── Types (1:1 with OpenClaw's channel types) ────────────────────────────
-
-interface ChannelAccountSnapshot {
-  accountId: string;
-  name?: string;
-  configured?: boolean;
-  running?: boolean;
-  connected?: boolean;
-  lastInboundAt?: number;
-  lastStartAt?: number;
-  lastError?: string | null;
-  probe?: unknown;
-  // Telegram-specific
-  publicKey?: string;
-  profile?: {
-    name?: string;
-    displayName?: string;
-    about?: string;
-    picture?: string;
-    nip05?: string;
-  };
-}
-
-interface ProbeResult {
-  ok: boolean;
-  status?: string;
-  error?: string;
-}
-
-interface WhatsAppStatus {
-  linked?: boolean;
-  running?: boolean;
-  connected?: boolean;
-  lastConnectedAt?: number;
-  lastMessageAt?: number;
-  authAgeMs?: number;
-  lastError?: string | null;
-}
-
-interface TelegramStatus {
-  running?: boolean;
-  mode?: string;
-  lastStartAt?: number;
-  lastProbeAt?: number;
-  lastError?: string | null;
-  probe?: ProbeResult;
-}
-
-interface DiscordStatus {
-  running?: boolean;
-  lastStartAt?: number;
-  lastProbeAt?: number;
-  lastError?: string | null;
-  probe?: ProbeResult;
-}
-
-interface GoogleChatStatus {
-  running?: boolean;
-  credentialSource?: string;
-  audienceType?: string;
-  audience?: string;
-  lastStartAt?: number;
-  lastProbeAt?: number;
-  lastError?: string | null;
-  probe?: ProbeResult;
-}
-
-interface SlackStatus {
-  running?: boolean;
-  lastStartAt?: number;
-  lastProbeAt?: number;
-  lastError?: string | null;
-  probe?: ProbeResult;
-}
-
-interface SignalStatus {
-  running?: boolean;
-  baseUrl?: string;
-  lastStartAt?: number;
-  lastProbeAt?: number;
-  lastError?: string | null;
-  probe?: ProbeResult;
-}
-
-interface IMessageStatus {
-  running?: boolean;
-  lastStartAt?: number;
-  lastProbeAt?: number;
-  lastError?: string | null;
-  probe?: ProbeResult;
-}
-
-interface NostrStatus {
-  configured?: boolean;
-  running?: boolean;
-  publicKey?: string;
-  lastStartAt?: number;
-  lastError?: string | null;
-  profile?: {
-    name?: string;
-    displayName?: string;
-    about?: string;
-    picture?: string;
-    nip05?: string;
-  };
-}
-
-interface ChannelMeta {
-  id: string;
-  name?: string;
-}
-
-interface ChannelsStatusSnapshot {
-  channels?: {
-    whatsapp?: WhatsAppStatus;
-    telegram?: TelegramStatus;
-    discord?: DiscordStatus;
-    googlechat?: GoogleChatStatus;
-    slack?: SlackStatus;
-    signal?: SignalStatus;
-    imessage?: IMessageStatus;
-    nostr?: NostrStatus;
-  } & Record<string, Record<string, unknown> | undefined>;
-  channelMeta?: ChannelMeta[];
-  channelOrder?: string[];
-  channelAccounts?: Record<string, ChannelAccountSnapshot[]>;
-  channelDefaultAccountId?: Record<string, string>;
-}
+import { renderWhatsAppCard } from "./channels.whatsapp.js";
+import { renderTelegramCard } from "./channels.telegram.js";
+import { renderDiscordCard } from "./channels.discord.js";
+import { renderGoogleChatCard } from "./channels.googlechat.js";
+import { renderSlackCard } from "./channels.slack.js";
+import { renderSignalCard } from "./channels.signal.js";
+import { renderIMessageCard } from "./channels.imessage.js";
+import { renderNostrCard } from "./channels.nostr.js";
+import { renderWeChatCard } from "./channels.wechat.js";
+import type { ConfigUiHints } from "./config-form.shared.js";
 
 type WhatsAppLoginMessage = {
   message?: string | null;
   qrDataUrl?: string | null;
   connected?: boolean | null;
 };
-
-// ─── Helpers ──────────────────────────────────────────────────────────────
-
-const FALLBACK_CHANNEL_ORDER = [
-  "whatsapp", "telegram", "discord", "googlechat",
-  "slack", "signal", "imessage", "nostr",
-];
-
-function channelDisplayName(id: string, meta: ChannelMeta[] | undefined): string {
-  const entry = meta?.find((m) => m.id === id);
-  return entry?.name ?? (id.charAt(0).toUpperCase() + id.slice(1));
-}
-
-function channelOrder(snapshot: ChannelsStatusSnapshot | null): string[] {
-  if (snapshot?.channelMeta?.length) return snapshot.channelMeta.map((m) => m.id);
-  if (snapshot?.channelOrder?.length) return snapshot.channelOrder;
-  return FALLBACK_CHANNEL_ORDER;
-}
-
-function isChannelEnabled(id: string, snapshot: ChannelsStatusSnapshot | null): boolean {
-  const ch = snapshot?.channels?.[id] as Record<string, unknown> | undefined;
-  if (!ch) return false;
-  return (
-    ch["configured"] === true ||
-    ch["running"] === true ||
-    ch["connected"] === true ||
-    (snapshot?.channelAccounts?.[id] ?? []).some(
-      (a) => a.configured || a.running || a.connected,
-    )
-  );
-}
-
-function formatDurationHuman(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
-  return `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`;
-}
-
-function resolveConfigured(
-  id: string,
-  snapshot: ChannelsStatusSnapshot | null,
-  ch: Record<string, unknown>,
-): boolean | null {
-  if ("configured" in ch) return ch["configured"] as boolean;
-  return (snapshot?.channelAccounts?.[id] ?? []).some((a) => a.configured) || null;
-}
-
-function truncatePubkey(key: string | null | undefined): string {
-  if (!key) return "n/a";
-  if (key.length <= 20) return key;
-  return `${key.slice(0, 8)}...${key.slice(-8)}`;
-}
-
-function relTime(ts: number | undefined): string {
-  if (!ts) return "n/a";
-  const diff = Math.floor((Date.now() - ts) / 1000);
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-}
-
-/** Navigate a JSON schema to a nested path */
-function resolveSchemaNode(
-  schema: Record<string, unknown> | null,
-  path: string[],
-): Record<string, unknown> | null {
-  let cur: Record<string, unknown> | null = schema;
-  for (const key of path) {
-    if (!cur) return null;
-    const props = cur.properties as Record<string, unknown> | undefined;
-    cur = (props?.[key] as Record<string, unknown>) ?? null;
-  }
-  return cur;
-}
-
-/** Get the channels.<id> value from the live config object */
-function resolveChannelConfigValue(
-  config: Record<string, unknown>,
-  channelId: string,
-): Record<string, unknown> {
-  const channels = config.channels as Record<string, unknown> | undefined;
-  return (channels?.[channelId] as Record<string, unknown>) ?? {};
-}
 
 // ─── Component ────────────────────────────────────────────────────────────
 
@@ -254,6 +77,7 @@ export class ChannelsView extends LitElement {
 
   // Config form state
   @state() private _configSchema: Record<string, unknown> | null = null;
+  @state() private _configUiHints: ConfigUiHints = {};
   @state() private _configForm: Record<string, unknown> | null = null;
   @state() private _configDirty = false;
   @state() private _configSaving = false;
@@ -265,10 +89,17 @@ export class ChannelsView extends LitElement {
   @state() private _whatsappConnected: boolean | null = null;
   @state() private _whatsappBusy = false;
 
+  // WeChat-specific
+  @state() private _wechatQr: string | null = null;
+  @state() private _wechatMessage: string | null = null;
+  @state() private _wechatBusy = false;
+
+  // Nostr profile editing
+  @state() private _nostrProfileFormState: NostrProfileFormState | null = null;
+  @state() private _nostrProfileAccountId: string | null = null;
+
   // Raw snapshot toggle
   @state() private _rawExpanded = false;
-
-  // Collapsible array sections: key = path.join(".")
 
   // ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -293,8 +124,9 @@ export class ChannelsView extends LitElement {
       this._lastRefreshedAt = Date.now();
       // Auto-select first enabled channel if nothing is selected yet
       if (!this._selectedChannel && this._snapshot) {
-        const order = channelOrder(this._snapshot);
-        const first = order.find((id) => isChannelEnabled(id, this._snapshot));
+        const props = this._buildProps();
+        const order = resolveChannelOrder(this._snapshot);
+        const first = order.find((id) => channelEnabled(id, props));
         this._selectedChannel = first ?? order[0] ?? null;
       }
     } catch (err) {
@@ -309,12 +141,16 @@ export class ChannelsView extends LitElement {
     try {
       const [snap, schemaRes] = await Promise.all([
         gateway.call<{ config?: Record<string, unknown> }>("config.get"),
-        gateway.call<{ schema?: Record<string, unknown> }>("config.schema").catch(() => null),
+        gateway
+          .call<{ schema?: Record<string, unknown>; uiHints?: ConfigUiHints }>("config.schema")
+          .catch(() => null),
       ]);
       this._configForm = (snap?.config as Record<string, unknown>) ?? null;
       this._configSchema = (schemaRes?.schema as Record<string, unknown>) ?? null;
+      this._configUiHints = schemaRes?.uiHints ?? {};
     } catch {
       // schema unavailable — config form will show fallback
+      this._configUiHints = {};
     } finally {
       this._configSchemaLoading = false;
       this._configDirty = false;
@@ -426,9 +262,164 @@ export class ChannelsView extends LitElement {
     }
   }
 
+  // ── WeChat helpers ────────────────────────────────────────────────────────
+
+  private async _wechatLogin() {
+    if (this._wechatBusy) return;
+    this._wechatBusy = true;
+    this._wechatMessage = null;
+    this._wechatQr = null;
+    try {
+      const res = await gateway.call<{ message?: string; qrDataUrl?: string }>(
+        "channels.login",
+        { channel: "openclaw-weixin", timeoutMs: 30000 },
+      );
+      this._wechatMessage = res?.message ?? null;
+      this._wechatQr = res?.qrDataUrl ?? null;
+    } catch (err) {
+      this._wechatMessage = String(err);
+    } finally {
+      this._wechatBusy = false;
+      void this._loadChannels(true);
+    }
+  }
+
+  private async _wechatLogout() {
+    if (this._wechatBusy) return;
+    this._wechatBusy = true;
+    try {
+      await gateway.call("channels.logout", { channel: "openclaw-weixin" });
+      this._wechatQr = null;
+      this._wechatMessage = "Logged out.";
+    } catch (err) {
+      this._wechatMessage = String(err);
+    } finally {
+      this._wechatBusy = false;
+      void this._loadChannels(true);
+    }
+  }
+
+  // ── Nostr profile helpers ───────────────────────────────────────────────
+
+  private _nostrProfileEdit(accountId: string, profile: NostrProfile | null) {
+    this._nostrProfileAccountId = accountId;
+    this._nostrProfileFormState = createNostrProfileFormState(profile ?? undefined);
+  }
+
+  private _nostrProfileCancel() {
+    this._nostrProfileFormState = null;
+    this._nostrProfileAccountId = null;
+  }
+
+  private _nostrProfileFieldChange(field: keyof NostrProfile, value: string) {
+    if (!this._nostrProfileFormState) return;
+    this._nostrProfileFormState = {
+      ...this._nostrProfileFormState,
+      values: { ...this._nostrProfileFormState.values, [field]: value },
+    };
+  }
+
+  private async _nostrProfileSave() {
+    if (!this._nostrProfileFormState || !this._nostrProfileAccountId) return;
+    this._nostrProfileFormState = { ...this._nostrProfileFormState, saving: true, error: null };
+    try {
+      await gateway.call("nostr.profile.publish", {
+        accountId: this._nostrProfileAccountId,
+        profile: this._nostrProfileFormState.values,
+      });
+      this._nostrProfileFormState = {
+        ...this._nostrProfileFormState,
+        saving: false,
+        original: { ...this._nostrProfileFormState.values },
+        success: "Profile saved",
+      };
+      void this._loadChannels(false);
+    } catch (err) {
+      this._nostrProfileFormState = {
+        ...this._nostrProfileFormState,
+        saving: false,
+        error: String(err),
+      };
+    }
+  }
+
+  private async _nostrProfileImport() {
+    if (!this._nostrProfileFormState || !this._nostrProfileAccountId) return;
+    this._nostrProfileFormState = { ...this._nostrProfileFormState, importing: true, error: null };
+    try {
+      const res = await gateway.call<{ profile?: NostrProfile }>("nostr.profile.fetch", {
+        accountId: this._nostrProfileAccountId,
+      });
+      if (res?.profile) {
+        this._nostrProfileFormState = {
+          ...this._nostrProfileFormState,
+          importing: false,
+          values: { ...this._nostrProfileFormState.values, ...res.profile },
+        };
+      } else {
+        this._nostrProfileFormState = {
+          ...this._nostrProfileFormState,
+          importing: false,
+          error: "No profile found on relays",
+        };
+      }
+    } catch (err) {
+      this._nostrProfileFormState = {
+        ...this._nostrProfileFormState,
+        importing: false,
+        error: String(err),
+      };
+    }
+  }
+
+  private _nostrProfileToggleAdvanced() {
+    if (!this._nostrProfileFormState) return;
+    this._nostrProfileFormState = {
+      ...this._nostrProfileFormState,
+      showAdvanced: !this._nostrProfileFormState.showAdvanced,
+    };
+  }
+
+  // ── Build ChannelsProps (bridges LitElement state → functional renderers) ──
+
+  private _buildProps(): ChannelsProps {
+    return {
+      connected: true,
+      loading: this._loading,
+      snapshot: this._snapshot,
+      lastError: this._error,
+      lastSuccessAt: this._lastRefreshedAt,
+      whatsappMessage: this._whatsappMessage,
+      whatsappQrDataUrl: this._whatsappQr,
+      whatsappConnected: this._whatsappConnected,
+      whatsappBusy: this._whatsappBusy,
+      configSchema: this._configSchema,
+      configSchemaLoading: this._configSchemaLoading,
+      configForm: this._configForm,
+      configUiHints: this._configUiHints,
+      configSaving: this._configSaving,
+      configFormDirty: this._configDirty,
+      nostrProfileFormState: this._nostrProfileFormState,
+      nostrProfileAccountId: this._nostrProfileAccountId,
+      onRefresh: (probe: boolean) => void this._loadChannels(probe),
+      onWhatsAppStart: (force: boolean) => void this._whatsappStart(force),
+      onWhatsAppWait: () => void this._whatsappWait(),
+      onWhatsAppLogout: () => void this._whatsappLogout(),
+      onConfigPatch: (path, value) => this._patchConfig(path, value),
+      onConfigSave: () => void this._saveConfig(),
+      onConfigReload: () => void this._reloadConfig(),
+      onNostrProfileEdit: (accountId, profile) => this._nostrProfileEdit(accountId, profile),
+      onNostrProfileCancel: () => this._nostrProfileCancel(),
+      onNostrProfileFieldChange: (field, value) => this._nostrProfileFieldChange(field, value),
+      onNostrProfileSave: () => void this._nostrProfileSave(),
+      onNostrProfileImport: () => void this._nostrProfileImport(),
+      onNostrProfileToggleAdvanced: () => this._nostrProfileToggleAdvanced(),
+    };
+  }
+
   // ── Rendering ─────────────────────────────────────────────────────────────
 
-  static override styles = css`
+  static override styles = [configFormStyles, css`
     :host { display: block; }
 
     h1 { font-size: 32px; font-weight: 800; letter-spacing: -0.04em; color: var(--ac-text); margin-bottom: 4px; }
@@ -472,7 +463,7 @@ export class ChannelsView extends LitElement {
     .btn.primary:hover { opacity: 0.9; }
     .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
-    /* ── Panels ── */
+    /* ── Panels & Cards ── */
     .panel {
       background: var(--ac-bg-surface);
       border: 1px solid var(--ac-border-subtle);
@@ -481,13 +472,24 @@ export class ChannelsView extends LitElement {
       margin-bottom: 16px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     }
-    .panel-title { font-size: 15px; font-weight: 700; color: var(--ac-text); margin-bottom: 16px; letter-spacing: -0.02em; }
+    /* OpenClaw card classes mapped to AcaClaw panel styling */
+    .card {
+      background: var(--ac-bg-surface);
+      border: 1px solid var(--ac-border-subtle);
+      border-radius: var(--ac-radius-lg);
+      padding: 24px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    .card-title, .panel-title { font-size: 15px; font-weight: 700; color: var(--ac-text); margin-bottom: 4px; letter-spacing: -0.02em; }
+    .card-sub { font-size: 13px; color: var(--ac-text-muted); margin-bottom: 12px; }
 
     /* ── Status list ── */
     .status-list { display: flex; flex-direction: column; gap: 8px; }
-    .status-row { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
-    .status-label { color: var(--ac-text-muted); min-width: 110px; }
+    .status-list > div { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
+    .status-list .label, .status-label { color: var(--ac-text-muted); min-width: 110px; }
     .status-value { color: var(--ac-text); font-weight: 500; }
+    .row { display: flex; gap: 8px; }
 
     /* ── Badge ── */
     .badge {
@@ -549,12 +551,29 @@ export class ChannelsView extends LitElement {
       padding: 12px 16px; margin-bottom: 8px;
       background: var(--ac-bg-base, var(--ac-bg-muted));
     }
-    .account-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
-    .account-name { font-size: 13px; font-weight: 600; color: var(--ac-text); }
-    .account-id { font-size: 11px; color: var(--ac-text-muted); }
+    .account-card-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+    .account-card-header, .account-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+    .account-card-title, .account-name { font-size: 13px; font-weight: 600; color: var(--ac-text); }
+    .account-card-id, .account-id { font-size: 11px; color: var(--ac-text-muted); }
+    .account-card-error { color: #b91c1c; font-size: 12px; margin-top: 6px; }
+    .account-count { font-size: 12px; color: var(--ac-text-muted); margin-bottom: 8px; }
 
     .empty { color: var(--ac-text-muted); font-size: 14px; padding: 32px 0; text-align: center; }
     .muted { color: var(--ac-text-muted); font-size: 13px; }
+
+    /* ── Nostr profile ── */
+    .nostr-profile { margin-top: 16px; padding: 12px; background: var(--ac-bg-muted); border-radius: var(--ac-radius-md); }
+    .nostr-profile img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; border: 2px solid var(--ac-border); }
+    .nostr-profile-form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+    .nostr-profile-form label { font-size: 12px; font-weight: 600; color: var(--ac-text-muted); }
+    .nostr-profile-form input,
+    .nostr-profile-form textarea {
+      padding: 8px 12px; font-size: 13px;
+      background: var(--ac-bg-base, var(--ac-bg-muted));
+      border: 1px solid var(--ac-border);
+      border-radius: var(--ac-radius-md);
+      color: var(--ac-text);
+    }
 
     /* ── Array fields ── */
     .array-section {
@@ -589,21 +608,19 @@ export class ChannelsView extends LitElement {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 8px;
     }
-  `;
+  `];
 
   override render() {
-    const order = channelOrder(this._snapshot);
+    const props = this._buildProps();
+    const order = resolveChannelOrder(this._snapshot);
     const sorted = [...order].sort((a, b) => {
-      const ae = isChannelEnabled(a, this._snapshot);
-      const be = isChannelEnabled(b, this._snapshot);
+      const ae = channelEnabled(a, props);
+      const be = channelEnabled(b, props);
       if (ae !== be) return ae ? -1 : 1;
       return 0;
     });
 
     return html`
-      <h1>${t("channels.title", "Channels")}</h1>
-      <p class="subtitle">${t("channels.subtitle", "Connect messaging services to the OpenClaw gateway.")}</p>
-
       ${this._error ? html`<div class="callout danger" style="margin-bottom:16px;">${this._error}</div>` : nothing}
 
       <!-- ── Channel selector row ── -->
@@ -621,8 +638,8 @@ export class ChannelsView extends LitElement {
               ${this._loading ? "Loading…" : "Select a channel…"}
             </option>
             ${sorted.map((id) => {
-              const enabled = isChannelEnabled(id, this._snapshot);
-              const label = `${enabled ? "●" : "○"}  ${channelDisplayName(id, this._snapshot?.channelMeta)}`;
+              const enabled = channelEnabled(id, props);
+              const label = `${enabled ? "●" : "○"}  ${resolveChannelLabel(this._snapshot, id)}`;
               return html`<option value=${id} ?selected=${this._selectedChannel === id}>${label}</option>`;
             })}
           </select>
@@ -640,12 +657,14 @@ export class ChannelsView extends LitElement {
         </button>
 
         ${this._lastRefreshedAt
-          ? html`<span class="muted">${relTime(this._lastRefreshedAt)}</span>`
+          ? html`<span class="muted">${formatRelativeTimestamp(this._lastRefreshedAt)}</span>`
           : nothing}
       </div>
 
-      <!-- ── Selected channel panels ── -->
-      ${this._selectedChannel ? this._renderChannelDetail(this._selectedChannel) : nothing}
+      <!-- ── Selected channel panel ── -->
+      ${this._selectedChannel
+        ? html`<div class="panel">${this._renderChannel(this._selectedChannel, props)}</div>`
+        : nothing}
 
       <!-- ── Raw snapshot ── -->
       ${this._snapshot ? html`
@@ -662,457 +681,163 @@ export class ChannelsView extends LitElement {
     `;
   }
 
-  private _renderChannelDetail(id: string) {
-    const channels = this._snapshot?.channels ?? {};
-    switch (id) {
-      case "whatsapp": return this._renderWhatsApp(channels.whatsapp ?? {} as WhatsAppStatus);
-      case "telegram": return this._renderTelegram(channels.telegram ?? {} as TelegramStatus);
-      case "discord":  return this._renderDiscord(channels.discord ?? {} as DiscordStatus);
-      case "googlechat": return this._renderGoogleChat(channels.googlechat ?? {} as GoogleChatStatus);
-      case "slack":    return this._renderSlack(channels.slack ?? {} as SlackStatus);
-      case "signal":   return this._renderSignal(channels.signal ?? {} as SignalStatus);
-      case "imessage": return this._renderIMessage(channels.imessage ?? {} as IMessageStatus);
-      case "nostr":    return this._renderNostr(channels.nostr ?? {} as NostrStatus);
-      default:         return this._renderGeneric(id, channels[id] as Record<string, unknown> ?? {});
+  // ── Channel dispatch ──────────────────────────────────────────────────────
+
+  private _renderChannel(key: ChannelKey, props: ChannelsProps) {
+    const channels = this._snapshot?.channels as Record<string, unknown> | null;
+    const channelAccounts = this._snapshot?.channelAccounts ?? null;
+    const accountCountLabel = renderChannelAccountCount(key, channelAccounts);
+
+    const data: ChannelsChannelData = {
+      whatsapp: (channels?.whatsapp ?? undefined) as WhatsAppStatus | undefined,
+      telegram: (channels?.telegram ?? undefined) as TelegramStatus | undefined,
+      discord: (channels?.discord ?? null) as DiscordStatus | null,
+      googlechat: (channels?.googlechat ?? null) as GoogleChatStatus | null,
+      slack: (channels?.slack ?? null) as SlackStatus | null,
+      signal: (channels?.signal ?? null) as SignalStatus | null,
+      imessage: (channels?.imessage ?? null) as IMessageStatus | null,
+      nostr: (channels?.nostr ?? null) as NostrStatus | null,
+      "openclaw-weixin": (channels?.["openclaw-weixin"] ?? null) as WeChatStatus | null,
+      channelAccounts,
+    };
+
+    switch (key) {
+      case "whatsapp":
+        return renderWhatsAppCard({ props, whatsapp: data.whatsapp, accountCountLabel });
+      case "telegram":
+        return renderTelegramCard({
+          props,
+          telegram: data.telegram,
+          telegramAccounts: channelAccounts?.telegram ?? [],
+          accountCountLabel,
+        });
+      case "discord":
+        return renderDiscordCard({ props, discord: data.discord, accountCountLabel });
+      case "googlechat":
+        return renderGoogleChatCard({ props, googleChat: data.googlechat, accountCountLabel });
+      case "slack":
+        return renderSlackCard({ props, slack: data.slack, accountCountLabel });
+      case "signal":
+        return renderSignalCard({ props, signal: data.signal, accountCountLabel });
+      case "imessage":
+        return renderIMessageCard({ props, imessage: data.imessage, accountCountLabel });
+      case "openclaw-weixin":
+        return renderWeChatCard({
+          props,
+          wechat: data["openclaw-weixin"],
+          accountCountLabel,
+          qrDataUrl: this._wechatQr,
+          loginMessage: this._wechatMessage,
+          loginBusy: this._wechatBusy,
+          onLogin: () => void this._wechatLogin(),
+          onLogout: () => void this._wechatLogout(),
+        });
+      case "nostr": {
+        const nostrAccounts = channelAccounts?.nostr ?? [];
+        const primaryAccount = nostrAccounts[0];
+        const accountId = primaryAccount?.accountId ?? "default";
+        const profile =
+          (primaryAccount as { profile?: NostrProfile | null } | undefined)?.profile ?? null;
+        const showForm =
+          this._nostrProfileAccountId === accountId ? this._nostrProfileFormState : null;
+        const profileFormCallbacks = showForm
+          ? {
+              onFieldChange: props.onNostrProfileFieldChange,
+              onSave: props.onNostrProfileSave,
+              onImport: props.onNostrProfileImport,
+              onCancel: props.onNostrProfileCancel,
+              onToggleAdvanced: props.onNostrProfileToggleAdvanced,
+            }
+          : null;
+        return renderNostrCard({
+          props,
+          nostr: data.nostr,
+          nostrAccounts,
+          accountCountLabel,
+          profileFormState: showForm,
+          profileFormCallbacks,
+          onEditProfile: () => props.onNostrProfileEdit(accountId, profile),
+        });
+      }
+      default:
+        return this._renderGenericChannel(key, props);
     }
   }
 
-  // ── WhatsApp ──────────────────────────────────────────────────────────────
+  // ── Generic channel fallback ──────────────────────────────────────────────
 
-  private _renderWhatsApp(wa: WhatsAppStatus) {
-    const configured = resolveConfigured("whatsapp", this._snapshot, wa as Record<string, unknown>);
-    return html`
-      <div class="panel">
-        <div class="panel-title">WhatsApp</div>
-        <div class="card-sub" style="margin-bottom:12px;">Link WhatsApp Web and monitor connection health.</div>
-        ${this._renderAccountCount("whatsapp")}
-        <div class="status-list">
-          ${this._row("Configured", this._fmt(configured))}
-          ${this._row("Linked",     wa.linked     ? "Yes" : "No")}
-          ${this._row("Running",    wa.running    ? "Yes" : "No")}
-          ${this._row("Connected",  wa.connected  ? "Yes" : "No")}
-          ${this._row("Last connect", relTime(wa.lastConnectedAt))}
-          ${this._row("Last message", relTime(wa.lastMessageAt))}
-          ${this._row("Auth age", wa.authAgeMs != null ? formatDurationHuman(wa.authAgeMs) : "n/a")}
-        </div>
-        ${wa.lastError ? html`<div class="callout danger" style="margin-top:12px;">${wa.lastError}</div>` : nothing}
-        ${this._whatsappMessage ? html`<div class="callout" style="margin-top:12px;">${this._whatsappMessage}</div>` : nothing}
-        ${this._whatsappQr ? html`<div class="qr-wrap"><img src=${this._whatsappQr} alt="WhatsApp QR"/></div>` : nothing}
-        <div class="row" style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap;">
-          <button class="btn primary" ?disabled=${this._whatsappBusy} @click=${() => void this._whatsappStart(false)}>
-            ${this._whatsappBusy ? "Working…" : "Show QR"}
-          </button>
-          <button class="btn" ?disabled=${this._whatsappBusy} @click=${() => void this._whatsappStart(true)}>Relink</button>
-          <button class="btn" ?disabled=${this._whatsappBusy} @click=${() => void this._whatsappWait()}>Wait for scan</button>
-          <button class="btn danger" ?disabled=${this._whatsappBusy} @click=${() => void this._whatsappLogout()}>Logout</button>
-          <button class="btn" @click=${() => void this._loadChannels(true)}>Refresh</button>
-        </div>
-      </div>
-      ${this._renderConfigPanel("whatsapp")}
-    `;
-  }
-
-  // ── Telegram ──────────────────────────────────────────────────────────────
-
-  private _renderTelegram(tg: TelegramStatus) {
-    const configured = resolveConfigured("telegram", this._snapshot, tg as Record<string, unknown>);
-    const accounts = this._snapshot?.channelAccounts?.["telegram"] ?? [];
-    if (accounts.length > 1) {
-      return html`
-        <div class="panel">
-          <div class="panel-title">Telegram</div>
-          <div class="card-sub" style="margin-bottom:12px;">Bot status and channel configuration.</div>
-          ${this._renderAccountCount("telegram")}
-          <div class="account-card-list">
-            ${accounts.map((a) => {
-              const probe = a.probe as { bot?: { username?: string } } | undefined;
-              const botUsername = probe?.bot?.username;
-              const label = a.name || a.accountId;
-              return html`
-                <div class="account-card">
-                  <div class="account-header">
-                    <span class="account-name">${botUsername ? `@${botUsername}` : label}</span>
-                    <span class="account-id">${a.accountId}</span>
-                  </div>
-                  <div class="status-list">
-                    ${this._row("Running",     a.running    ? "Yes" : "No")}
-                    ${this._row("Configured",  a.configured ? "Yes" : "No")}
-                    ${this._row("Last inbound", relTime(a.lastInboundAt))}
-                  </div>
-                  ${a.lastError ? html`<div class="callout danger" style="margin-top:8px;">${a.lastError}</div>` : nothing}
-                </div>`;
-            })}
-          </div>
-          ${tg.lastError ? html`<div class="callout danger" style="margin-top:12px;">${tg.lastError}</div>` : nothing}
-          ${tg.probe ? this._probeCallout(tg.probe) : nothing}
-          ${this._renderConfigPanel("telegram")}
-          <div class="row" style="margin-top:12px;">
-            <button class="btn" @click=${() => void this._loadChannels(true)}>Probe</button>
-          </div>
-        </div>
-      `;
-    }
-    return html`
-      <div class="panel">
-        <div class="panel-title">Telegram</div>
-        <div class="card-sub" style="margin-bottom:12px;">Bot status and channel configuration.</div>
-        ${this._renderAccountCount("telegram")}
-        <div class="status-list">
-          ${this._row("Configured", this._fmt(configured))}
-          ${this._row("Running",    tg.running ? "Yes" : "No")}
-          ${this._row("Mode",       tg.mode ?? "n/a")}
-          ${this._row("Last start", relTime(tg.lastStartAt))}
-          ${this._row("Last probe", relTime(tg.lastProbeAt))}
-        </div>
-        ${tg.lastError ? html`<div class="callout danger" style="margin-top:12px;">${tg.lastError}</div>` : nothing}
-        ${tg.probe ? this._probeCallout(tg.probe) : nothing}
-        ${this._renderConfigPanel("telegram")}
-        <div class="row" style="margin-top:12px; display:flex; gap:8px;">
-          <button class="btn" @click=${() => void this._loadChannels(true)}>Probe</button>
-        </div>
-      </div>
-    `;
-  }
-
-  // ── Discord ───────────────────────────────────────────────────────────────
-
-  private _renderDiscord(dc: DiscordStatus) {
-    const configured = resolveConfigured("discord", this._snapshot, dc as Record<string, unknown>);
-    return html`
-      <div class="panel">
-        <div class="panel-title">Discord</div>
-        <div class="card-sub" style="margin-bottom:12px;">Bot status and channel configuration.</div>
-        ${this._renderAccountCount("discord")}
-        <div class="status-list">
-          ${this._row("Configured", this._fmt(configured))}
-          ${this._row("Running",    dc.running ? "Yes" : "No")}
-          ${this._row("Last start", relTime(dc.lastStartAt))}
-          ${this._row("Last probe", relTime(dc.lastProbeAt))}
-        </div>
-        ${dc.lastError ? html`<div class="callout danger" style="margin-top:12px;">${dc.lastError}</div>` : nothing}
-        ${dc.probe ? this._probeCallout(dc.probe) : nothing}
-        ${this._renderConfigPanel("discord")}
-        <div class="row" style="margin-top:12px; display:flex; gap:8px;">
-          <button class="btn" @click=${() => void this._loadChannels(true)}>Probe</button>
-        </div>
-      </div>
-    `;
-  }
-
-  // ── Google Chat ───────────────────────────────────────────────────────────
-
-  private _renderGoogleChat(gc: GoogleChatStatus) {
-    const configured = resolveConfigured("googlechat", this._snapshot, gc as Record<string, unknown>);
-    const audience = gc.audienceType
-      ? `${gc.audienceType}${gc.audience ? ` · ${gc.audience}` : ""}`
-      : "n/a";
-    return html`
-      <div class="panel">
-        <div class="panel-title">Google Chat</div>
-        <div class="card-sub" style="margin-bottom:12px;">Chat API webhook status and channel configuration.</div>
-        ${this._renderAccountCount("googlechat")}
-        <div class="status-list">
-          ${this._row("Configured",  this._fmt(configured))}
-          ${this._row("Running",     gc.running ? "Yes" : "No")}
-          ${this._row("Credential",  gc.credentialSource ?? "n/a")}
-          ${this._row("Audience",    audience)}
-          ${this._row("Last start",  relTime(gc.lastStartAt))}
-          ${this._row("Last probe",  relTime(gc.lastProbeAt))}
-        </div>
-        ${gc.lastError ? html`<div class="callout danger" style="margin-top:12px;">${gc.lastError}</div>` : nothing}
-        ${gc.probe ? this._probeCallout(gc.probe) : nothing}
-        ${this._renderConfigPanel("googlechat")}
-        <div class="row" style="margin-top:12px; display:flex; gap:8px;">
-          <button class="btn" @click=${() => void this._loadChannels(true)}>Probe</button>
-        </div>
-      </div>
-    `;
-  }
-
-  // ── Slack ─────────────────────────────────────────────────────────────────
-
-  private _renderSlack(sl: SlackStatus) {
-    const configured = resolveConfigured("slack", this._snapshot, sl as Record<string, unknown>);
-    return html`
-      <div class="panel">
-        <div class="panel-title">Slack</div>
-        <div class="card-sub" style="margin-bottom:12px;">Socket mode status and channel configuration.</div>
-        ${this._renderAccountCount("slack")}
-        <div class="status-list">
-          ${this._row("Configured", this._fmt(configured))}
-          ${this._row("Running",    sl.running ? "Yes" : "No")}
-          ${this._row("Last start", relTime(sl.lastStartAt))}
-          ${this._row("Last probe", relTime(sl.lastProbeAt))}
-        </div>
-        ${sl.lastError ? html`<div class="callout danger" style="margin-top:12px;">${sl.lastError}</div>` : nothing}
-        ${sl.probe ? this._probeCallout(sl.probe) : nothing}
-        ${this._renderConfigPanel("slack")}
-        <div class="row" style="margin-top:12px; display:flex; gap:8px;">
-          <button class="btn" @click=${() => void this._loadChannels(true)}>Probe</button>
-        </div>
-      </div>
-    `;
-  }
-
-  // ── Signal ────────────────────────────────────────────────────────────────
-
-  private _renderSignal(sg: SignalStatus) {
-    const configured = resolveConfigured("signal", this._snapshot, sg as Record<string, unknown>);
-    return html`
-      <div class="panel">
-        <div class="panel-title">Signal</div>
-        <div class="card-sub" style="margin-bottom:12px;">signal-cli status and channel configuration.</div>
-        ${this._renderAccountCount("signal")}
-        <div class="status-list">
-          ${this._row("Configured", this._fmt(configured))}
-          ${this._row("Running",    sg.running ? "Yes" : "No")}
-          ${this._row("Base URL",   sg.baseUrl ?? "n/a")}
-          ${this._row("Last start", relTime(sg.lastStartAt))}
-          ${this._row("Last probe", relTime(sg.lastProbeAt))}
-        </div>
-        ${sg.lastError ? html`<div class="callout danger" style="margin-top:12px;">${sg.lastError}</div>` : nothing}
-        ${sg.probe ? this._probeCallout(sg.probe) : nothing}
-        ${this._renderConfigPanel("signal")}
-        <div class="row" style="margin-top:12px; display:flex; gap:8px;">
-          <button class="btn" @click=${() => void this._loadChannels(true)}>Probe</button>
-        </div>
-      </div>
-    `;
-  }
-
-  // ── iMessage ──────────────────────────────────────────────────────────────
-
-  private _renderIMessage(im: IMessageStatus) {
-    const configured = resolveConfigured("imessage", this._snapshot, im as Record<string, unknown>);
-    return html`
-      <div class="panel">
-        <div class="panel-title">iMessage</div>
-        <div class="card-sub" style="margin-bottom:12px;">macOS bridge status and channel configuration.</div>
-        ${this._renderAccountCount("imessage")}
-        <div class="status-list">
-          ${this._row("Configured", this._fmt(configured))}
-          ${this._row("Running",    im.running ? "Yes" : "No")}
-          ${this._row("Last start", relTime(im.lastStartAt))}
-          ${this._row("Last probe", relTime(im.lastProbeAt))}
-        </div>
-        ${im.lastError ? html`<div class="callout danger" style="margin-top:12px;">${im.lastError}</div>` : nothing}
-        ${im.probe ? this._probeCallout(im.probe as ProbeResult) : nothing}
-        ${this._renderConfigPanel("imessage")}
-        <div class="row" style="margin-top:12px; display:flex; gap:8px;">
-          <button class="btn" @click=${() => void this._loadChannels(true)}>Probe</button>
-        </div>
-      </div>
-    `;
-  }
-
-  // ── Nostr ─────────────────────────────────────────────────────────────────
-
-  private _renderNostr(nostr: NostrStatus) {
-    const accounts = this._snapshot?.channelAccounts?.["nostr"] ?? [];
-    const primaryAccount = accounts[0];
-    const configured = nostr.configured ?? primaryAccount?.configured ?? false;
-    const running    = nostr.running    ?? primaryAccount?.running    ?? false;
-    const publicKey  = nostr.publicKey  ?? (primaryAccount as { publicKey?: string } | undefined)?.publicKey;
-    const lastStartAt = nostr.lastStartAt ?? primaryAccount?.lastStartAt ?? undefined;
-    const lastError   = nostr.lastError   ?? primaryAccount?.lastError   ?? null;
-    const hasMultiple = accounts.length > 1;
-    const profile = nostr.profile ?? (primaryAccount as { profile?: NostrStatus["profile"] } | undefined)?.profile;
+  private _renderGenericChannel(key: ChannelKey, props: ChannelsProps) {
+    const label = resolveChannelLabel(this._snapshot, key);
+    const displayState = resolveChannelDisplayState(key, props);
+    const lastError =
+      typeof displayState.status?.lastError === "string" ? displayState.status.lastError : undefined;
+    const accounts = this._snapshot?.channelAccounts?.[key] ?? [];
+    const accountCountLabel = renderChannelAccountCount(key, this._snapshot?.channelAccounts ?? null);
 
     return html`
-      <div class="panel">
-        <div class="panel-title">Nostr</div>
-        <div class="card-sub" style="margin-bottom:12px;">Decentralized DMs via Nostr relays (NIP-04).</div>
-        ${this._renderAccountCount("nostr")}
-
-        ${hasMultiple
-          ? html`
-            <div class="account-card-list" style="margin-top:12px;">
-              ${accounts.map((a) => {
-                const pk = (a as { publicKey?: string }).publicKey;
-                const prof = (a as { profile?: { name?: string; displayName?: string } }).profile;
-                const displayName = prof?.displayName ?? prof?.name ?? a.name ?? a.accountId;
-                return html`
-                  <div class="account-card">
-                    <div class="account-header">
-                      <span class="account-name">${displayName}</span>
-                      <span class="account-id">${a.accountId}</span>
-                    </div>
-                    <div class="status-list">
-                      ${this._row("Running",     a.running    ? "Yes" : "No")}
-                      ${this._row("Configured",  a.configured ? "Yes" : "No")}
-                      ${this._row("Public Key",  truncatePubkey(pk))}
-                      ${this._row("Last inbound", relTime(a.lastInboundAt))}
-                    </div>
-                    ${a.lastError ? html`<div class="callout danger" style="margin-top:8px;">${a.lastError}</div>` : nothing}
-                  </div>`;
-              })}
-            </div>`
-          : html`
-            <div class="status-list" style="margin-top:12px;">
-              ${this._row("Configured", configured ? "Yes" : "No")}
-              ${this._row("Running",    running    ? "Yes" : "No")}
-              ${this._row("Public Key", truncatePubkey(publicKey))}
-              ${this._row("Last start", relTime(lastStartAt))}
-            </div>`}
-
-        ${lastError ? html`<div class="callout danger" style="margin-top:12px;">${lastError}</div>` : nothing}
-
-        ${profile ? html`
-          <div style="margin-top:16px; padding:12px; background:var(--ac-bg-muted); border-radius:var(--ac-radius-md);">
-            <div style="font-weight:600; font-size:13px; margin-bottom:8px;">Profile</div>
-            ${profile.picture ? html`
-              <img src=${profile.picture} alt="Profile picture"
-                style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:2px solid var(--ac-border);margin-bottom:8px;"
-                @error=${(e: Event) => { (e.target as HTMLImageElement).style.display = "none"; }}/>` : nothing}
-            <div class="status-list">
-              ${profile.name        ? this._row("Name",         profile.name)         : nothing}
-              ${profile.displayName ? this._row("Display Name", profile.displayName)  : nothing}
-              ${profile.about       ? this._row("About",        profile.about)        : nothing}
-              ${profile.nip05       ? this._row("NIP-05",       profile.nip05)        : nothing}
+      <div class="card-title">${label}</div>
+      <div class="card-sub">Channel status and configuration.</div>
+      ${accountCountLabel}
+      ${accounts.length > 0
+        ? html`
+            <div class="account-card-list">
+              ${accounts.map((account) => this._renderGenericAccount(account))}
             </div>
-          </div>` : nothing}
-
-        ${this._renderConfigPanel("nostr")}
-        <div class="row" style="margin-top:12px; display:flex; gap:8px;">
-          <button class="btn" @click=${() => void this._loadChannels(false)}>Refresh</button>
-        </div>
-      </div>
-    `;
-  }
-
-  // ── Generic (plugin channels) ─────────────────────────────────────────────
-
-  private _renderGeneric(id: string, ch: Record<string, unknown>) {
-    const label = channelDisplayName(id, this._snapshot?.channelMeta);
-    return html`
-      <div class="panel">
-        <div class="panel-title">${label}</div>
-        <div class="card-sub" style="margin-bottom:12px;">Channel status and configuration.</div>
-        ${this._renderAccountCount(id)}
-        <div class="status-list">
-          ${"configured" in ch ? this._row("Configured", ch["configured"] ? "Yes" : "No") : nothing}
-          ${"running"    in ch ? this._row("Running",    ch["running"]    ? "Yes" : "No") : nothing}
-          ${"connected"  in ch ? this._row("Connected",  ch["connected"]  ? "Yes" : "No") : nothing}
-          ${"lastStartAt" in ch ? this._row("Last start", relTime(ch["lastStartAt"] as number | undefined)) : nothing}
-          ${"lastProbeAt" in ch ? this._row("Last probe", relTime(ch["lastProbeAt"] as number | undefined)) : nothing}
-        </div>
-        ${"lastError" in ch && ch["lastError"]
-          ? html`<div class="callout danger" style="margin-top:12px;">${ch["lastError"]}</div>`
-          : nothing}
-        ${this._renderConfigPanel(id)}
-        <div class="row" style="margin-top:12px; display:flex; gap:8px;">
-          <button class="btn" @click=${() => void this._loadChannels(true)}>Probe</button>
-        </div>
-      </div>
-    `;
-  }
-
-  // ── Shared helpers ────────────────────────────────────────────────────────
-
-  private _row(label: string, value: string | null | undefined) {
-    return html`
-      <div class="status-row">
-        <span class="status-label">${label}</span>
-        <span class="status-value">${value ?? "n/a"}</span>
-      </div>`;
-  }
-
-  private _fmt(v: boolean | null | undefined): string {
-    if (v === true) return "Yes";
-    if (v === false) return "No";
-    return "n/a";
-  }
-
-  private _probeCallout(probe: ProbeResult) {
-    return html`<div class="callout" style="margin-top:12px;">
-      Probe ${probe.ok ? "ok" : "failed"} · ${probe.status ?? ""} ${probe.error ?? ""}
-    </div>`;
-  }
-
-  private _renderAccountCount(id: string) {
-    const accounts = this._snapshot?.channelAccounts?.[id] ?? [];
-    if (accounts.length === 0) return nothing;
-    return html`<div class="muted" style="margin-bottom:8px;">${accounts.length} account${accounts.length > 1 ? "s" : ""}</div>`;
-  }
-
-  private _renderStatusRow(label: string, value: unknown) {
-    if (value === undefined) return nothing;
-    const text = value === null ? "n/a" : value === true ? "Yes" : value === false ? "No" : String(value);
-    const cls = value === true ? "ok" : value === false ? "off" : "warn";
-    return html`
-      <div class="status-row">
-        <span class="status-label">${label}</span>
-        <span class="badge ${cls}">${text}</span>
-      </div>
-    `;
-  }
-
-  private _renderAccountList(accounts: ChannelAccountSnapshot[]) {
-    return html`
-      <div style="margin-top:16px;">
-        ${accounts.map((account) => html`
-          <div class="account-card">
-            <div class="account-header">
-              <span class="account-name">${account.name ?? account.accountId}</span>
-              <span class="account-id">${account.accountId}</span>
+          `
+        : html`
+            <div class="status-list" style="margin-top: 16px;">
+              <div>
+                <span class="label">Configured</span>
+                <span>${formatNullableBoolean(displayState.configured)}</span>
+              </div>
+              <div>
+                <span class="label">Running</span>
+                <span>${formatNullableBoolean(displayState.running)}</span>
+              </div>
+              <div>
+                <span class="label">Connected</span>
+                <span>${formatNullableBoolean(displayState.connected)}</span>
+              </div>
             </div>
-            <div class="status-list">
-              ${this._renderStatusRow("Running", account.running ?? null)}
-              ${this._renderStatusRow("Configured", account.configured ?? null)}
-              ${"lastInboundAt" in account ? html`
-                <div class="status-row">
-                  <span class="status-label">Last inbound</span>
-                  <span class="status-value">${relTime(account.lastInboundAt)}</span>
-                </div>` : nothing}
-            </div>
-            ${account.lastError
-              ? html`<div class="callout danger" style="margin-top:8px;">${account.lastError}</div>`
-              : nothing}
+          `}
+      ${lastError
+        ? html`<div class="callout danger" style="margin-top: 12px;">${lastError}</div>`
+        : nothing}
+      ${renderChannelConfigSection({ channelId: key, props })}
+    `;
+  }
+
+  private _renderGenericAccount(account: ChannelAccountSnapshot) {
+    return html`
+      <div class="account-card">
+        <div class="account-header">
+          <span class="account-name">${account.name || account.accountId}</span>
+          <span class="account-id">${account.accountId}</span>
+        </div>
+        <div class="status-list account-card-status">
+          <div>
+            <span class="label">Running</span>
+            <span>${account.running ? "Yes" : "No"}</span>
           </div>
-        `)}
-      </div>
-    `;
-  }
-
-  private _renderWhatsAppExtras(ch: Record<string, unknown>) {
-    const connected = ch["connected"] === true || this._whatsappConnected === true;
-    return html`
-      <div style="margin-top:16px; display:flex; flex-direction:column; gap:8px;">
-        ${this._whatsappMessage
-          ? html`<div class="callout">${this._whatsappMessage}</div>`
-          : nothing}
-        ${this._whatsappQr
-          ? html`<div class="qr-wrap"><img src=${this._whatsappQr} alt="WhatsApp QR code"/></div>`
-          : nothing}
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button class="btn primary" ?disabled=${this._whatsappBusy} @click=${() => void this._whatsappStart(false)}>
-            ${connected ? "Re-login" : "Login"}
-          </button>
-          ${this._whatsappQr
-            ? html`<button class="btn" ?disabled=${this._whatsappBusy} @click=${() => void this._whatsappWait()}>Wait for scan</button>`
-            : nothing}
-          ${connected
-            ? html`<button class="btn" ?disabled=${this._whatsappBusy} @click=${() => void this._whatsappLogout()}>Logout</button>`
+          <div>
+            <span class="label">Configured</span>
+            <span>${account.configured ? "Yes" : "No"}</span>
+          </div>
+          <div>
+            <span class="label">Connected</span>
+            <span>${account.connected === true ? "Yes" : account.connected === false ? "No" : "n/a"}</span>
+          </div>
+          <div>
+            <span class="label">Last inbound</span>
+            <span>${account.lastInboundAt ? formatRelativeTimestamp(account.lastInboundAt) : "n/a"}</span>
+          </div>
+          ${account.lastError
+            ? html`<div class="account-card-error">${account.lastError}</div>`
             : nothing}
         </div>
       </div>
     `;
   }
-
-  private _renderConfigPanel(channelId: string) {
-    return renderChannelConfigSection({
-      channelId,
-      configForm: this._configForm,
-      configSchema: this._configSchema,
-      configSchemaLoading: this._configSchemaLoading,
-      configSaving: this._configSaving,
-      configDirty: this._configDirty,
-      onPatch: (path, value) => this._patchConfig(path, value),
-      onSave: () => void this._saveConfig(),
-      onReload: () => void this._reloadConfig(),
-    });
-  }
-
 }
 
 declare global {

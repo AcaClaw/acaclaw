@@ -13,6 +13,7 @@ AcaClaw is doc-driven: design docs are written first, then implementation follow
 | Architecture | `docs/en/architecture.md` | System structure, plugin hooks, gateway integration |
 | Agents | `docs/en/agents.md` | Adding, modifying, or configuring agents |
 | Auth & App Launch | `docs/en/auth-and-app-launch.md` | Auth flow, gateway connection, app startup |
+| Chat Channels | `docs/en/channel.md` | Supported channels, setup, Channels panel in GUI |
 | Chat Handling | `docs/en/chat-handling.md` | Chat UI, message flow, model interaction |
 | Computing Environment | `docs/en/computing-environment.md` | Conda envs, packages, environment isolation |
 | Contributing | `docs/en/contributing.md` | PR workflow, coding standards, onboarding |
