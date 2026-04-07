@@ -562,30 +562,38 @@ else
 fi
 
 # --- WeChat (openclaw-weixin) channel plugin ---
-log "Installing WeChat channel plugin (openclaw-weixin)..."
-WEIXIN_EXT_DIR="${ACACLAW_PLUGINS_DIR}/openclaw-weixin"
-if [[ -d "$WEIXIN_EXT_DIR" ]]; then
-	log "openclaw-weixin already installed, updating..."
-fi
-if npx -y @tencent-weixin/openclaw-weixin-cli@latest install 2>/dev/null; then
-	# Apply AcaClaw patches:
-	#   - channel.ts: add gatewayMethods so web.login.start/wait dispatch to this plugin
-	#   - login-qr.ts: add accountToSession map so gateway's accountId-only wait call works
-	WEIXIN_PATCHES_DIR="${SCRIPT_DIR}/../patches/openclaw-weixin"
-	if [[ -d "$WEIXIN_PATCHES_DIR" ]]; then
-		if [[ -f "$WEIXIN_PATCHES_DIR/channel.ts" ]]; then
-			cp "$WEIXIN_PATCHES_DIR/channel.ts" "${WEIXIN_EXT_DIR}/src/channel.ts"
-			log "  patched channel.ts (gatewayMethods) ✓"
+# Optional plugin — failure here must never block the rest of install.
+# Runs in a subshell so set -e cannot propagate.
+(
+	_install_weixin() {
+		local ext_dir="${ACACLAW_PLUGINS_DIR}/openclaw-weixin"
+		local patches_dir="${SCRIPT_DIR}/../patches/openclaw-weixin"
+
+		log "Installing WeChat channel plugin (openclaw-weixin)..."
+
+		# Download latest via npm pack (non-interactive, no QR prompt)
+		local tgz
+		tgz=$(cd /tmp && npm pack @tencent-weixin/openclaw-weixin@latest 2>/dev/null) || return 1
+		mkdir -p "$ext_dir"
+		tar xzf "/tmp/$tgz" -C "$ext_dir" --strip-components=1 || return 1
+		rm -f "/tmp/$tgz"
+
+		# Runtime dependencies
+		(cd "$ext_dir" && npm install --omit=dev --ignore-scripts 2>/dev/null) || true
+		(cd "$ext_dir" && npm install --save qrcode 2>/dev/null) || true
+
+		# Apply AcaClaw patches (gatewayMethods, accountToSession, QR data URI)
+		if [[ -d "$patches_dir" ]]; then
+			[[ -f "$patches_dir/channel.ts" ]] && \
+				command cp -f "$patches_dir/channel.ts" "$ext_dir/src/channel.ts"
+			[[ -f "$patches_dir/login-qr.ts" ]] && \
+				command cp -f "$patches_dir/login-qr.ts" "$ext_dir/src/auth/login-qr.ts"
 		fi
-		if [[ -f "$WEIXIN_PATCHES_DIR/login-qr.ts" ]]; then
-			cp "$WEIXIN_PATCHES_DIR/login-qr.ts" "${WEIXIN_EXT_DIR}/src/auth/login-qr.ts"
-			log "  patched login-qr.ts (accountToSession) ✓"
-		fi
-	fi
-	log "openclaw-weixin installed ✓"
-else
-	warn "Failed to install openclaw-weixin (WeChat channel will be unavailable)"
-fi
+
+		log "openclaw-weixin installed ✓"
+	}
+	_install_weixin || warn "WeChat plugin install failed (non-fatal, skipping)"
+) || true
 
 log "Installing @acaclaw/ui..."
 ACAC_UI_SRC="${SCRIPT_DIR}/../ui"
@@ -856,20 +864,21 @@ plugins['allow'] = [
     'acaclaw-workspace',
     'openclaw-weixin'
 ]
-# WeChat channel: pre-configure so the gateway loads it as a channel plugin.
+# WeChat channel: only configure if the plugin was actually installed.
 # hasMeaningfulChannelConfig() requires at least one key besides 'enabled'.
-channels = cfg.setdefault('channels', {})
-weixin = channels.setdefault('openclaw-weixin', {})
-weixin.setdefault('enabled', True)
-weixin.setdefault('accounts', {}).setdefault('default', {}).setdefault('enabled', True)
-# Bindings: route WeChat messages to the main agent (required for message delivery)
-bindings = cfg.setdefault('bindings', [])
-has_weixin_binding = any(
-    b.get('match', {}).get('channel') == 'openclaw-weixin'
-    for b in bindings if isinstance(b, dict)
-)
-if not has_weixin_binding:
-    bindings.append({'agentId': 'main', 'match': {'channel': 'openclaw-weixin'}})
+import os
+if os.path.isfile(os.path.expanduser('~/.openclaw/extensions/openclaw-weixin/index.ts')):
+    channels = cfg.setdefault('channels', {})
+    weixin = channels.setdefault('openclaw-weixin', {})
+    weixin.setdefault('enabled', True)
+    weixin.setdefault('accounts', {}).setdefault('default', {}).setdefault('enabled', True)
+    bindings = cfg.setdefault('bindings', [])
+    has_weixin_binding = any(
+        b.get('match', {}).get('channel') == 'openclaw-weixin'
+        for b in bindings if isinstance(b, dict)
+    )
+    if not has_weixin_binding:
+        bindings.append({'agentId': 'main', 'match': {'channel': 'openclaw-weixin'}})
 # Normalize every provider entry: validator requires models to be an array.
 # This is independent of which providers are configured — the app launch
 # must never fail because a provider is missing a field.
