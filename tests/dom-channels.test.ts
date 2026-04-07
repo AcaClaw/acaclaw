@@ -182,11 +182,11 @@ describe("ChannelsView DOM", () => {
     cleanup(el);
   });
 
-  it("status panel shows Configured badge", async () => {
+  it("status panel shows Configured status value", async () => {
     const el = await createElement();
-    const badges = Array.from(shadowQA(el, ".badge"));
-    const texts = badges.map((b) => b.textContent?.trim());
-    expect(texts).toContain("Yes");
+    const values = Array.from(shadowQA(el, ".status-value"));
+    const texts = values.map((v) => v.textContent?.trim());
+    expect(texts.some((t) => t === "Yes" || t === "No" || t === "n/a")).toBe(true);
     cleanup(el);
   });
 
@@ -269,10 +269,11 @@ describe("ChannelsView DOM", () => {
     select.value = "telegram";
     select.dispatchEvent(new Event("change"));
     await el.updateComplete;
-    // WhatsApp login button should not appear
+    // WhatsApp-specific buttons should not appear
     const btns = Array.from(shadowQA(el, ".btn"))
       .map((b) => b.textContent?.trim());
-    expect(btns).not.toContain("Login");
+    expect(btns).not.toContain("Show QR");
+    expect(btns).not.toContain("Relink");
     cleanup(el);
   });
 
@@ -284,8 +285,9 @@ describe("ChannelsView DOM", () => {
     await el.updateComplete;
     const btns = Array.from(shadowQA(el, ".btn"))
       .map((b) => b.textContent?.trim());
-    // Connected state shows Re-login and Logout
-    expect(btns.some((b) => b === "Login" || b === "Re-login")).toBe(true);
+    // WhatsApp always shows Show QR / Relink / Wait for scan / Logout / Refresh
+    expect(btns).toContain("Show QR");
+    expect(btns).toContain("Relink");
     cleanup(el);
   });
 

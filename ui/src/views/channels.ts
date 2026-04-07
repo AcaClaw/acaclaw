@@ -17,7 +17,7 @@ import { customElement, state } from "lit/decorators.js";
 import { gateway, updateConfig } from "../controllers/gateway.js";
 import { t, LocaleController } from "../i18n.js";
 
-// ─── Types (subset of OpenClaw's ChannelsStatusSnapshot) ──────────────────
+// ─── Types (1:1 with OpenClaw's channel types) ────────────────────────────
 
 interface ChannelAccountSnapshot {
   accountId: string;
@@ -26,8 +26,102 @@ interface ChannelAccountSnapshot {
   running?: boolean;
   connected?: boolean;
   lastInboundAt?: number;
+  lastStartAt?: number;
   lastError?: string | null;
   probe?: unknown;
+  // Telegram-specific
+  publicKey?: string;
+  profile?: {
+    name?: string;
+    displayName?: string;
+    about?: string;
+    picture?: string;
+    nip05?: string;
+  };
+}
+
+interface ProbeResult {
+  ok: boolean;
+  status?: string;
+  error?: string;
+}
+
+interface WhatsAppStatus {
+  linked?: boolean;
+  running?: boolean;
+  connected?: boolean;
+  lastConnectedAt?: number;
+  lastMessageAt?: number;
+  authAgeMs?: number;
+  lastError?: string | null;
+}
+
+interface TelegramStatus {
+  running?: boolean;
+  mode?: string;
+  lastStartAt?: number;
+  lastProbeAt?: number;
+  lastError?: string | null;
+  probe?: ProbeResult;
+}
+
+interface DiscordStatus {
+  running?: boolean;
+  lastStartAt?: number;
+  lastProbeAt?: number;
+  lastError?: string | null;
+  probe?: ProbeResult;
+}
+
+interface GoogleChatStatus {
+  running?: boolean;
+  credentialSource?: string;
+  audienceType?: string;
+  audience?: string;
+  lastStartAt?: number;
+  lastProbeAt?: number;
+  lastError?: string | null;
+  probe?: ProbeResult;
+}
+
+interface SlackStatus {
+  running?: boolean;
+  lastStartAt?: number;
+  lastProbeAt?: number;
+  lastError?: string | null;
+  probe?: ProbeResult;
+}
+
+interface SignalStatus {
+  running?: boolean;
+  baseUrl?: string;
+  lastStartAt?: number;
+  lastProbeAt?: number;
+  lastError?: string | null;
+  probe?: ProbeResult;
+}
+
+interface IMessageStatus {
+  running?: boolean;
+  lastStartAt?: number;
+  lastProbeAt?: number;
+  lastError?: string | null;
+  probe?: ProbeResult;
+}
+
+interface NostrStatus {
+  configured?: boolean;
+  running?: boolean;
+  publicKey?: string;
+  lastStartAt?: number;
+  lastError?: string | null;
+  profile?: {
+    name?: string;
+    displayName?: string;
+    about?: string;
+    picture?: string;
+    nip05?: string;
+  };
 }
 
 interface ChannelMeta {
@@ -36,7 +130,16 @@ interface ChannelMeta {
 }
 
 interface ChannelsStatusSnapshot {
-  channels?: Record<string, Record<string, unknown>>;
+  channels?: {
+    whatsapp?: WhatsAppStatus;
+    telegram?: TelegramStatus;
+    discord?: DiscordStatus;
+    googlechat?: GoogleChatStatus;
+    slack?: SlackStatus;
+    signal?: SignalStatus;
+    imessage?: IMessageStatus;
+    nostr?: NostrStatus;
+  } & Record<string, Record<string, unknown> | undefined>;
   channelMeta?: ChannelMeta[];
   channelOrder?: string[];
   channelAccounts?: Record<string, ChannelAccountSnapshot[]>;
@@ -68,16 +171,39 @@ function channelOrder(snapshot: ChannelsStatusSnapshot | null): string[] {
 }
 
 function isChannelEnabled(id: string, snapshot: ChannelsStatusSnapshot | null): boolean {
-  const ch = snapshot?.channels?.[id];
+  const ch = snapshot?.channels?.[id] as Record<string, unknown> | undefined;
   if (!ch) return false;
   return (
-    ch.configured === true ||
-    ch.running === true ||
-    ch.connected === true ||
+    ch["configured"] === true ||
+    ch["running"] === true ||
+    ch["connected"] === true ||
     (snapshot?.channelAccounts?.[id] ?? []).some(
       (a) => a.configured || a.running || a.connected,
     )
   );
+}
+
+function formatDurationHuman(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+  return `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`;
+}
+
+function resolveConfigured(
+  id: string,
+  snapshot: ChannelsStatusSnapshot | null,
+  ch: Record<string, unknown>,
+): boolean | null {
+  if ("configured" in ch) return ch["configured"] as boolean;
+  return (snapshot?.channelAccounts?.[id] ?? []).some((a) => a.configured) || null;
+}
+
+function truncatePubkey(key: string | null | undefined): string {
+  if (!key) return "n/a";
+  if (key.length <= 20) return key;
+  return `${key.slice(0, 8)}...${key.slice(-8)}`;
 }
 
 function relTime(ts: number | undefined): string {
@@ -486,43 +612,376 @@ export class ChannelsView extends LitElement {
   }
 
   private _renderChannelDetail(id: string) {
-    const ch = this._snapshot?.channels?.[id] ?? {};
-    const accounts = this._snapshot?.channelAccounts?.[id] ?? [];
+    const channels = this._snapshot?.channels ?? {};
+    switch (id) {
+      case "whatsapp": return this._renderWhatsApp(channels.whatsapp ?? {} as WhatsAppStatus);
+      case "telegram": return this._renderTelegram(channels.telegram ?? {} as TelegramStatus);
+      case "discord":  return this._renderDiscord(channels.discord ?? {} as DiscordStatus);
+      case "googlechat": return this._renderGoogleChat(channels.googlechat ?? {} as GoogleChatStatus);
+      case "slack":    return this._renderSlack(channels.slack ?? {} as SlackStatus);
+      case "signal":   return this._renderSignal(channels.signal ?? {} as SignalStatus);
+      case "imessage": return this._renderIMessage(channels.imessage ?? {} as IMessageStatus);
+      case "nostr":    return this._renderNostr(channels.nostr ?? {} as NostrStatus);
+      default:         return this._renderGeneric(id, channels[id] as Record<string, unknown> ?? {});
+    }
+  }
+
+  // ── WhatsApp ──────────────────────────────────────────────────────────────
+
+  private _renderWhatsApp(wa: WhatsAppStatus) {
+    const configured = resolveConfigured("whatsapp", this._snapshot, wa as Record<string, unknown>);
+    return html`
+      <div class="panel">
+        <div class="panel-title">WhatsApp</div>
+        <div class="card-sub" style="margin-bottom:12px;">Link WhatsApp Web and monitor connection health.</div>
+        ${this._renderAccountCount("whatsapp")}
+        <div class="status-list">
+          ${this._row("Configured", this._fmt(configured))}
+          ${this._row("Linked",     wa.linked     ? "Yes" : "No")}
+          ${this._row("Running",    wa.running    ? "Yes" : "No")}
+          ${this._row("Connected",  wa.connected  ? "Yes" : "No")}
+          ${this._row("Last connect", relTime(wa.lastConnectedAt))}
+          ${this._row("Last message", relTime(wa.lastMessageAt))}
+          ${this._row("Auth age", wa.authAgeMs != null ? formatDurationHuman(wa.authAgeMs) : "n/a")}
+        </div>
+        ${wa.lastError ? html`<div class="callout danger" style="margin-top:12px;">${wa.lastError}</div>` : nothing}
+        ${this._whatsappMessage ? html`<div class="callout" style="margin-top:12px;">${this._whatsappMessage}</div>` : nothing}
+        ${this._whatsappQr ? html`<div class="qr-wrap"><img src=${this._whatsappQr} alt="WhatsApp QR"/></div>` : nothing}
+        <div class="row" style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn primary" ?disabled=${this._whatsappBusy} @click=${() => void this._whatsappStart(false)}>
+            ${this._whatsappBusy ? "Working…" : "Show QR"}
+          </button>
+          <button class="btn" ?disabled=${this._whatsappBusy} @click=${() => void this._whatsappStart(true)}>Relink</button>
+          <button class="btn" ?disabled=${this._whatsappBusy} @click=${() => void this._whatsappWait()}>Wait for scan</button>
+          <button class="btn danger" ?disabled=${this._whatsappBusy} @click=${() => void this._whatsappLogout()}>Logout</button>
+          <button class="btn" @click=${() => void this._loadChannels(true)}>Refresh</button>
+        </div>
+      </div>
+      ${this._renderConfigPanel("whatsapp")}
+    `;
+  }
+
+  // ── Telegram ──────────────────────────────────────────────────────────────
+
+  private _renderTelegram(tg: TelegramStatus) {
+    const configured = resolveConfigured("telegram", this._snapshot, tg as Record<string, unknown>);
+    const accounts = this._snapshot?.channelAccounts?.["telegram"] ?? [];
+    if (accounts.length > 1) {
+      return html`
+        <div class="panel">
+          <div class="panel-title">Telegram</div>
+          <div class="card-sub" style="margin-bottom:12px;">Bot status and channel configuration.</div>
+          ${this._renderAccountCount("telegram")}
+          <div class="account-card-list">
+            ${accounts.map((a) => {
+              const probe = a.probe as { bot?: { username?: string } } | undefined;
+              const botUsername = probe?.bot?.username;
+              const label = a.name || a.accountId;
+              return html`
+                <div class="account-card">
+                  <div class="account-header">
+                    <span class="account-name">${botUsername ? `@${botUsername}` : label}</span>
+                    <span class="account-id">${a.accountId}</span>
+                  </div>
+                  <div class="status-list">
+                    ${this._row("Running",     a.running    ? "Yes" : "No")}
+                    ${this._row("Configured",  a.configured ? "Yes" : "No")}
+                    ${this._row("Last inbound", relTime(a.lastInboundAt))}
+                  </div>
+                  ${a.lastError ? html`<div class="callout danger" style="margin-top:8px;">${a.lastError}</div>` : nothing}
+                </div>`;
+            })}
+          </div>
+          ${tg.lastError ? html`<div class="callout danger" style="margin-top:12px;">${tg.lastError}</div>` : nothing}
+          ${tg.probe ? this._probeCallout(tg.probe) : nothing}
+          ${this._renderConfigPanel("telegram")}
+          <div class="row" style="margin-top:12px;">
+            <button class="btn" @click=${() => void this._loadChannels(true)}>Probe</button>
+          </div>
+        </div>
+      `;
+    }
+    return html`
+      <div class="panel">
+        <div class="panel-title">Telegram</div>
+        <div class="card-sub" style="margin-bottom:12px;">Bot status and channel configuration.</div>
+        ${this._renderAccountCount("telegram")}
+        <div class="status-list">
+          ${this._row("Configured", this._fmt(configured))}
+          ${this._row("Running",    tg.running ? "Yes" : "No")}
+          ${this._row("Mode",       tg.mode ?? "n/a")}
+          ${this._row("Last start", relTime(tg.lastStartAt))}
+          ${this._row("Last probe", relTime(tg.lastProbeAt))}
+        </div>
+        ${tg.lastError ? html`<div class="callout danger" style="margin-top:12px;">${tg.lastError}</div>` : nothing}
+        ${tg.probe ? this._probeCallout(tg.probe) : nothing}
+        ${this._renderConfigPanel("telegram")}
+        <div class="row" style="margin-top:12px; display:flex; gap:8px;">
+          <button class="btn" @click=${() => void this._loadChannels(true)}>Probe</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Discord ───────────────────────────────────────────────────────────────
+
+  private _renderDiscord(dc: DiscordStatus) {
+    const configured = resolveConfigured("discord", this._snapshot, dc as Record<string, unknown>);
+    return html`
+      <div class="panel">
+        <div class="panel-title">Discord</div>
+        <div class="card-sub" style="margin-bottom:12px;">Bot status and channel configuration.</div>
+        ${this._renderAccountCount("discord")}
+        <div class="status-list">
+          ${this._row("Configured", this._fmt(configured))}
+          ${this._row("Running",    dc.running ? "Yes" : "No")}
+          ${this._row("Last start", relTime(dc.lastStartAt))}
+          ${this._row("Last probe", relTime(dc.lastProbeAt))}
+        </div>
+        ${dc.lastError ? html`<div class="callout danger" style="margin-top:12px;">${dc.lastError}</div>` : nothing}
+        ${dc.probe ? this._probeCallout(dc.probe) : nothing}
+        ${this._renderConfigPanel("discord")}
+        <div class="row" style="margin-top:12px; display:flex; gap:8px;">
+          <button class="btn" @click=${() => void this._loadChannels(true)}>Probe</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Google Chat ───────────────────────────────────────────────────────────
+
+  private _renderGoogleChat(gc: GoogleChatStatus) {
+    const configured = resolveConfigured("googlechat", this._snapshot, gc as Record<string, unknown>);
+    const audience = gc.audienceType
+      ? `${gc.audienceType}${gc.audience ? ` · ${gc.audience}` : ""}`
+      : "n/a";
+    return html`
+      <div class="panel">
+        <div class="panel-title">Google Chat</div>
+        <div class="card-sub" style="margin-bottom:12px;">Chat API webhook status and channel configuration.</div>
+        ${this._renderAccountCount("googlechat")}
+        <div class="status-list">
+          ${this._row("Configured",  this._fmt(configured))}
+          ${this._row("Running",     gc.running ? "Yes" : "No")}
+          ${this._row("Credential",  gc.credentialSource ?? "n/a")}
+          ${this._row("Audience",    audience)}
+          ${this._row("Last start",  relTime(gc.lastStartAt))}
+          ${this._row("Last probe",  relTime(gc.lastProbeAt))}
+        </div>
+        ${gc.lastError ? html`<div class="callout danger" style="margin-top:12px;">${gc.lastError}</div>` : nothing}
+        ${gc.probe ? this._probeCallout(gc.probe) : nothing}
+        ${this._renderConfigPanel("googlechat")}
+        <div class="row" style="margin-top:12px; display:flex; gap:8px;">
+          <button class="btn" @click=${() => void this._loadChannels(true)}>Probe</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Slack ─────────────────────────────────────────────────────────────────
+
+  private _renderSlack(sl: SlackStatus) {
+    const configured = resolveConfigured("slack", this._snapshot, sl as Record<string, unknown>);
+    return html`
+      <div class="panel">
+        <div class="panel-title">Slack</div>
+        <div class="card-sub" style="margin-bottom:12px;">Socket mode status and channel configuration.</div>
+        ${this._renderAccountCount("slack")}
+        <div class="status-list">
+          ${this._row("Configured", this._fmt(configured))}
+          ${this._row("Running",    sl.running ? "Yes" : "No")}
+          ${this._row("Last start", relTime(sl.lastStartAt))}
+          ${this._row("Last probe", relTime(sl.lastProbeAt))}
+        </div>
+        ${sl.lastError ? html`<div class="callout danger" style="margin-top:12px;">${sl.lastError}</div>` : nothing}
+        ${sl.probe ? this._probeCallout(sl.probe) : nothing}
+        ${this._renderConfigPanel("slack")}
+        <div class="row" style="margin-top:12px; display:flex; gap:8px;">
+          <button class="btn" @click=${() => void this._loadChannels(true)}>Probe</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Signal ────────────────────────────────────────────────────────────────
+
+  private _renderSignal(sg: SignalStatus) {
+    const configured = resolveConfigured("signal", this._snapshot, sg as Record<string, unknown>);
+    return html`
+      <div class="panel">
+        <div class="panel-title">Signal</div>
+        <div class="card-sub" style="margin-bottom:12px;">signal-cli status and channel configuration.</div>
+        ${this._renderAccountCount("signal")}
+        <div class="status-list">
+          ${this._row("Configured", this._fmt(configured))}
+          ${this._row("Running",    sg.running ? "Yes" : "No")}
+          ${this._row("Base URL",   sg.baseUrl ?? "n/a")}
+          ${this._row("Last start", relTime(sg.lastStartAt))}
+          ${this._row("Last probe", relTime(sg.lastProbeAt))}
+        </div>
+        ${sg.lastError ? html`<div class="callout danger" style="margin-top:12px;">${sg.lastError}</div>` : nothing}
+        ${sg.probe ? this._probeCallout(sg.probe) : nothing}
+        ${this._renderConfigPanel("signal")}
+        <div class="row" style="margin-top:12px; display:flex; gap:8px;">
+          <button class="btn" @click=${() => void this._loadChannels(true)}>Probe</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── iMessage ──────────────────────────────────────────────────────────────
+
+  private _renderIMessage(im: IMessageStatus) {
+    const configured = resolveConfigured("imessage", this._snapshot, im as Record<string, unknown>);
+    return html`
+      <div class="panel">
+        <div class="panel-title">iMessage</div>
+        <div class="card-sub" style="margin-bottom:12px;">macOS bridge status and channel configuration.</div>
+        ${this._renderAccountCount("imessage")}
+        <div class="status-list">
+          ${this._row("Configured", this._fmt(configured))}
+          ${this._row("Running",    im.running ? "Yes" : "No")}
+          ${this._row("Last start", relTime(im.lastStartAt))}
+          ${this._row("Last probe", relTime(im.lastProbeAt))}
+        </div>
+        ${im.lastError ? html`<div class="callout danger" style="margin-top:12px;">${im.lastError}</div>` : nothing}
+        ${im.probe ? this._probeCallout(im.probe as ProbeResult) : nothing}
+        ${this._renderConfigPanel("imessage")}
+        <div class="row" style="margin-top:12px; display:flex; gap:8px;">
+          <button class="btn" @click=${() => void this._loadChannels(true)}>Probe</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Nostr ─────────────────────────────────────────────────────────────────
+
+  private _renderNostr(nostr: NostrStatus) {
+    const accounts = this._snapshot?.channelAccounts?.["nostr"] ?? [];
+    const primaryAccount = accounts[0];
+    const configured = nostr.configured ?? primaryAccount?.configured ?? false;
+    const running    = nostr.running    ?? primaryAccount?.running    ?? false;
+    const publicKey  = nostr.publicKey  ?? (primaryAccount as { publicKey?: string } | undefined)?.publicKey;
+    const lastStartAt = nostr.lastStartAt ?? primaryAccount?.lastStartAt ?? undefined;
+    const lastError   = nostr.lastError   ?? primaryAccount?.lastError   ?? null;
+    const hasMultiple = accounts.length > 1;
+    const profile = nostr.profile ?? (primaryAccount as { profile?: NostrStatus["profile"] } | undefined)?.profile;
 
     return html`
-      <!-- Status panel -->
       <div class="panel">
-        <div class="panel-title">${channelDisplayName(id, this._snapshot?.channelMeta)}</div>
-        <div class="status-list">
-          ${this._renderStatusRow("Configured", ch.configured)}
-          ${this._renderStatusRow("Running", ch.running)}
-          ${this._renderStatusRow("Connected", ch.connected)}
-          ${"lastStartAt" in ch ? html`
-            <div class="status-row">
-              <span class="status-label">Last start</span>
-              <span class="status-value">${relTime(ch.lastStartAt as number | undefined)}</span>
-            </div>` : nothing}
-          ${"lastProbeAt" in ch ? html`
-            <div class="status-row">
-              <span class="status-label">Last probe</span>
-              <span class="status-value">${relTime(ch.lastProbeAt as number | undefined)}</span>
-            </div>` : nothing}
+        <div class="panel-title">Nostr</div>
+        <div class="card-sub" style="margin-bottom:12px;">Decentralized DMs via Nostr relays (NIP-04).</div>
+        ${this._renderAccountCount("nostr")}
+
+        ${hasMultiple
+          ? html`
+            <div class="account-card-list" style="margin-top:12px;">
+              ${accounts.map((a) => {
+                const pk = (a as { publicKey?: string }).publicKey;
+                const prof = (a as { profile?: { name?: string; displayName?: string } }).profile;
+                const displayName = prof?.displayName ?? prof?.name ?? a.name ?? a.accountId;
+                return html`
+                  <div class="account-card">
+                    <div class="account-header">
+                      <span class="account-name">${displayName}</span>
+                      <span class="account-id">${a.accountId}</span>
+                    </div>
+                    <div class="status-list">
+                      ${this._row("Running",     a.running    ? "Yes" : "No")}
+                      ${this._row("Configured",  a.configured ? "Yes" : "No")}
+                      ${this._row("Public Key",  truncatePubkey(pk))}
+                      ${this._row("Last inbound", relTime(a.lastInboundAt))}
+                    </div>
+                    ${a.lastError ? html`<div class="callout danger" style="margin-top:8px;">${a.lastError}</div>` : nothing}
+                  </div>`;
+              })}
+            </div>`
+          : html`
+            <div class="status-list" style="margin-top:12px;">
+              ${this._row("Configured", configured ? "Yes" : "No")}
+              ${this._row("Running",    running    ? "Yes" : "No")}
+              ${this._row("Public Key", truncatePubkey(publicKey))}
+              ${this._row("Last start", relTime(lastStartAt))}
+            </div>`}
+
+        ${lastError ? html`<div class="callout danger" style="margin-top:12px;">${lastError}</div>` : nothing}
+
+        ${profile ? html`
+          <div style="margin-top:16px; padding:12px; background:var(--ac-bg-muted); border-radius:var(--ac-radius-md);">
+            <div style="font-weight:600; font-size:13px; margin-bottom:8px;">Profile</div>
+            ${profile.picture ? html`
+              <img src=${profile.picture} alt="Profile picture"
+                style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:2px solid var(--ac-border);margin-bottom:8px;"
+                @error=${(e: Event) => { (e.target as HTMLImageElement).style.display = "none"; }}/>` : nothing}
+            <div class="status-list">
+              ${profile.name        ? this._row("Name",         profile.name)         : nothing}
+              ${profile.displayName ? this._row("Display Name", profile.displayName)  : nothing}
+              ${profile.about       ? this._row("About",        profile.about)        : nothing}
+              ${profile.nip05       ? this._row("NIP-05",       profile.nip05)        : nothing}
+            </div>
+          </div>` : nothing}
+
+        ${this._renderConfigPanel("nostr")}
+        <div class="row" style="margin-top:12px; display:flex; gap:8px;">
+          <button class="btn" @click=${() => void this._loadChannels(false)}>Refresh</button>
         </div>
-
-        ${ch.lastError
-          ? html`<div class="callout danger" style="margin-top:12px;">${ch.lastError}</div>`
-          : nothing}
-
-        <!-- Multi-account list (Telegram style) -->
-        ${accounts.length > 1 ? this._renderAccountList(accounts) : nothing}
-
-        <!-- WhatsApp bespoke flow -->
-        ${id === "whatsapp" ? this._renderWhatsAppExtras(ch) : nothing}
       </div>
-
-      <!-- Config form panel -->
-      ${this._renderConfigPanel(id)}
     `;
+  }
+
+  // ── Generic (plugin channels) ─────────────────────────────────────────────
+
+  private _renderGeneric(id: string, ch: Record<string, unknown>) {
+    const label = channelDisplayName(id, this._snapshot?.channelMeta);
+    return html`
+      <div class="panel">
+        <div class="panel-title">${label}</div>
+        <div class="card-sub" style="margin-bottom:12px;">Channel status and configuration.</div>
+        ${this._renderAccountCount(id)}
+        <div class="status-list">
+          ${"configured" in ch ? this._row("Configured", ch["configured"] ? "Yes" : "No") : nothing}
+          ${"running"    in ch ? this._row("Running",    ch["running"]    ? "Yes" : "No") : nothing}
+          ${"connected"  in ch ? this._row("Connected",  ch["connected"]  ? "Yes" : "No") : nothing}
+          ${"lastStartAt" in ch ? this._row("Last start", relTime(ch["lastStartAt"] as number | undefined)) : nothing}
+          ${"lastProbeAt" in ch ? this._row("Last probe", relTime(ch["lastProbeAt"] as number | undefined)) : nothing}
+        </div>
+        ${"lastError" in ch && ch["lastError"]
+          ? html`<div class="callout danger" style="margin-top:12px;">${ch["lastError"]}</div>`
+          : nothing}
+        ${this._renderConfigPanel(id)}
+        <div class="row" style="margin-top:12px; display:flex; gap:8px;">
+          <button class="btn" @click=${() => void this._loadChannels(true)}>Probe</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Shared helpers ────────────────────────────────────────────────────────
+
+  private _row(label: string, value: string | null | undefined) {
+    return html`
+      <div class="status-row">
+        <span class="status-label">${label}</span>
+        <span class="status-value">${value ?? "n/a"}</span>
+      </div>`;
+  }
+
+  private _fmt(v: boolean | null | undefined): string {
+    if (v === true) return "Yes";
+    if (v === false) return "No";
+    return "n/a";
+  }
+
+  private _probeCallout(probe: ProbeResult) {
+    return html`<div class="callout" style="margin-top:12px;">
+      Probe ${probe.ok ? "ok" : "failed"} · ${probe.status ?? ""} ${probe.error ?? ""}
+    </div>`;
+  }
+
+  private _renderAccountCount(id: string) {
+    const accounts = this._snapshot?.channelAccounts?.[id] ?? [];
+    if (accounts.length === 0) return nothing;
+    return html`<div class="muted" style="margin-bottom:8px;">${accounts.length} account${accounts.length > 1 ? "s" : ""}</div>`;
   }
 
   private _renderStatusRow(label: string, value: unknown) {
@@ -565,7 +1024,7 @@ export class ChannelsView extends LitElement {
   }
 
   private _renderWhatsAppExtras(ch: Record<string, unknown>) {
-    const connected = ch.connected === true || this._whatsappConnected === true;
+    const connected = ch["connected"] === true || this._whatsappConnected === true;
     return html`
       <div style="margin-top:16px; display:flex; flex-direction:column; gap:8px;">
         ${this._whatsappMessage
