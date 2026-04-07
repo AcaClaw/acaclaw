@@ -32,6 +32,7 @@
     "test:e2e": "npx playwright test",
     "test:e2e:update": "npx playwright test --update-snapshots",
     "test:e2e:ui": "npx playwright test --ui",
+    "deploy": "cd ui && npx vite build && rsync -a --delete ../ui/dist/ ~/.openclaw/ui/",
     "check": "tsc --noEmit"
   },
   "devDependencies": {
