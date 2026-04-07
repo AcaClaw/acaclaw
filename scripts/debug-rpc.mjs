@@ -95,6 +95,24 @@ ws.on('message', (data) => {
       const payload = msg.payload;
       console.log('\n=== channels.status response ===');
       console.log('Full response:', JSON.stringify(payload).slice(0, 2000));
+      send('web.login.start', {});
+      return;
+    }
+    if (reqId === 5) {
+      const payload = msg.payload;
+      console.log('\n=== web.login.start response ===');
+      if (payload && payload.qrDataUrl) {
+        const url = payload.qrDataUrl;
+        const isDataUri = url.startsWith('data:');
+        const isUrl = url.startsWith('http');
+        console.log('QR type:', isDataUri ? 'DATA_URI' : isUrl ? 'URL' : 'UNKNOWN');
+        console.log('QR length:', url.length);
+        if (isDataUri) console.log('QR preview:', url.substring(0, 80) + '...');
+        if (isUrl) console.log('QR URL:', url.substring(0, 120));
+        console.log('message:', payload.message);
+      } else {
+        console.log('Full payload:', JSON.stringify(payload).slice(0, 500));
+      }
       ws.close();
       process.exit(0);
     }

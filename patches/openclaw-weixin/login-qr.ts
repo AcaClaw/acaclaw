@@ -1,8 +1,23 @@
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 
 import { apiGetFetch } from "../api/api.js";
 import { logger } from "../util/logger.js";
 import { redactToken } from "../util/redact.js";
+
+// AcaClaw patch: convert QR URL → data:image/png;base64 for browser display.
+let _toDataURL: ((text: string) => Promise<string>) | null = null;
+async function getToDataURL(): Promise<((text: string) => Promise<string>) | null> {
+  if (_toDataURL) return _toDataURL;
+  try {
+    const req = createRequire(import.meta.url ?? __filename);
+    const mod = req("qrcode");
+    _toDataURL = mod.toDataURL.bind(mod);
+    return _toDataURL;
+  } catch {
+    return null;
+  }
+}
 
 type ActiveLogin = {
   sessionKey: string;
@@ -157,8 +172,20 @@ export async function startWeixinLoginWithQr(opts: {
     accountToSession.set(opts.accountId ?? "default", sessionKey);
     accountToSession.set("", sessionKey);
 
+    // AcaClaw patch: convert QR URL → data:image/png;base64 for browser display.
+    let qrDataUri: string | undefined;
+    const toDataURL = await getToDataURL();
+    if (toDataURL && qrResponse.qrcode_img_content) {
+      try {
+        qrDataUri = await toDataURL(qrResponse.qrcode_img_content);
+        logger.info("QR data URI generated successfully");
+      } catch (e) {
+        logger.warn(`Failed to generate QR data URI: ${String(e)}`);
+      }
+    }
+
     return {
-      qrcodeUrl: qrResponse.qrcode_img_content,
+      qrcodeUrl: qrDataUri ?? qrResponse.qrcode_img_content,
       message: "使用微信扫描以下二维码，以完成连接。",
       sessionKey,
     };
