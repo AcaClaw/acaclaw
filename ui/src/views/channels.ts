@@ -267,6 +267,9 @@ export class ChannelsView extends LitElement {
   // Raw snapshot toggle
   @state() private _rawExpanded = false;
 
+  // Collapsible array sections: key = path.join(".")
+  @state() private _collapsed: Set<string> = new Set();
+
   // ── Lifecycle ────────────────────────────────────────────────────────────
 
   override connectedCallback() {
@@ -321,13 +324,27 @@ export class ChannelsView extends LitElement {
   private _patchConfig(path: (string | number)[], value: unknown) {
     if (!this._configForm) return;
     const clone = structuredClone(this._configForm);
-    let cur: Record<string, unknown> = clone;
+    let cur: Record<string, unknown> | unknown[] = clone;
     for (let i = 0; i < path.length - 1; i++) {
-      const key = String(path[i]);
-      if (cur[key] == null || typeof cur[key] !== "object") cur[key] = {};
-      cur = cur[key] as Record<string, unknown>;
+      const key = path[i];
+      if (Array.isArray(cur)) {
+        const idx = Number(key);
+        if (cur[idx] == null || typeof cur[idx] !== "object") cur[idx] = {};
+        cur = cur[idx] as Record<string, unknown>;
+      } else {
+        const k = String(key);
+        if ((cur as Record<string, unknown>)[k] == null || typeof (cur as Record<string, unknown>)[k] !== "object") {
+          (cur as Record<string, unknown>)[k] = {};
+        }
+        cur = (cur as Record<string, unknown>)[k] as Record<string, unknown>;
+      }
     }
-    cur[String(path[path.length - 1])] = value;
+    const last = path[path.length - 1];
+    if (Array.isArray(cur)) {
+      (cur as unknown[])[Number(last)] = value;
+    } else {
+      (cur as Record<string, unknown>)[String(last)] = value;
+    }
     this._configForm = clone;
     this._configDirty = true;
   }
@@ -538,6 +555,40 @@ export class ChannelsView extends LitElement {
 
     .empty { color: var(--ac-text-muted); font-size: 14px; padding: 32px 0; text-align: center; }
     .muted { color: var(--ac-text-muted); font-size: 13px; }
+
+    /* ── Array fields ── */
+    .array-section {
+      border: 1px solid var(--ac-border-subtle);
+      border-radius: var(--ac-radius-md);
+      overflow: hidden;
+    }
+    .array-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px;
+      cursor: pointer;
+      background: var(--ac-bg-muted);
+      user-select: none;
+    }
+    .array-header:hover { background: var(--ac-bg-surface); }
+    .array-count {
+      margin-left: auto; font-size: 11px;
+      color: var(--ac-text-muted);
+      background: var(--ac-bg-surface);
+      border: 1px solid var(--ac-border-subtle);
+      border-radius: 999px;
+      padding: 1px 8px;
+    }
+    .array-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+    .array-item {
+      border: 1px solid var(--ac-border-subtle);
+      border-radius: var(--ac-radius-md);
+      padding: 10px 12px;
+      background: var(--ac-bg-base, var(--ac-bg-muted));
+    }
+    .array-item-head {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 8px;
+    }
   `;
 
   override render() {
@@ -1049,7 +1100,7 @@ export class ChannelsView extends LitElement {
   }
 
   private _renderConfigPanel(channelId: string) {
-    const schemaNode = resolveSchemaNode(this._configSchema, ["properties", "channels", "properties", channelId]);
+    const schemaNode = resolveSchemaNode(this._configSchema, ["channels", channelId]);
     const configValue = this._configForm ? resolveChannelConfigValue(this._configForm, channelId) : {};
 
     return html`
@@ -1078,7 +1129,7 @@ export class ChannelsView extends LitElement {
     `;
   }
 
-  /** Schema-driven form: renders one <input> per string/number leaf in the schema. */
+  /** Schema-driven form: renders string/number/boolean/object/array fields. */
   private _renderSchemaForm(
     node: Record<string, unknown>,
     value: Record<string, unknown>,
@@ -1095,7 +1146,7 @@ export class ChannelsView extends LitElement {
           const label = (fieldSchema.title as string) ?? key;
           const hint = fieldSchema.description as string | undefined;
           const fieldPath = [...path, key];
-          const current = value[key] ?? "";
+          const current = value[key];
 
           if (ftype === "string" || ftype === "number" || !ftype) {
             const isSecret = (fieldSchema.format === "password") ||
@@ -1109,7 +1160,7 @@ export class ChannelsView extends LitElement {
                 <input
                   class="form-input"
                   type=${isSecret ? "password" : "text"}
-                  .value=${String(current)}
+                  .value=${String(current ?? "")}
                   @input=${(e: Event) =>
                     this._patchConfig(fieldPath, (e.target as HTMLInputElement).value)}
                 />
@@ -1130,7 +1181,6 @@ export class ChannelsView extends LitElement {
               </div>
             `;
           }
-          // Nested objects: recurse one level
           if (ftype === "object") {
             return html`
               <div class="form-field">
@@ -1143,8 +1193,103 @@ export class ChannelsView extends LitElement {
               </div>
             `;
           }
+          if (ftype === "array") {
+            return this._renderArrayField(label, hint, fieldSchema, current, fieldPath);
+          }
           return nothing;
         })}
+      </div>
+    `;
+  }
+
+  /**
+   * Render an array field with collapsible header, per-item forms, add/remove.
+   * String arrays: one text input per item.
+   * Object arrays: nested form per item.
+   */
+  private _renderArrayField(
+    label: string,
+    hint: string | undefined,
+    fieldSchema: Record<string, unknown>,
+    current: unknown,
+    fieldPath: string[],
+  ): unknown {
+    const items = (Array.isArray(current) ? current : []) as unknown[];
+    const pathKey = fieldPath.join(".");
+    const collapsed = this._collapsed.has(pathKey);
+    const itemSchema = fieldSchema.items as Record<string, unknown> | undefined;
+    const itemType = itemSchema?.type as string | undefined;
+
+    const toggle = () => {
+      const next = new Set(this._collapsed);
+      if (collapsed) next.delete(pathKey); else next.add(pathKey);
+      this._collapsed = next;
+    };
+
+    const addItem = () => {
+      const def = itemType === "object" ? {} : "";
+      this._patchConfig(fieldPath, [...items, def]);
+    };
+
+    const removeItem = (i: number) => {
+      const next = [...items];
+      next.splice(i, 1);
+      this._patchConfig(fieldPath, next);
+    };
+
+    return html`
+      <div class="array-section">
+        <div class="array-header" @click=${toggle}>
+          <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
+            <path d="${collapsed ? "M8 5l5 5-5 5z" : "M5 8l5 5 5-5z"}"/>
+          </svg>
+          <span class="form-label" style="margin:0;">${label}</span>
+          <span class="array-count">${items.length} item${items.length !== 1 ? "s" : ""}</span>
+        </div>
+
+        ${collapsed ? nothing : html`
+          <div class="array-body">
+            ${hint ? html`<span class="muted" style="font-size:11px; display:block; margin-bottom:8px;">${hint}</span>` : nothing}
+
+            ${items.length === 0
+              ? html`<span class="muted">No items yet. Click "Add" to create one.</span>`
+              : items.map((item, i) => {
+                  const itemPath = [...fieldPath, i] as (string | number)[];
+                  if (itemType === "object" && itemSchema) {
+                    return html`
+                      <div class="array-item">
+                        <div class="array-item-head">
+                          <span class="muted" style="font-size:11px;">Item ${i + 1}</span>
+                          <button class="btn" style="padding:2px 8px; font-size:11px;"
+                            @click=${() => removeItem(i)}>Remove</button>
+                        </div>
+                        ${this._renderSchemaForm(
+                          itemSchema,
+                          (item as Record<string, unknown>) ?? {},
+                          itemPath as string[],
+                        )}
+                      </div>
+                    `;
+                  }
+                  return html`
+                    <div class="array-item" style="display:flex; gap:8px; align-items:center;">
+                      <input
+                        class="form-input"
+                        style="flex:1;"
+                        .value=${String(item ?? "")}
+                        @input=${(e: Event) =>
+                          this._patchConfig(itemPath, (e.target as HTMLInputElement).value)}
+                      />
+                      <button class="btn" style="padding:2px 8px; font-size:11px;"
+                        @click=${() => removeItem(i)}>✕</button>
+                    </div>
+                  `;
+                })
+            }
+
+            <button class="btn" style="margin-top:8px;" @click=${addItem}>+ Add</button>
+          </div>
+        `}
       </div>
     `;
   }
