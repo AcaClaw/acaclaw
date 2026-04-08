@@ -17,6 +17,9 @@ import { resolve, join } from "node:path";
 const ACACLAW_VIEWS = resolve(__dirname, "../ui/src/views");
 const OPENCLAW_VIEWS = resolve(__dirname, "../../open/openclaw-2026.4.2/ui/src/ui/views");
 
+// Skip parity tests when OpenClaw source tree is not available (e.g. CI)
+const HAS_OPENCLAW = existsSync(OPENCLAW_VIEWS);
+
 /**
  * Strip all import blocks (including multi-line), blank lines,
  * comment-only section headers, and "Ported from" comments
@@ -79,7 +82,7 @@ const CARD_FILES = [
   "channels.imessage.ts",
 ];
 
-describe("channel card parity with OpenClaw", () => {
+describe.skipIf(!HAS_OPENCLAW)("channel card parity with OpenClaw", () => {
   for (const file of CARD_FILES) {
     it(`${file}: function body matches OpenClaw`, () => {
       const acaclawSrc = readFileOrNull(join(ACACLAW_VIEWS, file));
@@ -96,7 +99,7 @@ describe("channel card parity with OpenClaw", () => {
   }
 });
 
-describe("channels.nostr.ts parity with OpenClaw", () => {
+describe.skipIf(!HAS_OPENCLAW)("channels.nostr.ts parity with OpenClaw", () => {
   /**
    * The Nostr card in AcaClaw imports truncatePubkey from shared.ts while
    * OpenClaw defines it inline. Strip the local function definition from
@@ -135,7 +138,7 @@ describe("channels.nostr.ts parity with OpenClaw", () => {
   });
 });
 
-describe("channels.nostr-profile-form.ts parity with OpenClaw", () => {
+describe.skipIf(!HAS_OPENCLAW)("channels.nostr-profile-form.ts parity with OpenClaw", () => {
   it("function body matches OpenClaw", () => {
     const acaclawSrc = readFileOrNull(join(ACACLAW_VIEWS, "channels.nostr-profile-form.ts"));
     const openclawSrc = readFileOrNull(join(OPENCLAW_VIEWS, "channels.nostr-profile-form.ts"));
@@ -149,7 +152,7 @@ describe("channels.nostr-profile-form.ts parity with OpenClaw", () => {
   });
 });
 
-describe("channels.config.ts: core rendering parity", () => {
+describe.skipIf(!HAS_OPENCLAW)("channels.config.ts: core rendering parity", () => {
   /**
    * channels.config.ts in AcaClaw has an extra ChannelConfigSectionParams
    * flat interface overload. The core rendering functions (resolveSchemaNode,
@@ -219,7 +222,7 @@ describe("channels.config.ts: core rendering parity", () => {
   });
 });
 
-describe("channels.shared.ts: shared helper parity", () => {
+describe.skipIf(!HAS_OPENCLAW)("channels.shared.ts: shared helper parity", () => {
   /**
    * Only compare functions that exist in BOTH codebases.
    * AcaClaw's shared.ts consolidates extra helpers from OpenClaw's
@@ -261,7 +264,7 @@ describe("channels.shared.ts: shared helper parity", () => {
   }
 });
 
-describe("channel-config-extras.ts parity with OpenClaw", () => {
+describe.skipIf(!HAS_OPENCLAW)("channel-config-extras.ts parity with OpenClaw", () => {
   it("function body matches OpenClaw", () => {
     const acaclawSrc = readFileOrNull(join(ACACLAW_VIEWS, "channel-config-extras.ts"));
     const openclawSrc = readFileOrNull(join(OPENCLAW_VIEWS, "channel-config-extras.ts"));
@@ -275,7 +278,7 @@ describe("channel-config-extras.ts parity with OpenClaw", () => {
   });
 });
 
-describe("channels.test.ts parity with OpenClaw", () => {
+describe.skipIf(!HAS_OPENCLAW)("channels.test.ts parity with OpenClaw", () => {
   it("test file matches OpenClaw", () => {
     const acaclawSrc = readFileOrNull(join(ACACLAW_VIEWS, "channels.test.ts"));
     const openclawSrc = readFileOrNull(join(OPENCLAW_VIEWS, "channels.test.ts"));
@@ -289,7 +292,7 @@ describe("channels.test.ts parity with OpenClaw", () => {
   });
 });
 
-describe("channels.types.ts: type parity", () => {
+describe.skipIf(!HAS_OPENCLAW)("channels.types.ts: type parity", () => {
   /**
    * AcaClaw defines types inline; OpenClaw imports them from ../types.ts.
    * Verify key type names are exported from AcaClaw's types file.
