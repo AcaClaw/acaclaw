@@ -65,26 +65,28 @@ AcaClaw uses a single-window design with a sidebar navigation. No pop-up windows
 
 ### Coexistence with OpenClaw
 
-AcaClaw runs alongside an existing OpenClaw installation without modifying it. This is achieved through OpenClaw's `--profile` flag, which gives AcaClaw a fully isolated state directory.
+AcaClaw uses the default `~/.openclaw/` directory. If the user already has a standalone OpenClaw install, AcaClaw inherits its API keys via `$include` and adds its own config on top. AcaClaw never modifies OpenClaw source code — all customization lives in config overlays and plugins.
 
 ```
-~/.openclaw/                  ← OpenClaw (untouched, never written by AcaClaw)
-│   openclaw.json             ← user's existing config, API keys, model prefs
-│   plugins/                  ← user's existing plugins
-│   skills/                   ← user's existing skills
-│   sessions/                 ← user's existing sessions
-│
-~/.openclaw/                      ← OpenClaw directory (used by AcaClaw)
-│   openclaw.json             ← AcaClaw config ($include → ~/.openclaw/openclaw.json)
-│   plugins/                  ← AcaClaw-only plugins (backup, security, env, ui, etc.)
-│   skills/                   ← academic skills from ClawHub
-│   sessions/                 ← AcaClaw sessions
-│
-~/.acaclaw/                   ← AcaClaw data (conda, backups, audit logs)
-│   miniforge3/               ← scientific Python/R environment
-│   backups/                  ← automatic file backups
-│   audit/                    ← security audit logs
-│   config/                   ← AcaClaw metadata (conda-prefix, setup state)
+~/.openclaw/                      ← OpenClaw directory (config + managed state)
+├── openclaw.json                 ← Single source of truth for ALL config
+│   ├── models.providers.*        ← API keys, provider auth (OpenClaw handles)
+│   ├── agents.*                  ← Agent definitions, default model (OpenClaw)
+│   └── (future) acaclaw.*       ← AcaClaw plugin config (via config.set)
+├── extensions/                   ← Installed OpenClaw extensions + AcaClaw plugins
+├── skills/                       ← Installed skills (curated academic + user)
+├── agents/                       ← Agent session data
+├── ui/                           ← AcaClaw web UI (served by gateway)
+├── memory/, logs/, completions/  ← OpenClaw runtime data
+└── identity/                     ← Gateway identity
+
+~/.acaclaw/                       ← AcaClaw runtime DATA only (not config)
+├── backups/                      ← Versioned file backups (large data)
+├── audit/                        ← Security audit logs (append-only)
+├── miniforge3/                   ← Conda installation
+├── gateway.log                   ← Gateway runtime log
+├── start.sh, stop.sh             ← Runtime scripts
+└── browser-app/                  ← Browser app data
 ```
 
 **How config inheritance works:**
@@ -118,8 +120,8 @@ Deep merge behavior: AcaClaw's values (workspace, security, plugins) override. T
 | User has existing OpenClaw | AcaClaw inherits API keys via `$include`, never writes to `~/.openclaw/` |
 | User updates OpenClaw | `npm install -g openclaw@latest` — AcaClaw unaffected |
 | User uninstalls AcaClaw | `rm -rf ~/.acaclaw` and remove AcaClaw entries from `~/.openclaw/openclaw.json` |
-| User runs both | OpenClaw gateway on default port, AcaClaw gateway on 2090 (separate profiles = separate processes) |
-| User installs AcaClaw first | AcaClaw creates standalone config, OpenClaw installed later is separate |
+| User runs both | OpenClaw gateway on default port, AcaClaw gateway on 2090 (separate gateways, same config) |
+| User installs AcaClaw first | AcaClaw creates standalone config; OpenClaw installed later shares the same directory |
 
 ### Two UIs, Two Gateways
 

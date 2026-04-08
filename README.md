@@ -443,15 +443,15 @@ Every contribution is tracked, every contributor is named. See [CONTRIBUTING.md]
 
 - [x] Project architecture and design
 - [x] Contributor attribution model (per-role credit on ClawHub + AcaClaw Hub)
-- [ ] Curated academic skills published to ClawHub (paper search, citation management, data analysis)
-- [ ] [AcaClaw Hub](https://github.com/acaclaw/hub) — contributor showcase website at acaclaw.com/hub
-- [ ] Automatic file backup system
-- [ ] One-click installers (Windows, macOS, Linux)
-- [ ] Guided onboarding wizard (no terminal required)
-- [ ] Security hardening plugin (workspace security + optional Docker sandbox)
+- [x] Curated academic skills published to ClawHub (paper search, citation management, data analysis)
+- [x] [AcaClaw Hub](https://github.com/acaclaw/hub) — contributor showcase website at acaclaw.com/hub
+- [x] Automatic file backup system
+- [x] One-click installers (Windows, macOS, Linux)
+- [x] Guided onboarding wizard (no terminal required)
+- [x] Security hardening plugin (workspace security + optional Docker sandbox)
+- [x] Desktop GUI for research workflows
 - [ ] Automated compatibility test suite (nightly vs. OpenClaw releases)
 - [ ] Domain profiles (chemistry, biology, medicine, physics)
-- [ ] Desktop GUI for research workflows
 - [ ] Classroom mode (course management for instructors)
 - [ ] Offline mode (for field research without internet)
 - [ ] Multilingual interface

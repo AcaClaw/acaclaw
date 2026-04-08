@@ -65,26 +65,28 @@ AcaClaw 采用单窗口 + 侧边栏导航。无弹窗、无多窗口管理，避
 
 ### 与 OpenClaw 共存
 
-AcaClaw 可与已有 OpenClaw 安装并存，且不修改对方。这依赖 OpenClaw 的 `--profile` 标志，为 AcaClaw 提供完全隔离的状态目录。
+AcaClaw 使用默认的 `~/.openclaw/` 目录。若用户已有 OpenClaw 安装，AcaClaw 通过 `$include` 继承其 API 密钥并在此基础上添加自身配置。AcaClaw 不修改 OpenClaw 源代码——所有定制通过配置覆盖和插件实现。
 
 ```
-~/.openclaw/                  ← OpenClaw（不动，AcaClaw 从不写入）
-│   openclaw.json             ← 用户既有配置、API 密钥、模型偏好
-│   plugins/                  ← 用户既有插件
-│   skills/                   ← 用户既有技能
-│   sessions/                 ← 用户既有会话
-│
-~/.openclaw/                      ← OpenClaw 目录（AcaClaw 使用）
-│   openclaw.json             ← AcaClaw 配置（$include → ~/.openclaw/openclaw.json）
-│   plugins/                  ← 仅 AcaClaw 的插件（backup、security、env、ui 等）
-│   skills/                   ← 来自 ClawHub 的学术技能
-│   sessions/                 ← AcaClaw 会话
-│
-~/.acaclaw/                   ← AcaClaw 数据（conda、备份、审计日志）
-│   miniforge3/               ← 科学计算 Python/R 环境
-│   backups/                  ← 自动文件备份
-│   audit/                    ← 安全审计日志
-│   config/                   ← AcaClaw 元数据（conda 前缀、设置状态）
+~/.openclaw/                      ← OpenClaw 目录（配置 + 托管状态）
+├── openclaw.json                 ← 所有配置的唯一来源
+│   ├── models.providers.*        ← API 密钥、提供商认证（OpenClaw 管理）
+│   ├── agents.*                  ← 代理定义、默认模型（OpenClaw）
+│   └── (future) acaclaw.*       ← AcaClaw 插件配置（通过 config.set）
+├── extensions/                   ← 已安装的 OpenClaw 扩展 + AcaClaw 插件
+├── skills/                       ← 已安装技能（学术策展 + 用户）
+├── agents/                       ← 代理会话数据
+├── ui/                           ← AcaClaw Web UI（由网关提供服务）
+├── memory/, logs/, completions/  ← OpenClaw 运行时数据
+└── identity/                     ← 网关身份
+
+~/.acaclaw/                       ← AcaClaw 运行时数据（非配置）
+├── backups/                      ← 版本化文件备份（大文件）
+├── audit/                        ← 安全审计日志（仅追加）
+├── miniforge3/                   ← Conda 安装
+├── gateway.log                   ← 网关运行日志
+├── start.sh, stop.sh             ← 运行时脚本
+└── browser-app/                  ← 浏览器应用数据
 ```
 
 **配置继承如何工作：**
@@ -118,8 +120,8 @@ AcaClaw 在 `~/.openclaw/openclaw.json` 中使用 OpenClaw 的 `$include` 指令
 | 用户已有 OpenClaw | AcaClaw 通过 `$include` 继承 API 密钥，**从不**写入 `~/.openclaw/` |
 | 用户更新 OpenClaw | `npm install -g openclaw@latest` — AcaClaw 不受影响 |
 | 用户卸载 AcaClaw | 删除 `~/.acaclaw` 并从 `~/.openclaw/openclaw.json` 移除 AcaClaw 条目 |
-| 用户同时运行两者 | OpenClaw 网关在默认端口，AcaClaw 网关在 2090（不同 profile = 不同进程） |
-| 用户先装 AcaClaw | AcaClaw 创建独立配置，之后安装的 OpenClaw 与之分离 |
+| 用户同时运行两者 | OpenClaw 网关在默认端口，AcaClaw 网关在 2090（不同网关，相同配置） |
+| 用户先装 AcaClaw | AcaClaw 创建独立配置；之后安装的 OpenClaw 共享同一目录 |
 
 ### 两套 UI，两个网关
 
