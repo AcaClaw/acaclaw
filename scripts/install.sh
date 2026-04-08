@@ -24,23 +24,286 @@ GITHUB_MIRROR="${GITHUB_MIRROR:-https://ghproxy.com}"
 CLAWHUB_MIRROR="${CLAWHUB_MIRROR:-https://cn.clawhub-mirror.com}"
 CLAWHUB_SKILL_TIMEOUT="${CLAWHUB_SKILL_TIMEOUT:-15}"
 NETWORK_TIMEOUT="${NETWORK_TIMEOUT:-60}"
-NPM_INSTALL_TIMEOUT="${NPM_INSTALL_TIMEOUT:-300}"
+NPM_INSTALL_TIMEOUT="${NPM_INSTALL_TIMEOUT:-600}"
+
+# Install log — verbose command output goes here instead of terminal
+INSTALL_LOG="${TMPDIR:-/tmp}/acaclaw-install-$(date +%s).log"
+: > "$INSTALL_LOG"
 
 # AcaClaw runs using the default OpenClaw directory
 OPENCLAW_DIR="${HOME}/.openclaw"
 
-# Colors
+# Colors & styles
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
+DIM='\033[2m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-log()   { echo -e "${GREEN}[acaclaw]${NC} $*"; }
-warn()  { echo -e "${YELLOW}[acaclaw]${NC} $*"; }
-error() { echo -e "${RED}[acaclaw]${NC} $*" >&2; }
-header() { echo -e "\n${BOLD}${BLUE}$*${NC}\n"; }
+# Unicode symbols (with ASCII fallbacks for non-UTF8 terminals)
+if [[ "${LANG:-}" == *UTF-8* ]] || [[ "${LC_ALL:-}" == *UTF-8* ]] || locale charmap 2>/dev/null | grep -qi utf 2>/dev/null; then
+	SYM_CHECK="✔"
+	SYM_CROSS="✖"
+	SYM_WARN="⚠"
+	SYM_ARROW="→"
+	SYM_DOT="●"
+	SYM_CIRCLE="○"
+	SYM_PACKAGE="📦"
+	SYM_GEAR="⚙"
+	SYM_SHIELD="🛡"
+	SYM_ROCKET="🚀"
+	SYM_SPARKLE="✨"
+	SYM_FOLDER="📁"
+	SYM_PLUG="🔌"
+	SYM_BRAIN="🧠"
+	SYM_MICROSCOPE="🔬"
+	BAR_FILLED="━"
+	BAR_EMPTY="─"
+	SPINNER_CHARS=( "⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏" )
+else
+	SYM_CHECK="[OK]"
+	SYM_CROSS="[X]"
+	SYM_WARN="[!]"
+	SYM_ARROW="->"
+	SYM_DOT="*"
+	SYM_CIRCLE="o"
+	SYM_PACKAGE="[PKG]"
+	SYM_GEAR="[CFG]"
+	SYM_SHIELD="[SEC]"
+	SYM_ROCKET="[GO]"
+	SYM_SPARKLE="[*]"
+	SYM_FOLDER="[DIR]"
+	SYM_PLUG="[PLG]"
+	SYM_BRAIN="[AI]"
+	SYM_MICROSCOPE="[SCI]"
+	BAR_FILLED="#"
+	BAR_EMPTY="-"
+	SPINNER_CHARS=( "|" "/" "-" "\\" )
+fi
+
+# --- Step tracking ---
+TOTAL_STEPS=7
+CURRENT_STEP=0
+
+# Get terminal width (default 60 for piped/non-interactive)
+_term_width() {
+	local w
+	w=$(tput cols 2>/dev/null) || w=60
+	[[ $w -lt 40 ]] && w=60
+	echo "$w"
+}
+
+# Repeat a (possibly multi-byte UTF-8) character N times.
+# tr only handles single-byte chars; this helper works with ─ ━ etc.
+_repeat_char() {
+	local ch="$1" n="$2" out=""
+	for (( _rc_i=0; _rc_i<n; _rc_i++ )); do out+="$ch"; done
+	printf '%s' "$out"
+}
+
+# --- Pretty logging ---
+log()     { echo -e "  ${GREEN}${SYM_CHECK}${NC} $*"; }
+warn()    { echo -e "  ${YELLOW}${SYM_WARN}${NC} $*"; }
+error()   { echo -e "  ${RED}${SYM_CROSS}${NC} $*" >&2; }
+info()    { echo -e "  ${CYAN}${SYM_ARROW}${NC} $*"; }
+dimlog()  { echo -e "  ${DIM}$*${NC}"; }
+
+# Section header with step counter and progress dots
+header() {
+	CURRENT_STEP=$((CURRENT_STEP + 1))
+	local title="$1"
+	local icon="${2:-$SYM_DOT}"
+	local w
+	w=$(_term_width)
+
+	echo ""
+	# Top border
+	printf "  ${BLUE}"
+	_repeat_char '─' $((w - 4))
+	printf "${NC}\n"
+
+	# Step line with icon
+	printf "  ${BOLD}${BLUE}${icon}  Step %d of %d: %s${NC}\n" "$CURRENT_STEP" "$TOTAL_STEPS" "$title"
+
+	# Step dots: ● = completed, ◉ = current, ○ = pending
+	printf "  "
+	for (( s=1; s<=TOTAL_STEPS; s++ )); do
+		if [[ $s -lt $CURRENT_STEP ]]; then
+			printf "${GREEN}●${NC} "
+		elif [[ $s -eq $CURRENT_STEP ]]; then
+			printf "${CYAN}◉${NC} "
+		else
+			printf "${DIM}○${NC} "
+		fi
+	done
+	printf "\n"
+
+	# Bottom border
+	printf "  ${BLUE}"
+	_repeat_char '─' $((w - 4))
+	printf "${NC}\n"
+	echo ""
+}
+
+# Show a banner header (used once at the start)
+show_banner() {
+	local w
+	w=$(_term_width)
+	echo ""
+	echo -e "${BOLD}${CYAN}"
+	cat <<'BANNER'
+      _                 ____ _
+     / \   ___ __ _  / ___| | __ ___      __
+    / _ \ / __/ _` || |   | |/ _` \ \ /\ / /
+   / ___ \ (_| (_| || |___| | (_| |\ V  V /
+  /_/   \_\___\__,_| \____|_|\__,_| \_/\_/
+BANNER
+	echo -e "${NC}"
+	printf "  ${DIM}Academic AI Research Assistant${NC}  ${BOLD}v${ACACLAW_VERSION}${NC}\n"
+	printf "  ${DIM}$(date '+%B %d, %Y at %H:%M')${NC}\n"
+	echo ""
+
+	# System info box
+	local os_display arch_display
+	case "$OS" in
+		linux)  os_display="Linux" ;;
+		macos)  os_display="macOS" ;;
+		windows) os_display="Windows" ;;
+		*) os_display="$OS" ;;
+	esac
+	case "$ARCH" in
+		x86_64)  arch_display="x86_64 (64-bit)" ;;
+		aarch64) arch_display="ARM64" ;;
+		*) arch_display="$ARCH" ;;
+	esac
+	printf "  ${BLUE}┌──────────────────────────────────────┐${NC}\n"
+	printf "  ${BLUE}│${NC}  ${SYM_GEAR}  System: %-25s ${BLUE}│${NC}\n" "${os_display} ${arch_display}"
+	printf "  ${BLUE}│${NC}  ${SYM_FOLDER}  Target: %-25s ${BLUE}│${NC}\n" "~/.acaclaw"
+	printf "  ${BLUE}└──────────────────────────────────────┘${NC}\n"
+	echo ""
+}
+
+# Animated spinner — runs in background, call stop_spinner to end
+_SPINNER_PID=""
+start_spinner() {
+	local msg="${1:-Working...}"
+	local status_file="${2:-}"  # optional: path to file with live status updates
+	# Don't start a spinner if stdout is not a terminal
+	if [[ ! -t 1 ]]; then
+		echo -e "  ${CYAN}${SYM_ARROW}${NC} ${msg}"
+		return
+	fi
+	(
+		local i=0 _status _display _elapsed _start_ts
+		_start_ts=$(date +%s)
+		while true; do
+			if [[ -n "$status_file" && -f "$status_file" ]]; then
+				_status="$(cat "$status_file" 2>/dev/null || true)"
+				_elapsed=$(( $(date +%s) - _start_ts ))
+				if [[ -n "$_status" ]]; then
+					if [[ $_elapsed -ge 10 ]]; then
+						_display="${msg}  ${DIM}— ${_status} (${_elapsed}s)${NC}"
+					else
+						_display="${msg}  ${DIM}— ${_status}${NC}"
+					fi
+				else
+					_display="$msg"
+				fi
+			else
+				_display="$msg"
+			fi
+			printf "\r\033[2K  ${CYAN}%s${NC} %b" "${SPINNER_CHARS[$((i % ${#SPINNER_CHARS[@]}))]}" "$_display"
+			i=$((i + 1))
+			sleep 0.1
+		done
+	) &
+	_SPINNER_PID=$!
+	disown "$_SPINNER_PID" 2>/dev/null || true
+}
+
+stop_spinner() {
+	local result="${1:-done}"
+	local color="${2:-$GREEN}"
+	if [[ -n "$_SPINNER_PID" ]] && kill -0 "$_SPINNER_PID" 2>/dev/null; then
+		kill "$_SPINNER_PID" 2>/dev/null || true
+		wait "$_SPINNER_PID" 2>/dev/null || true
+		_SPINNER_PID=""
+	fi
+	# Clear the spinner line (only if terminal)
+	if [[ -t 1 ]]; then
+		printf "\r\033[K"
+	fi
+	echo -e "  ${color}${SYM_CHECK}${NC} ${result}"
+}
+
+stop_spinner_warn() {
+	local result="${1:-warning}"
+	if [[ -n "$_SPINNER_PID" ]] && kill -0 "$_SPINNER_PID" 2>/dev/null; then
+		kill "$_SPINNER_PID" 2>/dev/null || true
+		wait "$_SPINNER_PID" 2>/dev/null || true
+		_SPINNER_PID=""
+	fi
+	if [[ -t 1 ]]; then
+		printf "\r\033[K"
+	fi
+	echo -e "  ${YELLOW}${SYM_WARN}${NC} ${result}"
+}
+
+stop_spinner_fail() {
+	local result="${1:-failed}"
+	if [[ -n "$_SPINNER_PID" ]] && kill -0 "$_SPINNER_PID" 2>/dev/null; then
+		kill "$_SPINNER_PID" 2>/dev/null || true
+		wait "$_SPINNER_PID" 2>/dev/null || true
+		_SPINNER_PID=""
+	fi
+	if [[ -t 1 ]]; then
+		printf "\r\033[K"
+	fi
+	echo -e "  ${RED}${SYM_CROSS}${NC} ${result}"
+}
+
+# Mini progress bar for counted items (e.g. 3/7 plugins installed)
+show_item_progress() {
+	local current="$1"
+	local total="$2"
+	local label="${3:-}"
+	local bar_len=20
+	local filled=$(( bar_len * current / total ))
+	local empty=$(( bar_len - filled ))
+
+	# Clear entire line first to avoid leftover text from longer previous labels
+	printf "\r\033[2K  "
+	printf "${GREEN}"
+	for (( i=0; i<filled; i++ )); do printf '%s' "$BAR_FILLED"; done
+	printf "${DIM}"
+	for (( i=0; i<empty; i++ )); do printf '%s' "$BAR_EMPTY"; done
+	printf " ${NC}%d/%d" "$current" "$total"
+	[[ -n "$label" ]] && printf " %s" "$label"
+	[[ $current -eq $total ]] && printf "\n"
+	return 0
+}
+
+# Info box for important messages
+info_box() {
+	local msg="$1"
+	local icon="${2:-$SYM_ARROW}"
+	local w
+	w=$(_term_width)
+	local inner_w=$((w - 8))
+	[[ $inner_w -gt 60 ]] && inner_w=60
+
+	printf "  ${MAGENTA}┌"
+	_repeat_char '─' "$inner_w"
+	printf "┐${NC}\n"
+	printf "  ${MAGENTA}│${NC} ${icon}  %-$(( inner_w - 5 ))s ${MAGENTA}│${NC}\n" "$msg"
+	printf "  ${MAGENTA}└"
+	_repeat_char '─' "$inner_w"
+	printf "┘${NC}\n"
+}
 
 # --- Portable timeout wrapper (macOS lacks GNU timeout) ---
 if ! command -v timeout &>/dev/null; then
@@ -121,7 +384,7 @@ _resolve_repo_root() {
 	# HTTPS can hang behind some firewalls, so timeout keeps the flow moving.
 	local _clone_timeout=30
 	ACACLAW_CLONE_DIR="$(mktemp -d)"
-	log "Downloading AcaClaw from GitHub..."
+	echo -e "  ${CYAN}${SYM_ARROW}${NC} Downloading AcaClaw from GitHub..."
 	if timeout "$_clone_timeout" git clone --depth 1 --progress \
 		"https://github.com/${ACACLAW_GITHUB_REPO}.git" "$ACACLAW_CLONE_DIR" 2>&1; then
 		REPO_ROOT="$ACACLAW_CLONE_DIR"
@@ -130,8 +393,7 @@ _resolve_repo_root() {
 	rm -rf "$ACACLAW_CLONE_DIR"
 	ACACLAW_CLONE_DIR="$(mktemp -d)"
 
-	# GitHub mirror proxy (useful when GitHub is slow/blocked)
-	log "GitHub HTTPS failed or timed out, trying mirror proxy (${GITHUB_MIRROR})..."
+	echo -e "  ${YELLOW}${SYM_WARN}${NC} GitHub HTTPS slow, trying mirror..."
 	if timeout "$_clone_timeout" git clone --depth 1 --progress \
 		"${GITHUB_MIRROR}/https://github.com/${ACACLAW_GITHUB_REPO}.git" "$ACACLAW_CLONE_DIR" 2>&1; then
 		REPO_ROOT="$ACACLAW_CLONE_DIR"
@@ -226,97 +488,251 @@ version_ge() {
 	printf '%s\n%s' "$2" "$1" | sort -V | head -n1 | grep -qFx "$2"
 }
 
-header "AcaClaw Installer v${ACACLAW_VERSION}"
-log "System: ${OS} ${ARCH}"
+show_banner
+
+header "Checking Prerequisites" "$SYM_GEAR"
 
 # Check Node.js
+start_spinner "Checking Node.js..."
 if check_command node; then
 	NODE_VERSION="$(node --version | sed 's/^v//')"
 	NODE_MAJOR="${NODE_VERSION%%.*}"
 	if [[ "$NODE_MAJOR" -ge "$NODE_MIN_VERSION" ]]; then
-		log "Node.js ${NODE_VERSION} ✓"
+		stop_spinner "Node.js ${NODE_VERSION} found"
 	else
-		error "Node.js ${NODE_MIN_VERSION}+ required (found ${NODE_VERSION})"
-		error "Install from https://nodejs.org/"
+		stop_spinner_fail "Node.js ${NODE_MIN_VERSION}+ required (found ${NODE_VERSION})"
+		info_box "Install Node.js from https://nodejs.org/" "$SYM_ARROW"
 		exit 1
 	fi
 else
-	error "Node.js is not installed. Install Node.js ${NODE_MIN_VERSION}+ from https://nodejs.org/"
+	stop_spinner_fail "Node.js is not installed"
+	info_box "Install Node.js ${NODE_MIN_VERSION}+ from https://nodejs.org/" "$SYM_ARROW"
 	exit 1
 fi
 
 # Check npm
+start_spinner "Checking npm..."
 if ! check_command npm; then
-	error "npm is not installed. It should come with Node.js."
+	stop_spinner_fail "npm is not installed (it should come with Node.js)"
 	exit 1
 fi
-log "npm $(npm --version) ✓"
+stop_spinner "npm $(npm --version) found"
 
 # --- Install OpenClaw ---
 
-header "Step 1: OpenClaw"
+header "Installing OpenClaw" "$SYM_PACKAGE"
 
-# npm registry mirror fallback — try official first, fall back to faster mirrors
-# if the connection is slow. Uses a quick HEAD request to test latency.
+# npm registry speed test — download a small metadata payload to measure real latency.
+# Returns the fastest registry URL (or empty to let npm use its default).
+# Note: all output goes to $INSTALL_LOG so it doesn't conflict with the spinner.
+# Returns the fastest registry URL (or empty to use npm default).
 _pick_npm_registry() {
 	local _registries=(
 		"https://registry.npmjs.org"
 		"https://registry.npmmirror.com"
 	)
-	local _timeout=5  # seconds for connectivity+latency test
+	local _best_reg="" _best_ms=999999
+	local _test_url _ms _start _end
 
 	for _reg in "${_registries[@]}"; do
-		if curl -fsSL --max-time "$_timeout" --head "${_reg}/openclaw" &>/dev/null; then
-			echo "$_reg"
-			return 0
+		_test_url="${_reg}/openclaw/${OPENCLAW_MIN_VERSION}"
+		_start=$(date +%s%N 2>/dev/null || echo 0)
+		if curl -fsSL --max-time 8 -o /dev/null "$_test_url" 2>/dev/null; then
+			_end=$(date +%s%N 2>/dev/null || echo 0)
+			_ms=$(( (_end - _start) / 1000000 ))
+			echo "  ${_reg##*/}: ${_ms}ms" >> "$INSTALL_LOG"
+			if [[ $_ms -lt $_best_ms ]]; then
+				_best_ms=$_ms
+				_best_reg="$_reg"
+			fi
+		else
+			echo "  ${_reg##*/}: unreachable" >> "$INSTALL_LOG"
 		fi
-		warn "npm registry ${_reg} slow or unreachable, trying next..."
 	done
 
-	# All mirrors failed — return empty, let npm use its default
-	echo ""
-	return 0
+	if [[ -n "$_best_reg" ]]; then
+		echo "$_best_reg"
+	else
+		echo ""
+	fi
 }
+
+# Stream npm progress lines (http fetch, reify) from the install log
+# so the user sees what npm is doing instead of a frozen spinner.
+# Writes status updates on the SAME line the spinner occupies by using
+# a shared temp file that the spinner reads.
+_NPM_PROGRESS_PID=""
+_NPM_STALL_PID=""
+_NPM_STATUS_FILE=""
+
+_start_npm_progress() {
+	_NPM_STATUS_FILE="$(mktemp)"
+	# Track last-update timestamp for stall detection
+	local _ts_file="${_NPM_STATUS_FILE}.ts"
+	date +%s > "$_ts_file"
+	(
+		# Phase tracking: prevent earlier phases from overwriting later ones
+		# 0=fetch, 1=resolve, 2=extract, 3=link, 4=compile, 5=postinstall
+		_phase=0
+		tail -f "$INSTALL_LOG" 2>/dev/null | while IFS= read -r _line; do
+			date +%s > "$_ts_file"
+			case "$_line" in
+				*"build:run:postinstall:"*"Completed"*|*"build:run:install:"*"Completed"*)
+					# A native module or postinstall finished
+					if [[ $_phase -lt 4 ]]; then
+						_phase=4
+					fi
+					local _mod="${_line##*node_modules/}"
+					_mod="${_mod%% *}"
+					[[ ${#_mod} -gt 35 ]] && _mod="${_mod:0:32}..."
+					echo "Compiled: ${_mod}" > "$_NPM_STATUS_FILE"
+					;;
+				*"build:run:postinstall"*|*"build:run:install"*)
+					# Postinstall phase started (before any Completed lines)
+					[[ $_phase -lt 4 ]] && { _phase=4; echo "Running postinstall scripts..." > "$_NPM_STATUS_FILE"; }
+					;;
+				*"build:link:"*)
+					[[ $_phase -lt 3 ]] && { _phase=3; echo "Linking binaries..." > "$_NPM_STATUS_FILE"; }
+					;;
+				*"reify:unpack"*|*"reifyNode"*)
+					[[ $_phase -lt 2 ]] && { _phase=2; echo "Extracting packages..." > "$_NPM_STATUS_FILE"; }
+					;;
+				*"idealTree"*)
+					[[ $_phase -lt 1 ]] && { _phase=1; echo "Building package tree..." > "$_NPM_STATUS_FILE"; }
+					;;
+				*"http fetch GET"*200*)
+					if [[ $_phase -lt 2 ]]; then
+						local _url="${_line##*GET }"
+						_url="${_url%% *}"
+						local _seg="${_url##*/}"
+						_seg="${_seg%%[-_][0-9]*}"
+						[[ -n "$_seg" ]] && echo "Fetching: ${_seg:0:40}" > "$_NPM_STATUS_FILE"
+					fi
+					;;
+				*"npm timing npm:load"*)
+					# New npm invocation (e.g. fallback retry) — reset phases
+					_phase=0
+					;;
+			esac
+		done
+	) &
+	_NPM_PROGRESS_PID=$!
+
+	# Stall detector: if no log activity for 15s, show reassuring messages
+	(
+		while kill -0 "$_NPM_PROGRESS_PID" 2>/dev/null; do
+			sleep 5
+			if [[ -f "$_ts_file" ]]; then
+				_last=$(cat "$_ts_file" 2>/dev/null || echo 0)
+				_now=$(date +%s)
+				_gap=$(( _now - _last ))
+				if [[ $_gap -ge 60 ]]; then
+					echo "Still working, this may take a few minutes..." > "$_NPM_STATUS_FILE"
+				elif [[ $_gap -ge 15 ]]; then
+					echo "Compiling native modules..." > "$_NPM_STATUS_FILE"
+				fi
+			fi
+		done
+	) &
+	_NPM_STALL_PID=$!
+}
+
+_stop_npm_progress() {
+	if [[ -n "${_NPM_PROGRESS_PID:-}" ]]; then
+		kill "$_NPM_PROGRESS_PID" 2>/dev/null || true
+		wait "$_NPM_PROGRESS_PID" 2>/dev/null || true
+		_NPM_PROGRESS_PID=""
+	fi
+	if [[ -n "${_NPM_STALL_PID:-}" ]]; then
+		kill "$_NPM_STALL_PID" 2>/dev/null || true
+		wait "$_NPM_STALL_PID" 2>/dev/null || true
+		_NPM_STALL_PID=""
+	fi
+	[[ -n "${_NPM_STATUS_FILE:-}" ]] && rm -f "$_NPM_STATUS_FILE" "${_NPM_STATUS_FILE}.ts"
+	_NPM_STATUS_FILE=""
+}
+
+# Cached registry URL — set by calling _pick_npm_registry before the spinner starts
+_CACHED_NPM_REGISTRY=""
 
 _npm_install_with_mirror() {
 	local _pkg="$1"
-	local _registry
-	_registry="$(_pick_npm_registry)"
+	local _registry="${_CACHED_NPM_REGISTRY}"
 	local _timeout="${NPM_INSTALL_TIMEOUT}"
 
+	# Enable npm timing+progress logging so we can show real-time feedback
+	local _npm_flags=(--loglevel=http --timing)
+
 	if [[ -n "$_registry" && "$_registry" != "https://registry.npmjs.org" ]]; then
-		log "Using npm mirror: ${_registry}"
-		if timeout "$_timeout" npm install -g "$_pkg" --registry="$_registry" 2>&1; then
+		local _rc=0
+		timeout "$_timeout" npm install -g "$_pkg" --registry="$_registry" "${_npm_flags[@]}" >> "$INSTALL_LOG" 2>&1 || _rc=$?
+		if [[ $_rc -eq 0 ]]; then
 			return 0
+		elif [[ $_rc -eq 124 ]]; then
+			# timeout killed the process — don't retry, it's not a mirror issue
+			return $_rc
 		fi
 		warn "npm mirror install failed, trying official registry..."
 	fi
 
-	timeout "$_timeout" npm install -g "$_pkg" 2>&1
+	timeout "$_timeout" npm install -g "$_pkg" "${_npm_flags[@]}" >> "$INSTALL_LOG" 2>&1
 }
 
 _npm_install_openclaw() {
 	_npm_install_with_mirror "openclaw@${OPENCLAW_MIN_VERSION}"
 }
 
+start_spinner "Checking OpenClaw..."
 if check_command openclaw; then
 	OC_VERSION="$(openclaw --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")"
 	if version_ge "$OC_VERSION" "$OPENCLAW_MIN_VERSION"; then
-		log "OpenClaw ${OC_VERSION} ✓"
+		stop_spinner "OpenClaw ${OC_VERSION} already installed"
 	else
-		log "Upgrading OpenClaw to ${OPENCLAW_MIN_VERSION}..."
-		_npm_install_openclaw
-		log "OpenClaw ${OPENCLAW_MIN_VERSION} installed ✓"
+		stop_spinner "OpenClaw ${OC_VERSION} found — upgrade needed"
+		start_spinner "Checking npm registries..."
+		_CACHED_NPM_REGISTRY="$(_pick_npm_registry)"
+		if [[ -n "$_CACHED_NPM_REGISTRY" && "$_CACHED_NPM_REGISTRY" != "https://registry.npmjs.org" ]]; then
+			stop_spinner "Using mirror: ${_CACHED_NPM_REGISTRY##*/}"
+		else
+			stop_spinner "Using official registry"
+		fi
+		_start_npm_progress
+		start_spinner "Downloading OpenClaw ${OPENCLAW_MIN_VERSION}..." "$_NPM_STATUS_FILE"
+		if _npm_install_openclaw; then
+			_stop_npm_progress
+			stop_spinner "OpenClaw ${OPENCLAW_MIN_VERSION} installed"
+		else
+			_stop_npm_progress
+			stop_spinner_fail "Upgrade failed"
+			info_box "npm install -g openclaw@${OPENCLAW_MIN_VERSION} failed.\nSee log: ${INSTALL_LOG}"
+			exit 1
+		fi
 	fi
 else
-	log "Installing OpenClaw ${OPENCLAW_MIN_VERSION}..."
-	_npm_install_openclaw
-	log "OpenClaw ${OPENCLAW_MIN_VERSION} installed ✓"
+	stop_spinner_warn "OpenClaw not found"
+	start_spinner "Checking npm registries..."
+	_CACHED_NPM_REGISTRY="$(_pick_npm_registry)"
+	if [[ -n "$_CACHED_NPM_REGISTRY" && "$_CACHED_NPM_REGISTRY" != "https://registry.npmjs.org" ]]; then
+		stop_spinner "Using mirror: ${_CACHED_NPM_REGISTRY##*/}"
+	else
+		stop_spinner "Using official registry"
+	fi
+	_start_npm_progress
+	start_spinner "Downloading OpenClaw ${OPENCLAW_MIN_VERSION}..." "$_NPM_STATUS_FILE"
+	if _npm_install_openclaw; then
+		_stop_npm_progress
+		stop_spinner "OpenClaw ${OPENCLAW_MIN_VERSION} installed"
+	else
+		_stop_npm_progress
+		stop_spinner_fail "OpenClaw install failed"
+		info_box "npm install -g openclaw@${OPENCLAW_MIN_VERSION} failed.\nSee log: ${INSTALL_LOG}\nYou may need to run: sudo npm install -g openclaw@${OPENCLAW_MIN_VERSION}"
+		exit 1
+	fi
 fi
 
 # --- Install Miniforge + Scientific Python ---
 
-header "Step 2: Conda (Package Manager)"
+header "Setting Up Conda" "$SYM_MICROSCOPE"
 
 if [[ "$SKIP_CONDA" == "true" ]]; then
 	warn "Skipping Conda installation (--no-conda)"
@@ -326,11 +742,11 @@ else
 	# AcaClaw always uses its own Miniforge installation for reproducibility.
 	# System conda/miniconda may be too old or have incompatible package caches.
 	if [[ -d "$MINIFORGE_DIR" ]]; then
-		log "Miniforge already installed at ${MINIFORGE_DIR} ✓"
+		log "Miniforge already installed"
 	fi
 
 	if [[ ! -d "$MINIFORGE_DIR" ]]; then
-		log "Installing Miniforge..."
+		info "Miniforge is a lightweight package manager for scientific software"
 
 		case "${OS}-${ARCH}" in
 			linux-x86_64)   MINIFORGE_FILE="Miniforge3-Linux-x86_64.sh" ;;
@@ -340,40 +756,97 @@ else
 			*) error "No Miniforge build for ${OS}-${ARCH}"; exit 1 ;;
 		esac
 
-		# Download sources — try GitHub first, fall back to mirrors
+		# Download sources — try Chinese edu mirrors first (faster in-region), GitHub last
 		MINIFORGE_URLS=(
-			"https://github.com/conda-forge/miniforge/releases/latest/download"
 			"https://mirrors.bfsu.edu.cn/github-release/conda-forge/miniforge/LatestRelease"
 			"https://mirrors.tuna.tsinghua.edu.cn/github-release/conda-forge/miniforge/LatestRelease"
+			"https://github.com/conda-forge/miniforge/releases/latest/download"
 		)
+
+		# Pick fastest mirror by testing HEAD latency
+		_pick_miniforge_mirror() {
+			local _best_url="" _best_ms=999999
+			for _mf_url in "${MINIFORGE_URLS[@]}"; do
+				local _test_url="${_mf_url}/${MINIFORGE_FILE}"
+				local _start_ns _end_ns _ms
+				_start_ns=$(date +%s%N)
+				if curl -fsSI --connect-timeout 5 --max-time 8 "$_test_url" >/dev/null 2>&1; then
+					_end_ns=$(date +%s%N)
+					_ms=$(( (_end_ns - _start_ns) / 1000000 ))
+					if [[ $_ms -lt $_best_ms ]]; then
+						_best_ms=$_ms
+						_best_url="$_mf_url"
+					fi
+				fi
+			done
+			if [[ -n "$_best_url" ]]; then
+				echo "$_best_url"
+			else
+				echo "${MINIFORGE_URLS[0]}"
+			fi
+		}
 
 		# Miniforge installer checks that $0 ends with .sh
 		INSTALLER_PATH="$(mktemp)"
 		mv "$INSTALLER_PATH" "${INSTALLER_PATH}.sh"
 		INSTALLER_PATH="${INSTALLER_PATH}.sh"
-		DOWNLOAD_OK=false
-		for url in "${MINIFORGE_URLS[@]}"; do
-			log "Trying ${url}..."
-			if curl -fSL --connect-timeout 15 --max-time 300 \
-				"${url}/${MINIFORGE_FILE}" -o "$INSTALLER_PATH" 2>/dev/null; then
-				DOWNLOAD_OK=true
-				log "Downloaded from ${url} ✓"
-				break
-			else
-				warn "Failed to download from ${url}, trying next mirror..."
-			fi
-		done
 
-		if [[ "$DOWNLOAD_OK" != "true" ]]; then
-			rm -f "$INSTALLER_PATH"
-			error "Could not download Miniforge from any source."
-			error "Check your internet connection and try again."
-			exit 1
+		start_spinner "Checking download mirrors..."
+		MINIFORGE_CHOSEN_URL="$(_pick_miniforge_mirror)"
+		stop_spinner "Using: ${MINIFORGE_CHOSEN_URL%%/github*}..."
+
+		# Download with visible progress bar (curl -# shows a progress bar)
+		echo -e "  ${CYAN}${SYM_ARROW}${NC} Downloading Miniforge..."
+		if curl -fSL -# --connect-timeout 15 --max-time 600 \
+			"${MINIFORGE_CHOSEN_URL}/${MINIFORGE_FILE}" -o "$INSTALLER_PATH" 2>&1; then
+			echo -e "  ${GREEN}${SYM_CHECK}${NC} Downloaded Miniforge"
+		else
+			warn "Primary mirror failed, trying fallback..."
+			DOWNLOAD_OK=false
+			for url in "${MINIFORGE_URLS[@]}"; do
+				[[ "$url" == "$MINIFORGE_CHOSEN_URL" ]] && continue
+				echo -e "  ${CYAN}${SYM_ARROW}${NC} Trying ${url%%/github*}..."
+				if curl -fSL -# --connect-timeout 15 --max-time 600 \
+					"${url}/${MINIFORGE_FILE}" -o "$INSTALLER_PATH" 2>&1; then
+					DOWNLOAD_OK=true
+					echo -e "  ${GREEN}${SYM_CHECK}${NC} Downloaded Miniforge"
+					break
+				fi
+			done
+			if [[ "$DOWNLOAD_OK" != "true" ]]; then
+				rm -f "$INSTALLER_PATH"
+				error "Could not download Miniforge from any source."
+				error "Check your internet connection and try again."
+				exit 1
+			fi
 		fi
 
-		bash "$INSTALLER_PATH" -b -p "$MINIFORGE_DIR"
+		echo -e "  ${CYAN}${SYM_ARROW}${NC} Installing Miniforge (this takes a minute)..."
+		# Log everything, show only key progress to terminal
+		_mf_extract_count=0
+		_mf_link_count=0
+		bash "$INSTALLER_PATH" -b -p "$MINIFORGE_DIR" 2>&1 | while IFS= read -r _mf_line; do
+			echo "$_mf_line" >> "$INSTALL_LOG"
+			case "$_mf_line" in
+				"Extracting "*)
+					_mf_extract_count=$((_mf_extract_count + 1))
+					printf "\r\033[2K  ${DIM}Extracting packages... (%d)${NC}" "$_mf_extract_count"
+					;;
+				"Linking "*)
+					_mf_link_count=$((_mf_link_count + 1))
+					printf "\r\033[2K  ${DIM}Linking packages... (%d)${NC}" "$_mf_link_count"
+					;;
+				"Transaction finished"*)
+					printf "\r\033[2K"
+					;;
+				"PREFIX="*|"Unpacking"*|"installation finished"*)
+					printf "\r\033[2K  ${DIM}%s${NC}" "$_mf_line"
+					;;
+			esac
+		done
+		printf "\r\033[2K"
 		rm -f "$INSTALLER_PATH"
-		log "Miniforge installed ✓"
+		echo -e "  ${GREEN}${SYM_CHECK}${NC} Miniforge installed"
 	fi
 
 	export PATH="${MINIFORGE_DIR}/bin:$PATH"
@@ -406,6 +879,7 @@ else
 		"https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud" # TUNA — fallback
 	)
 	MIRROR_SET="false"
+	start_spinner "Finding fastest package mirror..."
 	for mirror_url in "${MIRROR_URLS[@]}"; do
 		# Test using conda's own Python + ssl module to match what conda will use.
 		# Use .json (not .zst) so SJTU's noarch 403 on .zst doesn't block it.
@@ -422,15 +896,16 @@ except Exception: sys.exit(1)
 channels:
   - conda-forge
 show_channel_urls: true
+notify_updates: false
 channel_alias: ${mirror_url}
 custom_channels:
   conda-forge: ${mirror_url}
 CONDARC_EOF
-			log "Conda mirror configured (${mirror_url}) ✓"
+			stop_spinner "Conda mirror configured"
 			MIRROR_SET="true"
 			break
 		else
-			warn "Mirror SSL test failed: ${mirror_url}, trying next..."
+			: # Try next mirror silently
 		fi
 	done
 	if [[ "$MIRROR_SET" == "false" ]]; then
@@ -439,8 +914,9 @@ CONDARC_EOF
 channels:
   - conda-forge
 show_channel_urls: true
+notify_updates: false
 CONDARC_EOF
-		log "Using official conda-forge channel (no working mirror found) ✓"
+		stop_spinner "Using official conda-forge channel"
 	fi
 
 	# Create the base AcaClaw conda environment with scientific packages.
@@ -456,13 +932,37 @@ import json, sys
 envs = json.load(sys.stdin).get('envs', [])
 sys.exit(0 if any(e.endswith('/envs/${ACACLAW_ENV_NAME}') or e.endswith('/${ACACLAW_ENV_NAME}') for e in envs) else 1)
 " 2>/dev/null; then
-		log "Conda env '${ACACLAW_ENV_NAME}' already exists ✓"
+		log "Conda env '${ACACLAW_ENV_NAME}' already exists"
 	elif [[ -f "$ACACLAW_ENV_YML" ]]; then
-		log "Creating base AcaClaw conda environment..."
-		log "This installs Python, NumPy, SciPy, Pandas, JupyterLab, and more."
-		log "This may take a few minutes on first install."
-		if conda env create -f "$ACACLAW_ENV_YML"; then
-			log "Conda env '${ACACLAW_ENV_NAME}' created ✓"
+		info "Creating science environment (Python, NumPy, SciPy, Pandas, JupyterLab)..."
+		info "This may take several minutes on first install"
+		echo -e "  ${CYAN}${SYM_ARROW}${NC} Installing scientific packages..."
+		# Log everything, show condensed progress to terminal
+		if conda env create -f "$ACACLAW_ENV_YML" 2>&1 | {
+			_conda_pkg_count=0
+			while IFS= read -r _conda_line; do
+				echo "$_conda_line" >> "$INSTALL_LOG"
+				case "$_conda_line" in
+					*"Collecting package metadata"*|*"Solving environment"*|*"Preparing transaction"*|*"Verifying transaction"*)
+						printf "\r\033[2K  ${DIM}%s${NC}" "$_conda_line"
+						;;
+					*"Downloading "*)
+						_conda_pkg_count=$((_conda_pkg_count + 1))
+						printf "\r\033[2K  ${DIM}Downloading packages... (%d)${NC}" "$_conda_pkg_count"
+						;;
+					*"Executing transaction"*)
+						printf "\r\033[2K  ${DIM}Installing packages...${NC}"
+						;;
+					*"Installing pip dependencies"*|*"Pip subprocess"*|*"Installing collected packages"*|*"Successfully installed"*)
+						printf "\r\033[2K  ${DIM}%s${NC}" "${_conda_line:0:80}"
+						;;
+					*"done"*)
+						printf "\r\033[2K"
+						;;
+				esac
+			done
+		}; then
+			echo -e "  ${GREEN}${SYM_CHECK}${NC} Science environment created"
 		else
 			# If we were using a mirror, retry with official conda-forge
 			if [[ "$MIRROR_SET" == "true" ]]; then
@@ -471,14 +971,35 @@ sys.exit(0 if any(e.endswith('/envs/${ACACLAW_ENV_NAME}') or e.endswith('/${ACAC
 channels:
   - conda-forge
 show_channel_urls: true
+notify_updates: false
 CONDARC_EOF
-				if conda env create -f "$ACACLAW_ENV_YML"; then
-					log "Conda env '${ACACLAW_ENV_NAME}' created (official channel) ✓"
+				if conda env create -f "$ACACLAW_ENV_YML" 2>&1 | {
+					_conda_pkg_count=0
+					while IFS= read -r _conda_line; do
+						echo "$_conda_line" >> "$INSTALL_LOG"
+						case "$_conda_line" in
+							*"Collecting package metadata"*|*"Solving environment"*|*"Preparing transaction"*|*"Verifying transaction"*)
+								printf "\r\033[2K  ${DIM}%s${NC}" "$_conda_line"
+								;;
+							*"Downloading "*)
+								_conda_pkg_count=$((_conda_pkg_count + 1))
+								printf "\r\033[2K  ${DIM}Downloading packages... (%d)${NC}" "$_conda_pkg_count"
+								;;
+							*"Executing transaction"*)
+								printf "\r\033[2K  ${DIM}Installing packages...${NC}"
+								;;
+							*"done"*)
+								printf "\r\033[2K"
+								;;
+						esac
+					done
+				}; then
+					echo -e "  ${GREEN}${SYM_CHECK}${NC} Science environment created (official channel)"
 				else
-					warn "Failed to create conda env '${ACACLAW_ENV_NAME}'. You can create it later from the Environment tab."
+					warn "Env creation failed — you can create it later from the UI"
 				fi
 			else
-				warn "Failed to create conda env '${ACACLAW_ENV_NAME}'. You can create it later from the Environment tab."
+				warn "Env creation failed — you can create it later from the UI"
 			fi
 		fi
 	else
@@ -494,7 +1015,7 @@ fi
 
 # --- Install AcaClaw plugins ---
 
-header "Step 3: AcaClaw Plugins"
+header "Installing Plugins" "$SYM_PLUG"
 
 mkdir -p "${ACACLAW_DIR}"
 
@@ -505,61 +1026,32 @@ mkdir -p "$ACACLAW_PLUGINS_DIR"
 
 REPO_PLUGINS_DIR="${SCRIPT_DIR}/../plugins"
 
-log "Installing @acaclaw/workspace..."
-if [[ -d "${REPO_PLUGINS_DIR}/workspace" ]]; then
-	cp -r "${REPO_PLUGINS_DIR}/workspace" "${ACACLAW_PLUGINS_DIR}/acaclaw-workspace"
-	log "@acaclaw/workspace installed ✓"
-else
-	warn "@acaclaw/workspace: npm package not yet published (install from source)"
-fi
+# Plugin list: (source_dir  dest_name  display_name)
+_PLUGIN_LIST=(
+	"workspace:acaclaw-workspace:Workspace Manager"
+	"backup:acaclaw-backup:Backup & Recovery"
+	"security:acaclaw-security:Security Guard"
+	"academic-env:acaclaw-academic-env:Academic Environment"
+	"compat-checker:acaclaw-compat-checker:Compatibility Checker"
+	"logger:acaclaw-logger:Activity Logger"
+	"ui:acaclaw-ui:UI Plugin"
+)
 
-log "Installing @acaclaw/backup..."
-if [[ -d "${REPO_PLUGINS_DIR}/backup" ]]; then
-	cp -r "${REPO_PLUGINS_DIR}/backup" "${ACACLAW_PLUGINS_DIR}/acaclaw-backup"
-	log "@acaclaw/backup installed ✓"
-else
-	warn "@acaclaw/backup: npm package not yet published (install from source)"
-fi
+_plugin_total=${#_PLUGIN_LIST[@]}
+_plugin_done=0
 
-log "Installing @acaclaw/security..."
-if [[ -d "${REPO_PLUGINS_DIR}/security" ]]; then
-	cp -r "${REPO_PLUGINS_DIR}/security" "${ACACLAW_PLUGINS_DIR}/acaclaw-security"
-	log "@acaclaw/security installed ✓"
-else
-	warn "@acaclaw/security: npm package not yet published (install from source)"
-fi
-
-log "Installing @acaclaw/academic-env..."
-if [[ -d "${REPO_PLUGINS_DIR}/academic-env" ]]; then
-	cp -r "${REPO_PLUGINS_DIR}/academic-env" "${ACACLAW_PLUGINS_DIR}/acaclaw-academic-env"
-	log "@acaclaw/academic-env installed ✓"
-else
-	warn "@acaclaw/academic-env: npm package not yet published (install from source)"
-fi
-
-log "Installing @acaclaw/compat-checker..."
-if [[ -d "${REPO_PLUGINS_DIR}/compat-checker" ]]; then
-	cp -r "${REPO_PLUGINS_DIR}/compat-checker" "${ACACLAW_PLUGINS_DIR}/acaclaw-compat-checker"
-	log "@acaclaw/compat-checker installed ✓"
-else
-	warn "@acaclaw/compat-checker: npm package not yet published (install from source)"
-fi
-
-log "Installing @acaclaw/logger..."
-if [[ -d "${REPO_PLUGINS_DIR}/logger" ]]; then
-	cp -r "${REPO_PLUGINS_DIR}/logger" "${ACACLAW_PLUGINS_DIR}/acaclaw-logger"
-	log "@acaclaw/logger installed ✓"
-else
-	warn "@acaclaw/logger: npm package not yet published (install from source)"
-fi
-
-log "Installing @acaclaw/ui (plugin)..."
-if [[ -d "${REPO_PLUGINS_DIR}/ui" ]]; then
-	cp -r "${REPO_PLUGINS_DIR}/ui" "${ACACLAW_PLUGINS_DIR}/acaclaw-ui"
-	log "@acaclaw/ui (plugin) installed ✓"
-else
-	warn "@acaclaw/ui plugin: not found at ${REPO_PLUGINS_DIR}/ui"
-fi
+for _entry in "${_PLUGIN_LIST[@]}"; do
+	IFS=':' read -r _src _dest _display <<< "$_entry"
+	_plugin_done=$((_plugin_done + 1))
+	if [[ -d "${REPO_PLUGINS_DIR}/${_src}" ]]; then
+		cp -r "${REPO_PLUGINS_DIR}/${_src}" "${ACACLAW_PLUGINS_DIR}/${_dest}"
+		show_item_progress "$_plugin_done" "$_plugin_total" "${_display}"
+	else
+		show_item_progress "$_plugin_done" "$_plugin_total" "${_display} (skipped)"
+	fi
+done
+echo ""
+log "${_plugin_done} plugins installed"
 
 # --- WeChat (openclaw-weixin) channel plugin ---
 # Optional plugin — failure here must never block the rest of install.
@@ -579,8 +1071,8 @@ fi
 		rm -f "/tmp/$tgz"
 
 		# Runtime dependencies
-		(cd "$ext_dir" && npm install --omit=dev --ignore-scripts 2>/dev/null) || true
-		(cd "$ext_dir" && npm install --save qrcode 2>/dev/null) || true
+		(cd "$ext_dir" && npm install --omit=dev --ignore-scripts >> "$INSTALL_LOG" 2>&1) || true
+		(cd "$ext_dir" && npm install --save qrcode >> "$INSTALL_LOG" 2>&1) || true
 
 		# Apply AcaClaw patches (gatewayMethods, accountToSession, QR data URI)
 		if [[ -d "$patches_dir" ]]; then
@@ -590,12 +1082,12 @@ fi
 				command cp -f "$patches_dir/login-qr.ts" "$ext_dir/src/auth/login-qr.ts"
 		fi
 
-		log "openclaw-weixin installed ✓"
+		log "WeChat plugin installed"
 	}
-	_install_weixin || warn "WeChat plugin install failed (non-fatal, skipping)"
+	_install_weixin || warn "WeChat plugin skipped (optional, non-fatal)"
 ) || true
 
-log "Installing @acaclaw/ui..."
+start_spinner "Setting up AcaClaw UI..."
 ACAC_UI_SRC="${SCRIPT_DIR}/../ui"
 ACAC_UI_DEST="${OPENCLAW_DIR}/ui"
 
@@ -619,32 +1111,37 @@ _deploy_ui() {
 }
 
 if _ui_needs_rebuild && [[ -d "${ACAC_UI_SRC}/src" ]] && check_command npm; then
-	log "Building AcaClaw UI (source is newer than dist)..."
 	(cd "${ACAC_UI_SRC}" && npm install --no-audit --no-fund 2>/dev/null && npm run build 2>/dev/null)
 	if [[ -d "${ACAC_UI_SRC}/dist" ]]; then
 		_deploy_ui
-		log "@acaclaw/ui built and installed ✓"
+		stop_spinner "UI built and installed"
 	else
-		warn "@acaclaw/ui: build failed"
+		stop_spinner_warn "UI build failed"
 	fi
 elif [[ -d "${ACAC_UI_SRC}/dist" ]]; then
 	_deploy_ui
-	log "@acaclaw/ui installed ✓"
+	stop_spinner "UI installed"
 else
-	warn "@acaclaw/ui: dist not found and no source to build"
+	stop_spinner_warn "UI: no dist found and no source to build"
 fi
 
 # --- Install essential skills from ClawHub ---
 
-header "Step 4: Essential Skills"
+header "Installing Skills" "$SYM_BRAIN"
 
 # Install clawhub CLI if not present
 if ! check_command clawhub; then
-	log "Installing ClawHub CLI..."
+	# Reuse cached registry if already tested, otherwise test now
+	if [[ -z "$_CACHED_NPM_REGISTRY" ]]; then
+		start_spinner "Checking npm registries..."
+		_CACHED_NPM_REGISTRY="$(_pick_npm_registry)"
+		stop_spinner "Registry selected"
+	fi
+	start_spinner "Installing ClawHub CLI..."
 	_npm_install_with_mirror clawhub
-	log "ClawHub CLI installed ✓"
+	stop_spinner "ClawHub CLI installed"
 else
-	log "ClawHub CLI ✓"
+	log "ClawHub CLI ready"
 fi
 
 # Install uv (Python package manager) for skill binary dependencies.
@@ -658,20 +1155,92 @@ fi
 
 # Install a single skill from ClawHub with timeout and mirror fallback.
 # Usage: _clawhub_install <skill_name>
+
+# Auto-select the fastest ClawHub registry by racing primary vs mirror.
+# Caches the result in CLAWHUB_BEST_REGISTRY for subsequent calls.
+CLAWHUB_BEST_REGISTRY=""
+_CLAWHUB_PROBED=false
+_pick_clawhub_registry() {
+	# Already probed — return cached result (may be empty = primary)
+	if $_CLAWHUB_PROBED; then
+		echo "$CLAWHUB_BEST_REGISTRY"
+		return 0
+	fi
+	_CLAWHUB_PROBED=true
+
+	local _primary="https://clawhub.ai"
+	local _mirror="${CLAWHUB_MIRROR}"
+	local _probe_timeout=5
+
+	# Race both endpoints (TTFB). First to respond wins.
+	local _primary_ms _mirror_ms _primary_ok=false _mirror_ok=false
+
+	# Probe primary
+	_primary_ms=$(curl -sS -o /dev/null -w "%{time_starttransfer}" \
+		--connect-timeout "$_probe_timeout" --max-time "$_probe_timeout" \
+		"${_primary}/" 2>/dev/null) && _primary_ok=true || true
+	# Probe mirror
+	_mirror_ms=$(curl -sS -o /dev/null -w "%{time_starttransfer}" \
+		--connect-timeout "$_probe_timeout" --max-time "$_probe_timeout" \
+		"${_mirror}/" 2>/dev/null) && _mirror_ok=true || true
+
+	# Convert to integer ms for comparison
+	local _p_int _m_int
+	_p_int=$(echo "${_primary_ms:-999} * 1000 / 1" | bc 2>/dev/null) || _p_int=99999
+	_m_int=$(echo "${_mirror_ms:-999} * 1000 / 1" | bc 2>/dev/null) || _m_int=99999
+
+	if $_primary_ok && $_mirror_ok; then
+		if [[ $_p_int -le $_m_int ]]; then
+			log "ClawHub primary faster (${_p_int}ms vs mirror ${_m_int}ms)" >&2
+			CLAWHUB_BEST_REGISTRY=""
+		else
+			log "ClawHub mirror faster (${_m_int}ms vs primary ${_p_int}ms) — using ${_mirror}" >&2
+			CLAWHUB_BEST_REGISTRY="$_mirror"
+		fi
+	elif $_mirror_ok; then
+		warn "ClawHub primary unreachable — using mirror ${_mirror}" >&2
+		CLAWHUB_BEST_REGISTRY="$_mirror"
+	else
+		# Primary available or both down — use primary (default)
+		CLAWHUB_BEST_REGISTRY=""
+	fi
+
+	echo "$CLAWHUB_BEST_REGISTRY"
+}
+
 _clawhub_install() {
 	local _skill="$1"
 	local _timeout="${CLAWHUB_SKILL_TIMEOUT}"
+	local _best_registry="${CLAWHUB_BEST_REGISTRY}"
 
-	# Try primary registry with timeout
-	if timeout "$_timeout" clawhub --workdir "${OPENCLAW_DIR}" install "$_skill" --force 2>/dev/null; then
-		return 0
-	fi
+	# --no-input prevents interactive prompts; < /dev/null prevents
+	# SIGTTIN when the Node.js CLI tries to read terminal state from
+	# a backgrounded subshell (the root cause of the install stall).
 
-	# Primary failed or timed out — try mirror
-	warn "${_skill}: primary ClawHub slow/unavailable, trying mirror (${CLAWHUB_MIRROR})..."
-	if timeout "$_timeout" clawhub --workdir "${OPENCLAW_DIR}" --registry "${CLAWHUB_MIRROR}" \
-		install "$_skill" --force 2>/dev/null; then
-		return 0
+	# Try the auto-selected best registry first
+	if [[ -n "$_best_registry" ]]; then
+		if timeout "$_timeout" clawhub --workdir "${OPENCLAW_DIR}" --registry "$_best_registry" \
+			--no-input install "$_skill" --force < /dev/null 2>/dev/null; then
+			return 0
+		fi
+		# Best registry failed — fall back to default primary
+		warn "${_skill}: mirror ${_best_registry} failed, falling back to primary..."
+		if timeout "$_timeout" clawhub --workdir "${OPENCLAW_DIR}" \
+			--no-input install "$_skill" --force < /dev/null 2>/dev/null; then
+			return 0
+		fi
+	else
+		# Primary is best (or no mirror preferred)
+		if timeout "$_timeout" clawhub --workdir "${OPENCLAW_DIR}" \
+			--no-input install "$_skill" --force < /dev/null 2>/dev/null; then
+			return 0
+		fi
+		# Primary failed — try mirror as fallback
+		warn "${_skill}: primary ClawHub slow/unavailable, trying mirror (${CLAWHUB_MIRROR})..."
+		if timeout "$_timeout" clawhub --workdir "${OPENCLAW_DIR}" --registry "${CLAWHUB_MIRROR}" \
+			--no-input install "$_skill" --force < /dev/null 2>/dev/null; then
+			return 0
+		fi
 	fi
 
 	return 1
@@ -679,25 +1248,34 @@ _clawhub_install() {
 
 # Install agent-required skills from ClawHub into the AcaClaw profile.
 # These skills are defined in skills.json and needed by all agents.
+# Runs in the background so config/gateway setup proceeds in parallel.
 CORE_SKILLS=("nano-pdf" "xurl" "summarize" "humanizer")
-SKILL_COUNT=0
 
-for skill_name in "${CORE_SKILLS[@]}"; do
-	log "Installing skill: ${skill_name}..."
-	if _clawhub_install "$skill_name"; then
-		SKILL_COUNT=$((SKILL_COUNT + 1))
-	else
-		warn "Failed to install ${skill_name} (tried primary + mirror)"
-	fi
-done
+_SKILL_RESULT_FILE="$(mktemp)"
 
-log "${SKILL_COUNT}/${#CORE_SKILLS[@]} skills installed ✓"
-log "Bundled with OpenClaw: coding-agent, clawhub, and more"
-log "Install more skills anytime: clawhub install <skill-name> --workdir ${OPENCLAW_DIR}"
+(
+	# Probe once before the loop (avoids re-probing per skill due to subshell)
+	CLAWHUB_BEST_REGISTRY="$(_pick_clawhub_registry)"
+
+	_count=0
+	for skill_name in "${CORE_SKILLS[@]}"; do
+		_count=$((_count + 1))
+		echo "  ${SYM_ARROW} Installing skill ${_count}/${#CORE_SKILLS[@]}: ${skill_name}..."
+		if _clawhub_install "$skill_name"; then
+			:
+		else
+			echo "  ${SYM_WARN} ${skill_name}: install failed (tried primary + mirror)"
+		fi
+	done
+	echo "$_count" > "$_SKILL_RESULT_FILE"
+) >> "$INSTALL_LOG" 2>&1 &
+_SKILL_INSTALL_PID=$!
+
+info "Skills installing in background (${#CORE_SKILLS[@]} skills: nano-pdf, xurl, summarize, humanizer)"
 
 # --- Security defaults ---
 
-header "Step 5: Security Configuration"
+header "Security Configuration" "$SYM_SHIELD"
 
 # Apply standard security by default.
 # The browser setup wizard allows upgrading to Maximum mode.
@@ -707,16 +1285,16 @@ SECURITY_MODE="standard"
 DOCKER_AVAILABLE=false
 if check_command docker && docker info &>/dev/null 2>&1; then
 	DOCKER_AVAILABLE=true
-	log "Docker detected ✓ (Maximum mode available in setup wizard)"
+	log "Docker detected — Maximum security mode available in setup wizard"
 else
-	log "Docker not detected (Standard mode only)"
+	dimlog "Docker not detected (Standard mode only — this is fine for most users)"
 fi
 
-log "Default security mode: ${SECURITY_MODE}"
+log "Default security mode: ${BOLD}Standard${NC}"
 
 # --- Apply configuration ---
 
-header "Step 6: Applying Configuration"
+header "Applying Configuration" "$SYM_GEAR"
 
 CONFIG_SOURCE="${SCRIPT_DIR}/../config"
 if [[ ! -d "$CONFIG_SOURCE" ]]; then
@@ -743,7 +1321,7 @@ ACACLAW_CONFIG="${OPENCLAW_DIR}/openclaw.json"
 
 if [[ -f "$OPENCLAW_BASE_CONFIG" ]]; then
 	# Existing config found — preserve user settings, only overlay AcaClaw defaults
-	log "Found existing config — preserving user settings (API keys, models, etc.)"
+	start_spinner "Merging with existing OpenClaw configuration..."
 
 	python3 -c "
 import json, copy
@@ -801,14 +1379,14 @@ with open('${ACACLAW_CONFIG}', 'w') as f:
     f.write('\n')
 "
 	if [[ $? -ne 0 ]]; then
-		error "Failed to create config file"
+		stop_spinner_fail "Failed to create config file"
 		exit 1
 	fi
 
-	log "Config updated — user settings preserved ✓"
+	stop_spinner "Configuration merged — user API keys and settings preserved"
 else
 	# No existing OpenClaw install — standalone config
-	log "No existing OpenClaw config found — creating standalone config"
+	start_spinner "Creating fresh AcaClaw configuration..."
 
 	python3 -c "
 import json
@@ -828,11 +1406,11 @@ with open('${ACACLAW_CONFIG}', 'w') as f:
     f.write('\n')
 "
 	if [[ $? -ne 0 ]]; then
-		error "Failed to create config file"
+		stop_spinner_fail "Failed to create config file"
 		exit 1
 	fi
 
-	log "AcaClaw standalone config created ✓"
+	stop_spinner "Fresh configuration created"
 fi
 
 # Apply required overrides (controlUi basePath, plugins.allow).
@@ -897,8 +1475,9 @@ if [[ ! -f "${ACACLAW_CONFIG}" ]]; then
 	exit 1
 fi
 
-log "Config location: ${ACACLAW_CONFIG}"
-log "OpenClaw's own config: untouched ✓"
+log "Configuration applied"
+dimlog "Config: ${ACACLAW_CONFIG}"
+dimlog "OpenClaw's own config: untouched"
 
 # --- Create directory structure ---
 
@@ -960,7 +1539,7 @@ To restore a file: \`openclaw acaclaw-backup restore <file>\`
 To list versions:  \`openclaw acaclaw-backup list <file>\`
 WSREADME
 
-	log "Workspace created ✓"
+	log "Workspace created at ~/AcaClaw"
 fi
 
 # --- Sync agent identity files ---
@@ -1021,32 +1600,41 @@ cat > "${ACACLAW_DIR}/config/plugins.json" <<PLUGINJSON
   }
 }
 PLUGINJSON
-log "AcaClaw plugin config saved ✓"
-log "Plugin config: ${ACACLAW_DIR}/config/plugins.json"
+log "AcaClaw plugin config saved"
+dimlog "Plugin config: ${ACACLAW_DIR}/config/plugins.json"
 
 # --- Environment verification ---
 
 if [[ "$SKIP_CONDA" != "true" ]]; then
-	header "Verifying Environment"
+	echo ""
+	echo -e "  ${BOLD}${CYAN}Verifying environment...${NC}"
 
 	if conda --version &>/dev/null; then
-		log "conda $(conda --version 2>&1 | awk '{print $2}') ✓"
+		log "conda $(conda --version 2>&1 | awk '{print $2}') found"
 	else
-		warn "conda not working"
+		warn "conda not responding"
 	fi
 
 	if python3 --version &>/dev/null; then
-		log "Python $(python3 --version 2>&1 | awk '{print $2}') ✓"
+		log "Python $(python3 --version 2>&1 | awk '{print $2}') found"
 	else
-		log "Python available in conda base ✓"
+		log "Python available in conda base"
 	fi
 
-	log "Scientific packages will be installed during setup wizard"
+	dimlog "Scientific packages will be installed during setup wizard"
 fi
 
 # --- Install auto-restart service and start gateway ---
 
-header "Starting Gateway"
+echo ""
+printf "  ${BLUE}"
+_repeat_char '─' "$(( $(_term_width) - 4 ))"
+printf "${NC}\n"
+printf "  ${BOLD}${BLUE}${SYM_ROCKET}  Launching AcaClaw${NC}\n"
+printf "  ${BLUE}"
+_repeat_char '─' "$(( $(_term_width) - 4 ))"
+printf "${NC}\n"
+echo ""
 
 # Remove legacy --profile service files that used ~/.openclaw-acaclaw/ isolation.
 # AcaClaw now uses ~/.openclaw/ directly; stale profile services cause the gateway
@@ -1070,10 +1658,11 @@ _cleanup_legacy_services() {
 }
 _cleanup_legacy_services
 
-log "Starting OpenClaw gateway..."
+start_spinner "Starting OpenClaw gateway..."
 GATEWAY_STARTED=false
 if check_command openclaw; then
 	if [[ ! -f "${ACACLAW_CONFIG}" ]]; then
+		stop_spinner_fail "Config file missing"
 		error "Cannot start gateway — config file missing at ${ACACLAW_CONFIG}"
 		error "Run the installer again or create the config manually."
 		exit 1
@@ -1102,12 +1691,11 @@ if check_command openclaw; then
 	# Install auto-restart service and start gateway through OpenClaw's native daemon
 	SERVICE_SCRIPT="${SCRIPT_DIR}/acaclaw-service.sh"
 	if [[ -f "$SERVICE_SCRIPT" ]]; then
-		log "Installing gateway auto-restart service..."
-		if bash "$SERVICE_SCRIPT" install 2>/dev/null; then
+		if bash "$SERVICE_SCRIPT" install >> "$INSTALL_LOG" 2>&1; then
 			# openclaw daemon install rewrites the gateway config section;
 			# re-apply AcaClaw overrides so controlUi/plugins.allow are not lost.
 			_apply_config_overrides
-			openclaw daemon start 2>/dev/null || true
+			openclaw daemon start >> "$INSTALL_LOG" 2>&1 || true
 			GATEWAY_STARTED=true
 		else
 			warn "Service install failed — starting gateway directly"
@@ -1118,13 +1706,14 @@ if check_command openclaw; then
 	if [[ "$GATEWAY_STARTED" == "false" ]]; then
 		# Also re-apply in the fallback path (daemon install may have partially run).
 		_apply_config_overrides
-		openclaw gateway run --bind loopback --port 2090 &>/dev/null &
+		openclaw gateway run --bind loopback --port 2090 >> "$INSTALL_LOG" 2>&1 &
 		GATEWAY_STARTED=true
 	fi
 
 	# Wait for gateway to be ready before opening the browser
 	if [[ "$GATEWAY_STARTED" == "true" ]]; then
-		log "Waiting for gateway to be ready..."
+		stop_spinner "Gateway started"
+		start_spinner "Waiting for gateway to respond..."
 		_ready=false
 		for _i in $(seq 1 30); do
 			if curl -s -o /dev/null -w '' http://localhost:2090/ 2>/dev/null; then
@@ -1134,9 +1723,9 @@ if check_command openclaw; then
 			sleep 1
 		done
 		if [[ "$_ready" == "true" ]]; then
-			log "Gateway ready ✓"
+			stop_spinner "Gateway is ready"
 		else
-			warn "Gateway not responding yet — it may still be starting"
+			stop_spinner_warn "Gateway may still be starting — try refreshing the browser"
 		fi
 	fi
 
@@ -1240,23 +1829,25 @@ SETUPJSON
 	log "Setup wizard: ${BOLD}${SETUP_URL}${NC}"
 	log "If nothing opened, visit the URL above manually."
 else
-	warn "OpenClaw not found — start the gateway manually:"
+	stop_spinner_warn "OpenClaw command not found"
+	warn "Start the gateway manually:"
 	warn "  openclaw gateway run --bind loopback --port 2090"
 	warn "Then visit http://localhost:2090/"
 fi
 
 # --- Install desktop shortcut ---
 
-header "Desktop Integration"
+echo ""
+echo -e "  ${BOLD}${CYAN}Desktop Integration${NC}"
 
 DESKTOP_SCRIPT="${SCRIPT_DIR}/install-desktop.sh"
 if [[ "${DESKTOP_INSTALLED:-false}" == "true" ]]; then
-	log "Desktop shortcut already installed (done during gateway launch step)"
+	log "Desktop shortcut already installed"
 elif [[ -f "$DESKTOP_SCRIPT" ]]; then
-	log "Installing desktop shortcut..."
-	bash "$DESKTOP_SCRIPT" 2>/dev/null || warn "Desktop shortcut install failed (non-fatal)"
+	start_spinner "Installing desktop shortcut..."
+	bash "$DESKTOP_SCRIPT" >> "$INSTALL_LOG" 2>&1 && stop_spinner "Desktop shortcut installed" || stop_spinner_warn "Desktop shortcut skipped (non-fatal)"
 else
-	log "Desktop shortcut script not found — skipping"
+	dimlog "Desktop shortcut: not available for this platform"
 fi
 
 # --- Copy management scripts to persistent location ---
@@ -1267,20 +1858,63 @@ for _script in start.sh stop.sh uninstall.sh; do
 	fi
 done
 
+# --- Collect background skill install results ---
+if [[ -n "${_SKILL_INSTALL_PID:-}" ]]; then
+	wait "$_SKILL_INSTALL_PID" 2>/dev/null || true
+	SKILL_COUNT=0
+	if [[ -f "$_SKILL_RESULT_FILE" ]]; then
+		SKILL_COUNT="$(cat "$_SKILL_RESULT_FILE" 2>/dev/null || echo 0)"
+		rm -f "$_SKILL_RESULT_FILE"
+	fi
+	log "${SKILL_COUNT}/${#CORE_SKILLS[@]} skills installed"
+	dimlog "Bundled with OpenClaw: coding-agent, clawhub, and more"
+	dimlog "Install more skills anytime: clawhub install <skill-name>"
+fi
+
+# ─── Final Summary Dashboard ───────────────────────────────────────────
+_w=$(_term_width)
+_box_w=$(( _w - 4 ))
+[[ $_box_w -gt 64 ]] && _box_w=64
+
 echo ""
-echo -e "${GREEN}AcaClaw v${ACACLAW_VERSION} installed successfully.${NC}"
 echo ""
-echo -e "  Complete setup in your browser: ${BOLD}http://localhost:2090/${NC}"
+printf "  ${GREEN}"
+_repeat_char '━' "$_box_w"
+printf "${NC}\n"
 echo ""
-echo "  The wizard will guide you through:"
-echo "    1. Choose your research discipline"
-echo "    2. Connect your AI provider (API key)"
-echo "    3. Configure workspace location"
-echo "    4. Choose security level"
+echo -e "  ${SYM_SPARKLE}  ${BOLD}${GREEN}AcaClaw v${ACACLAW_VERSION} installed successfully!${NC}  ${SYM_SPARKLE}"
 echo ""
-echo "  After setup, launch AcaClaw anytime:"
-echo "    • From your app launcher (desktop shortcut installed)"
-echo -e "    • Or run: ${BOLD}bash ${ACACLAW_DIR}/start.sh${NC}"
-echo -e "    • Stop:  ${BOLD}bash ${ACACLAW_DIR}/stop.sh${NC}"
+printf "  ${GREEN}"
+_repeat_char '━' "$_box_w"
+printf "${NC}\n"
 echo ""
-log "Happy researching!"
+
+# What's next box
+printf "  ${CYAN}┌"
+_repeat_char '─' $((_box_w - 2))
+printf "┐${NC}\n"
+printf "  ${CYAN}│${NC}  ${BOLD}What's Next?${NC}%*s${CYAN}│${NC}\n" $((_box_w - 16)) ''
+printf "  ${CYAN}│${NC}%*s${CYAN}│${NC}\n" $((_box_w - 2)) ''
+printf "  ${CYAN}│${NC}  Complete setup in your browser:                 ${CYAN}│${NC}\n"
+printf "  ${CYAN}│${NC}  ${BOLD}${BLUE}http://localhost:2090/${NC}%*s${CYAN}│${NC}\n" $((_box_w - 25)) ''
+printf "  ${CYAN}│${NC}%*s${CYAN}│${NC}\n" $((_box_w - 2)) ''
+printf "  ${CYAN}│${NC}  The wizard will guide you through:              ${CYAN}│${NC}\n"
+printf "  ${CYAN}│${NC}    ${SYM_DOT} Choose your research discipline%*s${CYAN}│${NC}\n" $((_box_w - 36)) ''
+printf "  ${CYAN}│${NC}    ${SYM_DOT} Connect your AI provider (API key)%*s${CYAN}│${NC}\n" $((_box_w - 40)) ''
+printf "  ${CYAN}│${NC}    ${SYM_DOT} Configure workspace location%*s${CYAN}│${NC}\n" $((_box_w - 33)) ''
+printf "  ${CYAN}│${NC}    ${SYM_DOT} Choose security level%*s${CYAN}│${NC}\n" $((_box_w - 26)) ''
+printf "  ${CYAN}│${NC}%*s${CYAN}│${NC}\n" $((_box_w - 2)) ''
+printf "  ${CYAN}└"
+_repeat_char '─' $((_box_w - 2))
+printf "┘${NC}\n"
+echo ""
+
+# Quick reference
+echo -e "  ${BOLD}Quick Reference:${NC}"
+echo -e "    ${SYM_ARROW} Launch: ${BOLD}bash ~/.acaclaw/start.sh${NC}"
+echo -e "    ${SYM_ARROW} Stop:   ${BOLD}bash ~/.acaclaw/stop.sh${NC}"
+echo -e "    ${SYM_ARROW} Web UI: ${BOLD}http://localhost:2090/${NC}"
+echo -e "    ${SYM_ARROW} Log:    ${DIM}${INSTALL_LOG}${NC}"
+echo ""
+echo -e "  ${DIM}${SYM_MICROSCOPE} Happy researching!${NC}"
+echo ""

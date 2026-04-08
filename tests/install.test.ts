@@ -1305,5 +1305,71 @@ EOF
 			const { code } = await runBash(script);
 			expect(code).toBe(0);
 		});
+
+		it("defines _pick_clawhub_registry for auto mirror selection", async () => {
+			const { code } = await runBash(
+				`grep -q '_pick_clawhub_registry()' "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+		});
+
+		it("_pick_clawhub_registry caches result in CLAWHUB_BEST_REGISTRY", async () => {
+			const { code } = await runBash(
+				`grep -q 'CLAWHUB_BEST_REGISTRY' "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+		});
+
+		it("_clawhub_install reads CLAWHUB_BEST_REGISTRY for registry selection", async () => {
+			const { code } = await runBash(
+				`awk '/_clawhub_install\\(\\)/,/^}/' "${INSTALL_SCRIPT}" | grep -q 'CLAWHUB_BEST_REGISTRY'`,
+			);
+			expect(code).toBe(0);
+		});
+
+		it("_pick_clawhub_registry probes both primary and mirror with curl", async () => {
+			const { stdout, code } = await runBash(
+				`awk '/_pick_clawhub_registry\\(\\)/,/^}/' "${INSTALL_SCRIPT}" | grep -c 'curl'`,
+			);
+			expect(code).toBe(0);
+			// Should have at least 2 curl calls (primary + mirror probes)
+			expect(Number(stdout.trim())).toBeGreaterThanOrEqual(2);
+		});
+
+		it("clawhub install commands use --no-input to prevent TTY prompts", async () => {
+			const { stdout, code } = await runBash(
+				`awk '/_clawhub_install\\(\\)/,/^}/' "${INSTALL_SCRIPT}" | grep -c -- '--no-input'`,
+			);
+			expect(code).toBe(0);
+			expect(Number(stdout.trim())).toBeGreaterThanOrEqual(2);
+		});
+
+		it("clawhub install commands use < /dev/null to prevent SIGTTIN", async () => {
+			const { stdout, code } = await runBash(
+				`awk '/_clawhub_install\\(\\)/,/^}/' "${INSTALL_SCRIPT}" | grep -c '/dev/null'`,
+			);
+			expect(code).toBe(0);
+			expect(Number(stdout.trim())).toBeGreaterThanOrEqual(2);
+		});
+
+		it("probes registry once before the install loop", async () => {
+			const { code } = await runBash(
+				`grep -B5 'for skill_name' "${INSTALL_SCRIPT}" | grep -q '_pick_clawhub_registry'`,
+			);
+			expect(code).toBe(0);
+		});
+
+		it("runs skill install in background and collects results later", async () => {
+			// The skill loop should run inside a background subshell ( ... ) &
+			const { code: bgCode } = await runBash(
+				`grep -A2 'for skill_name' "${INSTALL_SCRIPT}" | head -5 | grep -q '_clawhub_install'`,
+			);
+			expect(bgCode).toBe(0);
+			// Should use wait to collect the background PID
+			const { code: waitCode } = await runBash(
+				`grep -q 'wait.*_SKILL_INSTALL_PID' "${INSTALL_SCRIPT}"`,
+			);
+			expect(waitCode).toBe(0);
+		});
 	});
 });
