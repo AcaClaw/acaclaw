@@ -1362,7 +1362,7 @@ EOF
 		it("runs skill install in background and collects results later", async () => {
 			// The skill loop should run inside a background subshell ( ... ) &
 			const { code: bgCode } = await runBash(
-				`grep -A2 'for skill_name' "${INSTALL_SCRIPT}" | head -5 | grep -q '_clawhub_install'`,
+				`grep -A5 'for skill_name' "${INSTALL_SCRIPT}" | head -8 | grep -q '_clawhub_install'`,
 			);
 			expect(bgCode).toBe(0);
 			// Should use wait to collect the background PID
