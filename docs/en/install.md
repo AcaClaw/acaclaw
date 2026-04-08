@@ -307,7 +307,7 @@ Click a button, confirm, and the uninstall runs with a live progress log. No ter
 ### Option 2: Terminal
 
 ```bash
-bash ~/github/acaclaw/scripts/uninstall.sh
+bash ~/.acaclaw/uninstall.sh
 ```
 
 #### Script options

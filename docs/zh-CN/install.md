@@ -237,7 +237,7 @@ AcaClaw 支持两种卸载方式：通过浏览器 GUI 或终端。
 移除 AcaClaw 和 OpenClaw：
 
 ```bash
-bash ~/github/acaclaw/scripts/uninstall.sh
+bash ~/.acaclaw/uninstall.sh
 ```
 
 #### 脚本选项

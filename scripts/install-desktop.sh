@@ -80,6 +80,12 @@ install_linux() {
     if [[ "$REMOVE" == "true" ]]; then
         rm -f "$desktop_file"
         rm -f "${icon_dir}/acaclaw.png"
+        rm -f "${HOME}/Desktop/acaclaw.desktop"
+        # Also remove scalable icon if present
+        rm -f "${HOME}/.local/share/icons/hicolor/scalable/apps/acaclaw.svg"
+        if command -v update-desktop-database &>/dev/null; then
+            update-desktop-database "$desktop_dir" 2>/dev/null || true
+        fi
         log "Desktop shortcut removed"
         return
     fi

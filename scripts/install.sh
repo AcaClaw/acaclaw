@@ -1865,6 +1865,14 @@ for _script in start.sh stop.sh uninstall.sh; do
 	fi
 done
 
+# --- Copy conda env YAML files to persistent location ---
+CONDA_SRC="${SCRIPT_DIR}/../env/conda"
+CONDA_DST="${ACACLAW_DIR}/env/conda"
+if [[ -d "$CONDA_SRC" ]]; then
+	mkdir -p "$CONDA_DST"
+	cp -f "$CONDA_SRC"/environment-*.yml "$CONDA_DST/" 2>/dev/null || true
+fi
+
 # --- Collect background skill install results ---
 if [[ -n "${_SKILL_INSTALL_PID:-}" ]]; then
 	wait "$_SKILL_INSTALL_PID" 2>/dev/null || true

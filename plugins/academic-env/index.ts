@@ -199,10 +199,10 @@ const academicEnvPlugin = {
 			"aca-phys": "environment-phys.yml",
 		};
 
-		// Resolve env YAML directory: try plugin-relative first, fall back to known repo checkout
+		// Resolve env YAML directory: try plugin-relative first, fall back to persistent ~/.acaclaw/env/conda
 		const pluginRelative = join(import.meta.dirname ?? new URL(".", import.meta.url).pathname, "..", "..", "env", "conda");
-		const repoCheckout = join(homedir(), "github", "acaclaw", "env", "conda");
-		const envDir = fs.existsSync(pluginRelative) ? pluginRelative : repoCheckout;
+		const persistentEnvDir = join(homedir(), ".acaclaw", "env", "conda");
+		const envDir = fs.existsSync(pluginRelative) ? pluginRelative : persistentEnvDir;
 
 		/** Run a shell command, streaming each line to broadcast, resolve on exit */
 		// Strip ANSI escape codes and conda spinner/progress characters
@@ -1159,12 +1159,15 @@ const academicEnvPlugin = {
 		// --- Gateway: acaclaw.uninstall ---
 		api.registerGatewayMethod("acaclaw.uninstall", async ({ params, respond, context }) => {
 			const dryRun = params.dryRun === true;
+			const mode = typeof params.mode === "string" ? params.mode : "all";
 			const scriptName = "uninstall.sh";
 
-			// Resolve scripts dir: plugin-relative → repo checkout fallback
-			const pluginScripts = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "scripts");
-			const repoScripts = join(homedir(), "github", "acaclaw", "scripts");
-			const scriptsDir = fs.existsSync(join(pluginScripts, scriptName)) ? pluginScripts : repoScripts;
+			// Resolve scripts dir: plugin-relative → persistent ~/.acaclaw/ fallback
+			const pluginScripts = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "..", "..", "scripts");
+			const persistentScript = join(homedir(), ".acaclaw", scriptName);
+			const scriptsDir = fs.existsSync(join(pluginScripts, scriptName)) ? pluginScripts
+				: fs.existsSync(persistentScript) ? dirname(persistentScript)
+				: pluginScripts;
 			const scriptPath = join(scriptsDir, scriptName);
 
 			if (!fs.existsSync(scriptPath)) {

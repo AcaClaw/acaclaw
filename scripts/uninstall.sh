@@ -115,6 +115,15 @@ if [[ -f "$DESKTOP_SCRIPT" ]]; then
 	bash "$DESKTOP_SCRIPT" --remove 2>/dev/null || true
 fi
 
+# Direct cleanup in case install-desktop.sh is missing
+rm -f "${HOME}/.local/share/applications/acaclaw.desktop" 2>/dev/null || true
+rm -f "${HOME}/.local/share/icons/hicolor/256x256/apps/acaclaw.png" 2>/dev/null || true
+rm -f "${HOME}/.local/share/icons/hicolor/scalable/apps/acaclaw.svg" 2>/dev/null || true
+rm -f "${HOME}/Desktop/acaclaw.desktop" 2>/dev/null || true
+if command -v update-desktop-database &>/dev/null; then
+	update-desktop-database "${HOME}/.local/share/applications" 2>/dev/null || true
+fi
+
 # --- Remove deployed UI assets (prevents stale UI on reinstall) ---
 
 header "Removing Deployed UI"
