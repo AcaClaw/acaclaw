@@ -1165,46 +1165,37 @@ EOF
 	});
 
 	// ---------------------------------------------------------------
-	// GitHub clone mirror fallback
+	// npm-based source download (_resolve_repo_root)
 	// ---------------------------------------------------------------
-	describe("GitHub clone mirror fallback", () => {
-		it("defines GITHUB_MIRROR with ghproxy.com default", async () => {
+	describe("npm-based source download", () => {
+		it("defines ACACLAW_NPM_PACKAGE", async () => {
 			const { stdout, code } = await runBash(
-				`grep 'GITHUB_MIRROR=' "${INSTALL_SCRIPT}" | head -1`,
+				`grep 'ACACLAW_NPM_PACKAGE=' "${INSTALL_SCRIPT}" | head -1`,
 			);
 			expect(code).toBe(0);
-			expect(stdout).toContain("ghproxy.com");
+			expect(stdout).toContain("@acaclaw/acaclaw");
 		});
 
-		it("GITHUB_MIRROR is overridable via environment variable", async () => {
-			const { stdout } = await runBash(
-				`grep 'GITHUB_MIRROR=' "${INSTALL_SCRIPT}" | head -1`,
-			);
-			expect(stdout).toContain('${GITHUB_MIRROR:-');
-		});
-
-		it("clone sequence tries HTTPS → mirror proxy → SSH", async () => {
-			// Verify the order: GitHub HTTPS first, then mirror proxy, then SSH
-			const { stdout, code } = await runBash(`
-				awk '/_resolve_repo_root/,/^}/' "${INSTALL_SCRIPT}" | grep -n 'github.com\\|GITHUB_MIRROR\\|git@' | head -10
-			`);
-			expect(code).toBe(0);
-			const lines = stdout.trim().split("\n");
-			const httpsLine = lines.findIndex((l: string) => l.includes("github.com") && !l.includes("GITHUB_MIRROR") && !l.includes("git@"));
-			const mirrorLine = lines.findIndex((l: string) => l.includes("GITHUB_MIRROR"));
-			const sshLine = lines.findIndex((l: string) => l.includes("git@github.com"));
-			expect(httpsLine).toBeGreaterThanOrEqual(0);
-			expect(mirrorLine).toBeGreaterThan(httpsLine);
-			expect(sshLine).toBeGreaterThan(mirrorLine);
-		});
-
-		it("mirror proxy URL is constructed correctly", async () => {
+		it("_resolve_repo_root uses npm install for curl|bash path", async () => {
 			const { stdout, code } = await runBash(
-				`grep 'GITHUB_MIRROR.*https://github.com' "${INSTALL_SCRIPT}"`,
+				`awk '/_resolve_repo_root\\(\\)/,/^}/' "${INSTALL_SCRIPT}" | grep -c 'npm install'`,
 			);
 			expect(code).toBe(0);
-			// Should be ${GITHUB_MIRROR}/https://github.com/...
-			expect(stdout).toContain("/https://github.com/");
+			expect(Number(stdout.trim())).toBeGreaterThanOrEqual(1);
+		});
+
+		it("npm install falls back to registry.npmjs.org on mirror failure", async () => {
+			const { code } = await runBash(
+				`awk '/_resolve_repo_root\\(\\)/,/^}/' "${INSTALL_SCRIPT}" | grep -q 'registry.npmjs.org'`,
+			);
+			expect(code).toBe(0);
+		});
+
+		it("sets REPO_ROOT to node_modules/@acaclaw/acaclaw", async () => {
+			const { code } = await runBash(
+				`awk '/_resolve_repo_root\\(\\)/,/^}/' "${INSTALL_SCRIPT}" | grep -q 'node_modules/@acaclaw/acaclaw'`,
+			);
+			expect(code).toBe(0);
 		});
 	});
 
