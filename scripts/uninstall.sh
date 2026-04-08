@@ -116,12 +116,19 @@ if [[ -f "$DESKTOP_SCRIPT" ]]; then
 fi
 
 # Direct cleanup in case install-desktop.sh is missing
+# Linux
 rm -f "${HOME}/.local/share/applications/acaclaw.desktop" 2>/dev/null || true
 rm -f "${HOME}/.local/share/icons/hicolor/256x256/apps/acaclaw.png" 2>/dev/null || true
 rm -f "${HOME}/.local/share/icons/hicolor/scalable/apps/acaclaw.svg" 2>/dev/null || true
 rm -f "${HOME}/Desktop/acaclaw.desktop" 2>/dev/null || true
 if command -v update-desktop-database &>/dev/null; then
 	update-desktop-database "${HOME}/.local/share/applications" 2>/dev/null || true
+fi
+# macOS
+if [[ "$(uname -s)" == "Darwin" ]]; then
+	rm -rf "${HOME}/Applications/AcaClaw.app" 2>/dev/null || true
+	osascript -e 'tell application "Finder" to try' -e 'delete alias file "AcaClaw" of desktop' -e 'end try' 2>/dev/null || true
+	rm -f "${HOME}/Desktop/AcaClaw.command" 2>/dev/null || true
 fi
 
 # --- Remove deployed UI assets (prevents stale UI on reinstall) ---
@@ -248,11 +255,17 @@ if command -v clawhub &>/dev/null; then
 	fi
 fi
 
-# --- Remove macOS app (if present) ---
+# --- Remove macOS apps (if present) ---
 
-if [[ "$(uname -s)" == "Darwin" && -d "/Applications/OpenClaw.app" ]]; then
-	rm -rf "/Applications/OpenClaw.app"
-	log "Removed /Applications/OpenClaw.app ✓"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+	if [[ -d "/Applications/OpenClaw.app" ]]; then
+		rm -rf "/Applications/OpenClaw.app"
+		log "Removed /Applications/OpenClaw.app ✓"
+	fi
+	if [[ -d "${HOME}/Applications/AcaClaw.app" ]]; then
+		rm -rf "${HOME}/Applications/AcaClaw.app"
+		log "Removed ~/Applications/AcaClaw.app ✓"
+	fi
 fi
 
 # --- Summary ---
