@@ -19,8 +19,7 @@ ACACLAW_VERSION="0.1.0"
 ACACLAW_DIR="${ACACLAW_DIR:-$HOME/.acaclaw}"
 OPENCLAW_MIN_VERSION="2026.4.2"
 NODE_MIN_VERSION="22"
-ACACLAW_GITHUB_REPO="acaclaw/acaclaw"
-GITHUB_MIRROR="${GITHUB_MIRROR:-https://ghproxy.com}"
+ACACLAW_NPM_PACKAGE="@acaclaw/acaclaw"
 CLAWHUB_MIRROR="${CLAWHUB_MIRROR:-https://cn.clawhub-mirror.com}"
 CLAWHUB_SKILL_TIMEOUT="${CLAWHUB_SKILL_TIMEOUT:-15}"
 NETWORK_TIMEOUT="${NETWORK_TIMEOUT:-60}"
@@ -338,7 +337,7 @@ case "${1:-}" in
 		exit 0
 		;;
 	--no-conda|"")
-		# Valid option or no args — continue to clone/resolve
+		# Valid option or no args — continue to resolve source
 		;;
 	*)
 		echo "Error: Unknown option: $1" >&2
@@ -347,9 +346,47 @@ case "${1:-}" in
 		;;
 esac
 
+# --- npm registry detection (used by both source download and package installs) ---
+
+# npm registry speed test — download a small metadata payload to measure real latency.
+# Returns the fastest registry URL (or empty to let npm use its default).
+_pick_npm_registry() {
+	local _registries=(
+		"https://registry.npmjs.org"
+		"https://registry.npmmirror.com"
+	)
+	local _best_reg="" _best_ms=999999
+	local _test_url _ms _start _end
+
+	for _reg in "${_registries[@]}"; do
+		_test_url="${_reg}/@acaclaw%2facaclaw"
+		_start=$(date +%s%N 2>/dev/null || echo 0)
+		if curl -fsSL --max-time 8 -o /dev/null "$_test_url" 2>/dev/null; then
+			_end=$(date +%s%N 2>/dev/null || echo 0)
+			_ms=$(( (_end - _start) / 1000000 ))
+			echo "  ${_reg##*/}: ${_ms}ms" >> "$INSTALL_LOG"
+			if [[ $_ms -lt $_best_ms ]]; then
+				_best_ms=$_ms
+				_best_reg="$_reg"
+			fi
+		else
+			echo "  ${_reg##*/}: unreachable" >> "$INSTALL_LOG"
+		fi
+	done
+
+	if [[ -n "$_best_reg" ]]; then
+		echo "$_best_reg"
+	else
+		echo ""
+	fi
+}
+
+# Cached registry URL — set once and reused for all npm operations
+_CACHED_NPM_REGISTRY=""
+
 # --- Resolve REPO_ROOT ---
 # When run locally from a git clone: SCRIPT_DIR/../ is the repo root.
-# When piped via curl: clone the repo first, then use the clone as root.
+# When piped via curl: download the npm package, then use it as root.
 
 _resolve_repo_root() {
 	# Explicit REPO_ROOT override (dev/CI)
@@ -359,7 +396,7 @@ _resolve_repo_root() {
 	fi
 
 	# Detect local checkout — prefer it when running directly from a git clone.
-	# Only clone from GitHub when piped via curl (BASH_SOURCE is empty or
+	# Only download via npm when piped via curl (BASH_SOURCE is empty or
 	# /dev/stdin), so `bash scripts/install.sh` always uses the local files.
 	local _local_root=""
 	local _script_path
@@ -368,59 +405,63 @@ _resolve_repo_root() {
 		_local_root="$(cd "${_script_path}/.." && pwd)"
 	fi
 
-	# Use local checkout directly — no clone needed.
+	# Use local checkout directly — no download needed.
 	if [[ -n "$_local_root" ]]; then
 		REPO_ROOT="$_local_root"
 		return
 	fi
 
-	# Reached only via curl | bash — clone from GitHub.
-	if ! command -v git &>/dev/null; then
-		error "git is required for remote install. Install git and try again."
+	# Reached only via curl | bash — download from npm registry.
+	if ! command -v npm &>/dev/null; then
+		error "npm is required for remote install. Install Node.js >= ${NODE_MIN_VERSION} and try again."
 		exit 1
 	fi
 
-	# Try HTTPS first (30s timeout), then SSH (30s timeout).
-	# HTTPS can hang behind some firewalls, so timeout keeps the flow moving.
-	local _clone_timeout=30
-	ACACLAW_CLONE_DIR="$(mktemp -d)"
-	echo -e "  ${CYAN}${SYM_ARROW}${NC} Downloading AcaClaw from GitHub..."
-	if timeout "$_clone_timeout" git clone --depth 1 --progress \
-		"https://github.com/${ACACLAW_GITHUB_REPO}.git" "$ACACLAW_CLONE_DIR" 2>&1; then
-		REPO_ROOT="$ACACLAW_CLONE_DIR"
-		return
+	# Pick the fastest npm registry
+	_CACHED_NPM_REGISTRY="$(_pick_npm_registry)"
+	local _reg_flag=()
+	if [[ -n "$_CACHED_NPM_REGISTRY" ]]; then
+		_reg_flag=(--registry="$_CACHED_NPM_REGISTRY")
+		if [[ "$_CACHED_NPM_REGISTRY" != "https://registry.npmjs.org" ]]; then
+			echo -e "  ${CYAN}${SYM_ARROW}${NC} Using npm mirror: ${_CACHED_NPM_REGISTRY##*/}"
+		fi
 	fi
-	rm -rf "$ACACLAW_CLONE_DIR"
-	ACACLAW_CLONE_DIR="$(mktemp -d)"
 
-	echo -e "  ${YELLOW}${SYM_WARN}${NC} GitHub HTTPS slow, trying mirror..."
-	if timeout "$_clone_timeout" git clone --depth 1 --progress \
-		"${GITHUB_MIRROR}/https://github.com/${ACACLAW_GITHUB_REPO}.git" "$ACACLAW_CLONE_DIR" 2>&1; then
-		REPO_ROOT="$ACACLAW_CLONE_DIR"
-		return
-	fi
-	rm -rf "$ACACLAW_CLONE_DIR"
 	ACACLAW_CLONE_DIR="$(mktemp -d)"
-
-	log "Mirror failed, trying SSH..."
-	if timeout "$_clone_timeout" git clone --depth 1 --progress \
-		"git@github.com:${ACACLAW_GITHUB_REPO}.git" "$ACACLAW_CLONE_DIR" 2>&1; then
-		REPO_ROOT="$ACACLAW_CLONE_DIR"
+	echo -e "  ${CYAN}${SYM_ARROW}${NC} Downloading AcaClaw from npm..."
+	if npm install "@acaclaw/acaclaw@${ACACLAW_VERSION}" \
+		--prefix="$ACACLAW_CLONE_DIR" --no-save --ignore-scripts \
+		"${_reg_flag[@]}" >> "$INSTALL_LOG" 2>&1; then
+		REPO_ROOT="${ACACLAW_CLONE_DIR}/node_modules/@acaclaw/acaclaw"
 		return
 	fi
+
+	# If mirror failed, try official registry as fallback
+	if [[ -n "$_CACHED_NPM_REGISTRY" && "$_CACHED_NPM_REGISTRY" != "https://registry.npmjs.org" ]]; then
+		echo -e "  ${YELLOW}${SYM_WARN}${NC} npm mirror failed, trying official registry..."
+		rm -rf "$ACACLAW_CLONE_DIR"
+		ACACLAW_CLONE_DIR="$(mktemp -d)"
+		if npm install "@acaclaw/acaclaw@${ACACLAW_VERSION}" \
+			--prefix="$ACACLAW_CLONE_DIR" --no-save --ignore-scripts \
+			--registry=https://registry.npmjs.org >> "$INSTALL_LOG" 2>&1; then
+			REPO_ROOT="${ACACLAW_CLONE_DIR}/node_modules/@acaclaw/acaclaw"
+			return
+		fi
+	fi
+
 	rm -rf "$ACACLAW_CLONE_DIR"
 	ACACLAW_CLONE_DIR=""
 
-	error "Could not download AcaClaw from GitHub (both HTTPS and SSH failed)."
+	error "Could not download AcaClaw from npm."
 	error "Check your network connection and try again."
-	error "Or clone manually: git clone git@github.com:${ACACLAW_GITHUB_REPO}.git && bash acaclaw/scripts/install.sh"
+	error "Or install manually: npm install -g @acaclaw/acaclaw"
 	exit 1
 }
 
 _resolve_repo_root
 SCRIPT_DIR="${REPO_ROOT}/scripts"
 
-# Clean up clone dir on exit if we downloaded from GitHub
+# Clean up temp dir on exit if we downloaded from npm
 _cleanup_clone() {
 	if [[ -n "${ACACLAW_CLONE_DIR:-}" && -d "${ACACLAW_CLONE_DIR:-}" ]]; then
 		rm -rf "$ACACLAW_CLONE_DIR"
@@ -522,41 +563,6 @@ stop_spinner "npm $(npm --version) found"
 
 header "Installing OpenClaw" "$SYM_PACKAGE"
 
-# npm registry speed test — download a small metadata payload to measure real latency.
-# Returns the fastest registry URL (or empty to let npm use its default).
-# Note: all output goes to $INSTALL_LOG so it doesn't conflict with the spinner.
-# Returns the fastest registry URL (or empty to use npm default).
-_pick_npm_registry() {
-	local _registries=(
-		"https://registry.npmjs.org"
-		"https://registry.npmmirror.com"
-	)
-	local _best_reg="" _best_ms=999999
-	local _test_url _ms _start _end
-
-	for _reg in "${_registries[@]}"; do
-		_test_url="${_reg}/openclaw/${OPENCLAW_MIN_VERSION}"
-		_start=$(date +%s%N 2>/dev/null || echo 0)
-		if curl -fsSL --max-time 8 -o /dev/null "$_test_url" 2>/dev/null; then
-			_end=$(date +%s%N 2>/dev/null || echo 0)
-			_ms=$(( (_end - _start) / 1000000 ))
-			echo "  ${_reg##*/}: ${_ms}ms" >> "$INSTALL_LOG"
-			if [[ $_ms -lt $_best_ms ]]; then
-				_best_ms=$_ms
-				_best_reg="$_reg"
-			fi
-		else
-			echo "  ${_reg##*/}: unreachable" >> "$INSTALL_LOG"
-		fi
-	done
-
-	if [[ -n "$_best_reg" ]]; then
-		echo "$_best_reg"
-	else
-		echo ""
-	fi
-}
-
 # Stream npm progress lines (http fetch, reify) from the install log
 # so the user sees what npm is doing instead of a frozen spinner.
 # Writes status updates on the SAME line the spinner occupies by using
@@ -652,9 +658,6 @@ _stop_npm_progress() {
 	_NPM_STATUS_FILE=""
 }
 
-# Cached registry URL — set by calling _pick_npm_registry before the spinner starts
-_CACHED_NPM_REGISTRY=""
-
 _npm_install_with_mirror() {
 	local _pkg="$1"
 	local _registry="${_CACHED_NPM_REGISTRY}"
@@ -689,12 +692,14 @@ if check_command openclaw; then
 		stop_spinner "OpenClaw ${OC_VERSION} already installed"
 	else
 		stop_spinner "OpenClaw ${OC_VERSION} found — upgrade needed"
-		start_spinner "Checking npm registries..."
-		_CACHED_NPM_REGISTRY="$(_pick_npm_registry)"
-		if [[ -n "$_CACHED_NPM_REGISTRY" && "$_CACHED_NPM_REGISTRY" != "https://registry.npmjs.org" ]]; then
-			stop_spinner "Using mirror: ${_CACHED_NPM_REGISTRY##*/}"
-		else
-			stop_spinner "Using official registry"
+		if [[ -z "$_CACHED_NPM_REGISTRY" ]]; then
+			start_spinner "Checking npm registries..."
+			_CACHED_NPM_REGISTRY="$(_pick_npm_registry)"
+			if [[ -n "$_CACHED_NPM_REGISTRY" && "$_CACHED_NPM_REGISTRY" != "https://registry.npmjs.org" ]]; then
+				stop_spinner "Using mirror: ${_CACHED_NPM_REGISTRY##*/}"
+			else
+				stop_spinner "Using official registry"
+			fi
 		fi
 		_start_npm_progress
 		start_spinner "Downloading OpenClaw ${OPENCLAW_MIN_VERSION}..." "$_NPM_STATUS_FILE"
@@ -710,12 +715,14 @@ if check_command openclaw; then
 	fi
 else
 	stop_spinner_warn "OpenClaw not found"
-	start_spinner "Checking npm registries..."
-	_CACHED_NPM_REGISTRY="$(_pick_npm_registry)"
-	if [[ -n "$_CACHED_NPM_REGISTRY" && "$_CACHED_NPM_REGISTRY" != "https://registry.npmjs.org" ]]; then
-		stop_spinner "Using mirror: ${_CACHED_NPM_REGISTRY##*/}"
-	else
-		stop_spinner "Using official registry"
+	if [[ -z "$_CACHED_NPM_REGISTRY" ]]; then
+		start_spinner "Checking npm registries..."
+		_CACHED_NPM_REGISTRY="$(_pick_npm_registry)"
+		if [[ -n "$_CACHED_NPM_REGISTRY" && "$_CACHED_NPM_REGISTRY" != "https://registry.npmjs.org" ]]; then
+			stop_spinner "Using mirror: ${_CACHED_NPM_REGISTRY##*/}"
+		else
+			stop_spinner "Using official registry"
+		fi
 	fi
 	_start_npm_progress
 	start_spinner "Downloading OpenClaw ${OPENCLAW_MIN_VERSION}..." "$_NPM_STATUS_FILE"
