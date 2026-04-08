@@ -310,12 +310,6 @@ Click a button, confirm, and the uninstall runs with a live progress log. No ter
 bash ~/github/acaclaw/scripts/uninstall.sh
 ```
 
-(`uninstall-all.sh` is a backward-compat alias that delegates to `uninstall.sh`.)
-
-```bash
-bash ~/github/acaclaw/scripts/uninstall-all.sh   # same as above
-```
-
 #### Script options
 
 | Flag | Description |

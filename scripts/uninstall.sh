@@ -209,7 +209,20 @@ header "Removing OpenClaw CLI"
 if command -v openclaw &>/dev/null; then
 	log "Removing OpenClaw CLI..."
 	npm rm -g openclaw 2>/dev/null || true
-	log "OpenClaw CLI removed ✓"
+	hash -r 2>/dev/null || true
+	if command -v openclaw &>/dev/null; then
+		warn "openclaw still found at $(command -v openclaw) after npm rm"
+		warn "Attempting direct removal..."
+		rm -f "$(command -v openclaw)" 2>/dev/null || true
+		hash -r 2>/dev/null || true
+		if command -v openclaw &>/dev/null; then
+			warn "Could not remove openclaw — remove manually: npm rm -g openclaw"
+		else
+			log "OpenClaw CLI removed ✓"
+		fi
+	else
+		log "OpenClaw CLI removed ✓"
+	fi
 else
 	log "OpenClaw CLI not found (already removed)"
 fi
@@ -218,7 +231,12 @@ fi
 if command -v clawhub &>/dev/null; then
 	log "Removing ClawHub CLI..."
 	npm rm -g clawhub 2>/dev/null || true
-	log "ClawHub CLI removed ✓"
+	hash -r 2>/dev/null || true
+	if command -v clawhub &>/dev/null; then
+		warn "clawhub still found after npm rm — remove manually: npm rm -g clawhub"
+	else
+		log "ClawHub CLI removed ✓"
+	fi
 fi
 
 # --- Remove macOS app (if present) ---

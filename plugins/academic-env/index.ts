@@ -1158,9 +1158,8 @@ const academicEnvPlugin = {
 
 		// --- Gateway: acaclaw.uninstall ---
 		api.registerGatewayMethod("acaclaw.uninstall", async ({ params, respond, context }) => {
-			const mode = typeof params.mode === "string" && params.mode === "all" ? "all" : "acaclaw";
 			const dryRun = params.dryRun === true;
-			const scriptName = mode === "all" ? "uninstall-all.sh" : "uninstall.sh";
+			const scriptName = "uninstall.sh";
 
 			// Resolve scripts dir: plugin-relative → repo checkout fallback
 			const pluginScripts = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "scripts");

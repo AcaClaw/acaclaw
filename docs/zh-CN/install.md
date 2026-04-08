@@ -234,16 +234,10 @@ AcaClaw 支持两种卸载方式：通过浏览器 GUI 或终端。
 
 ### 方式 2：终端
 
-仅移除 AcaClaw（保留 OpenClaw）：
+移除 AcaClaw 和 OpenClaw：
 
 ```bash
 bash ~/github/acaclaw/scripts/uninstall.sh
-```
-
-全部移除（AcaClaw + OpenClaw）：
-
-```bash
-bash ~/github/acaclaw/scripts/uninstall-all.sh
 ```
 
 #### 脚本选项
@@ -255,25 +249,22 @@ bash ~/github/acaclaw/scripts/uninstall-all.sh
 
 ### 删除内容
 
-| 项目 | 路径 | 删除者 |
-|---|---|---|
-| AcaClaw 数据（插件、技能、配置、会话） | `~/.openclaw/` | 两个脚本 |
-| AcaClaw conda 环境 | conda env list | 两个脚本 |
-| AcaClaw 配置与审计数据 | `~/.acaclaw/` | 两个脚本 |
-| AcaClaw 安装的 Miniforge | `~/.acaclaw/miniforge3/` | 两个脚本 |
-| AcaClaw 桌面快捷方式 | 应用启动器 / 桌面 | 两个脚本 |
-| AcaClaw 网关服务 | `acaclaw-gateway.service` | 两个脚本 |
-| OpenClaw | `~/.openclaw/` | 仅 `uninstall-all.sh` |
-| OpenClaw 网关服务 | `openclaw-gateway.service` | 仅 `uninstall-all.sh` |
+| 项目 | 路径 |
+|---|---|
+| AcaClaw 数据（插件、技能、配置、会话） | `~/.openclaw/` |
+| AcaClaw conda 环境 | conda env list |
+| AcaClaw 配置与审计数据 | `~/.acaclaw/` |
+| AcaClaw 安装的 Miniforge | `~/.acaclaw/miniforge3/` |
+| AcaClaw 桌面快捷方式 | 应用启动器 / 桌面 |
+| AcaClaw 网关服务 | `acaclaw-gateway.service` |
+| OpenClaw | `~/.openclaw/` |
+| OpenClaw CLI | npm 全局包 |
 
 ### 保留内容
 
 | 项目 | 路径 |
 |---|---|
 | 研究数据 | `~/AcaClaw/` |
-| OpenClaw（使用"仅移除 AcaClaw"时） | `~/.openclaw/` |
 | 系统 conda 安装 | `~/miniconda3/`、`~/miniforge3/` 等 |
 
 卸载脚本**不会**自动删除 `~/AcaClaw/` — 研究文件归你所有。
-
-**使用"仅移除 AcaClaw"时 OpenClaw 不受影响。**`~/.openclaw/` 保持原状。

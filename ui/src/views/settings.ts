@@ -615,7 +615,7 @@ export class SettingsView extends LitElement {
   }
 
   private _renderUninstall() {
-    const fullCmd = "bash ~/github/acaclaw/scripts/uninstall-all.sh";
+    const fullCmd = "bash ~/github/acaclaw/scripts/uninstall.sh";
     const running = this._uninstallState === "running";
     const confirming = this._uninstallState === "confirm";
     return html`

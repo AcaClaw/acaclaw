@@ -140,7 +140,7 @@ describe("SettingsView DOM", () => {
     const copyBtns = qa(el, ".btn-copy");
     expect(copyBtns.length).toBe(1);
     const codes = qa(el, ".cmd-code");
-    expect(codes[0]?.textContent).toContain("uninstall-all.sh");
+    expect(codes[0]?.textContent).toContain("uninstall.sh");
     cleanup(el);
   });
 

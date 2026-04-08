@@ -5,19 +5,16 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 /**
- * Integration tests for scripts/uninstall.sh and scripts/uninstall-all.sh
+ * Integration tests for scripts/uninstall.sh
  * across macOS, Linux, and Windows (WSL/MSYS).
  *
- * Two uninstall modes:
- *   1. AcaClaw-only (uninstall.sh) — removes AcaClaw but leaves OpenClaw
- *   2. Full uninstall (uninstall-all.sh) — removes both AcaClaw and OpenClaw
+ * uninstall.sh removes both AcaClaw and OpenClaw.
  *
  * Tests run in a sandboxed temp HOME to avoid touching real system state.
  */
 
 const SCRIPT_DIR = resolve(__dirname, "../scripts");
 const UNINSTALL_SCRIPT = join(SCRIPT_DIR, "uninstall.sh");
-const UNINSTALL_ALL_SCRIPT = join(SCRIPT_DIR, "uninstall-all.sh");
 
 function runBash(
 	script: string,
@@ -382,14 +379,14 @@ myproject                /home/user/miniconda3/envs/myproject"
 });
 
 // =================================================================
-// Full uninstall (uninstall-all.sh) — removes AcaClaw AND OpenClaw
+// Full uninstall — removes AcaClaw AND OpenClaw
 // =================================================================
 
-describe("uninstall-all.sh — full uninstall", () => {
+describe("uninstall.sh — full uninstall", () => {
 	let fakeHome: string;
 
 	beforeEach(async () => {
-		fakeHome = await mkdtemp(join(tmpdir(), "acaclaw-uninstall-all-test-"));
+		fakeHome = await mkdtemp(join(tmpdir(), "acaclaw-uninstall-test-full-"));
 	});
 
 	afterEach(async () => {
@@ -402,7 +399,7 @@ describe("uninstall-all.sh — full uninstall", () => {
 	describe("CLI flags", () => {
 		it("--help prints usage and exits 0", async () => {
 			const { stdout, code } = await runBash(
-				`bash "${UNINSTALL_ALL_SCRIPT}" --help`,
+				`bash "${UNINSTALL_SCRIPT}" --help`,
 			);
 			expect(code).toBe(0);
 			expect(stdout).toContain("Usage:");
@@ -412,7 +409,7 @@ describe("uninstall-all.sh — full uninstall", () => {
 
 		it("-h prints usage and exits 0", async () => {
 			const { stdout, code } = await runBash(
-				`bash "${UNINSTALL_ALL_SCRIPT}" -h`,
+				`bash "${UNINSTALL_SCRIPT}" -h`,
 			);
 			expect(code).toBe(0);
 			expect(stdout).toContain("Usage:");
@@ -420,7 +417,7 @@ describe("uninstall-all.sh — full uninstall", () => {
 
 		it("unknown flag exits with error", async () => {
 			const { code } = await runBash(
-				`bash "${UNINSTALL_ALL_SCRIPT}" --bad-flag 2>&1`,
+				`bash "${UNINSTALL_SCRIPT}" --bad-flag 2>&1`,
 			);
 			expect(code).not.toBe(0);
 		});
@@ -746,7 +743,7 @@ describe("uninstall-all.sh — full uninstall", () => {
 // End-to-end tests — run the ACTUAL scripts against a sandboxed HOME
 // =================================================================
 
-describe("uninstall-all.sh — end-to-end", { timeout: 60_000 }, () => {
+describe("uninstall.sh — end-to-end", { timeout: 60_000 }, () => {
 	let fakeHome: string;
 	let fakeBin: string;
 
@@ -801,13 +798,13 @@ describe("uninstall-all.sh — end-to-end", { timeout: 60_000 }, () => {
 		expect(await exists(miniforgeDir)).toBe(true);
 		expect(await exists(workspaceDir)).toBe(true);
 
-		// Run the ACTUAL uninstall-all.sh with overridden HOME.
+		// Run the ACTUAL uninstall.sh with overridden HOME.
 		// Override PATH to use our stubs first. Exclude stop.sh effects
 		// by creating a no-op stop.sh in a temp scripts dir that shadows
 		// the real one would not work easily, so we override the SCRIPTS_DIR
 		// or just let it fail gracefully (stop.sh with no running gateway exits 0).
 		const { code, stdout, stderr } = await runBash(
-			`HOME="${fakeHome}" PATH="${fakeBin}:$PATH" bash "${UNINSTALL_ALL_SCRIPT}" --yes 2>&1`,
+			`HOME="${fakeHome}" PATH="${fakeBin}:$PATH" bash "${UNINSTALL_SCRIPT}" --yes 2>&1`,
 			{ timeout: 30_000 },
 		);
 
@@ -837,7 +834,7 @@ describe("uninstall-all.sh — end-to-end", { timeout: 60_000 }, () => {
 		expect(await exists(backupsDir)).toBe(true);
 
 		const { code } = await runBash(
-			`HOME="${fakeHome}" PATH="${fakeBin}:$PATH" bash "${UNINSTALL_ALL_SCRIPT}" --yes --keep-backups 2>&1`,
+			`HOME="${fakeHome}" PATH="${fakeBin}:$PATH" bash "${UNINSTALL_SCRIPT}" --yes --keep-backups 2>&1`,
 			{ timeout: 30_000 },
 		);
 
@@ -854,7 +851,7 @@ describe("uninstall-all.sh — end-to-end", { timeout: 60_000 }, () => {
 		await scaffoldInstall(fakeHome);
 
 		const { code, stdout } = await runBash(
-			`HOME="${fakeHome}" PATH="${fakeBin}:$PATH" bash "${UNINSTALL_ALL_SCRIPT}" --yes 2>&1`,
+			`HOME="${fakeHome}" PATH="${fakeBin}:$PATH" bash "${UNINSTALL_SCRIPT}" --yes 2>&1`,
 			{ timeout: 30_000 },
 		);
 
@@ -867,7 +864,7 @@ describe("uninstall-all.sh — end-to-end", { timeout: 60_000 }, () => {
 	it("handles missing dirs gracefully (idempotent)", async () => {
 		// Don't scaffold — everything is already absent
 		const { code, stdout } = await runBash(
-			`HOME="${fakeHome}" PATH="${fakeBin}:$PATH" bash "${UNINSTALL_ALL_SCRIPT}" --yes 2>&1`,
+			`HOME="${fakeHome}" PATH="${fakeBin}:$PATH" bash "${UNINSTALL_SCRIPT}" --yes 2>&1`,
 			{ timeout: 30_000 },
 		);
 
