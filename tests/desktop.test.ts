@@ -356,6 +356,20 @@ DESKTOP
 			expect(swift).toMatch(/makeKeyAndOrderFront/);
 		});
 
+		it("Swift source has Edit menu for clipboard shortcuts", async () => {
+			const swift = await readFile(
+				join(DESKTOP_SCRIPT, "../AcaClaw.swift"),
+				"utf-8",
+			);
+			expect(swift).toMatch(/setupEditMenu/);
+			expect(swift).toMatch(/NSApp\.mainMenu/);
+			// Must wire Cut/Copy/Paste/Select All so Cmd+C/V/X/A work in WKWebView
+			expect(swift).toMatch(/keyEquivalent.*"c"/);
+			expect(swift).toMatch(/keyEquivalent.*"v"/);
+			expect(swift).toMatch(/keyEquivalent.*"x"/);
+			expect(swift).toMatch(/keyEquivalent.*"a"/);
+		});
+
 		it("Swift source starts gateway asynchronously if not running", async () => {
 			const swift = await readFile(
 				join(DESKTOP_SCRIPT, "../AcaClaw.swift"),

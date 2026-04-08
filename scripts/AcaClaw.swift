@@ -35,6 +35,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate {
     let gatewayURL = URL(string: "http://localhost:2090/")!
 
     func applicationDidFinishLaunching(_: Notification) {
+        // Wire up the standard Edit menu so Cmd+C/V/X/A work inside the web view.
+        // Without this, macOS swallows those shortcuts at the menu-bar level.
+        setupEditMenu()
+
         // Build the window immediately — never block the main thread on gateway startup.
         let config = WKWebViewConfiguration()
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
@@ -72,6 +76,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate {
     /// Close window → quit app → Dock icon disappears.
     func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool {
         return true
+    }
+
+    // MARK: - Edit menu (clipboard shortcuts)
+
+    /// Adds Edit → Cut / Copy / Paste / Select All so that Cmd+C/V/X/A
+    /// are forwarded to the WKWebView through the responder chain.
+    private func setupEditMenu() {
+        let mainMenu = NSMenu()
+
+        // App menu (required first item)
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(NSMenuItem(title: "Quit AcaClaw", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+
+        // Edit menu
+        let editMenuItem = NSMenuItem()
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(NSMenuItem(title: "Undo",       action: Selector(("undo:")),       keyEquivalent: "z"))
+        editMenu.addItem(NSMenuItem(title: "Redo",       action: Selector(("redo:")),       keyEquivalent: "Z"))
+        editMenu.addItem(NSMenuItem.separator())
+        editMenu.addItem(NSMenuItem(title: "Cut",        action: #selector(NSText.cut(_:)),        keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: "Copy",       action: #selector(NSText.copy(_:)),       keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: "Paste",      action: #selector(NSText.paste(_:)),      keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        editMenuItem.submenu = editMenu
+        mainMenu.addItem(editMenuItem)
+
+        NSApp.mainMenu = mainMenu
     }
 
     // MARK: - WKUIDelegate
