@@ -7,7 +7,7 @@ set -euo pipefail
 ACACLAW_DATA_DIR="${HOME}/.acaclaw"
 ACACLAW_PID_FILE="${ACACLAW_DATA_DIR}/gateway.pid"
 
-# Detect the actual gateway service (OpenClaw-managed profile service takes priority)
+# Detect the actual gateway supervisor.
 detect_gateway_service() {
     if command -v systemctl &>/dev/null; then
         for unit in "openclaw-gateway.service" "openclaw-gateway-acaclaw.service" "acaclaw-gateway.service"; do
@@ -17,6 +17,20 @@ detect_gateway_service() {
                 return 0
             fi
         done
+    fi
+    if [[ "$(uname -s)" == "Darwin" ]] && command -v openclaw &>/dev/null; then
+        for plist in \
+            "${HOME}/Library/LaunchAgents/ai.openclaw.gateway.plist" \
+            "${HOME}/Library/LaunchAgents/com.acaclaw.gateway.plist"; do
+            if [[ -f "$plist" ]]; then
+                echo "openclaw-daemon"
+                return 0
+            fi
+        done
+        if openclaw daemon status &>/dev/null 2>&1; then
+            echo "openclaw-daemon"
+            return 0
+        fi
     fi
     return 1
 }
@@ -31,8 +45,18 @@ log()   { echo -e "${GREEN}[acaclaw]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[acaclaw]${NC} $*"; }
 error() { echo -e "${RED}[acaclaw]${NC} $*" >&2; }
 
-# --- Stop systemd service first (if active) ---
-if [[ -n "$SYSTEMD_UNIT" ]] && command -v systemctl &>/dev/null; then
+# --- Stop via OpenClaw daemon / service supervisor first ---
+if [[ "$SYSTEMD_UNIT" == "openclaw-daemon" ]] && command -v openclaw &>/dev/null; then
+    log "Stopping gateway via OpenClaw daemon..."
+    if openclaw daemon stop 2>/dev/null; then
+        rm -f "$ACACLAW_PID_FILE"
+        log "Gateway stopped ✓ (OpenClaw daemon stopped)"
+        exit 0
+    fi
+    warn "OpenClaw daemon stop failed — falling back to manual process stop"
+fi
+
+if [[ -n "$SYSTEMD_UNIT" && "$SYSTEMD_UNIT" != "openclaw-daemon" ]] && command -v systemctl &>/dev/null; then
     if systemctl --user is-active "${SYSTEMD_UNIT}" &>/dev/null; then
         log "Stopping systemd service..."
         systemctl --user stop "${SYSTEMD_UNIT}" 2>/dev/null || true
@@ -62,8 +86,16 @@ find_gateway_pid() {
         return 0
     fi
 
+    # launchd/OpenClaw daemon may rewrite the process title to a bare
+    # "openclaw-gateway" with no CLI args.
+    pid="$(pgrep -f "^openclaw-gateway( |$)" 2>/dev/null | head -1)" || true
+    if [[ -n "$pid" ]]; then
+        echo "$pid"
+        return 0
+    fi
+
     # Fallback: check systemd MainPID
-    if command -v systemctl &>/dev/null && systemctl --user is-active "${SYSTEMD_UNIT}" &>/dev/null 2>&1; then
+    if [[ -n "$SYSTEMD_UNIT" && "$SYSTEMD_UNIT" != "openclaw-daemon" ]] && command -v systemctl &>/dev/null && systemctl --user is-active "${SYSTEMD_UNIT}" &>/dev/null 2>&1; then
         pid="$(systemctl --user show "${SYSTEMD_UNIT}" --property=MainPID --value 2>/dev/null)" || true
         if [[ -n "$pid" && "$pid" != "0" ]]; then
             echo "$pid"
