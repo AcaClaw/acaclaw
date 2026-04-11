@@ -200,6 +200,14 @@ gateway_pid() {
         return 0
     fi
 
+    # launchd/OpenClaw daemon may rewrite the process title to a bare
+    # "openclaw-gateway" with no CLI args.
+    pid="$(pgrep -f "^openclaw-gateway( |$)" 2>/dev/null | head -1)" || true
+    if [[ -n "$pid" ]]; then
+        echo "$pid"
+        return 0
+    fi
+
     # Fallback: check if systemd service is running (Node.js rewrites process titles)
     if command -v systemctl &>/dev/null; then
         for _unit in "openclaw-gateway-acaclaw.service" "acaclaw-gateway.service"; do
@@ -281,7 +289,7 @@ fi
 # --- Service detection ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Detect the actual gateway service (prefer OpenClaw native, then legacy names)
+# Detect the actual gateway supervisor (prefer OpenClaw native, then legacy names)
 detect_gateway_service() {
     if command -v systemctl &>/dev/null; then
         for unit in "openclaw-gateway.service" "acaclaw-gateway.service" "openclaw-gateway-acaclaw.service"; do
@@ -297,6 +305,14 @@ detect_gateway_service() {
     fi
     # macOS: check if openclaw daemon is installed (launchd)
     if [[ "$(uname -s)" == "Darwin" ]] && command -v openclaw &>/dev/null; then
+        for plist in \
+            "${HOME}/Library/LaunchAgents/ai.openclaw.gateway.plist" \
+            "${HOME}/Library/LaunchAgents/com.acaclaw.gateway.plist"; do
+            if [[ -f "$plist" ]]; then
+                echo "openclaw-daemon"
+                return 0
+            fi
+        done
         if openclaw daemon status &>/dev/null 2>&1; then
             echo "openclaw-daemon"
             return 0
@@ -306,9 +322,12 @@ detect_gateway_service() {
 }
 GATEWAY_SERVICE="$(detect_gateway_service 2>/dev/null)" || GATEWAY_SERVICE=""
 SYSTEMD_UNIT="${HOME}/.config/systemd/user/${GATEWAY_SERVICE:-acaclaw-gateway.service}"
-USE_SERVICE=false
-if [[ -n "$GATEWAY_SERVICE" ]] && [[ -f "$SYSTEMD_UNIT" ]] && command -v systemctl &>/dev/null; then
-    USE_SERVICE=true
+USE_SYSTEMD_SERVICE=false
+USE_OPENCLAW_DAEMON=false
+if [[ "$GATEWAY_SERVICE" == "openclaw-daemon" ]]; then
+    USE_OPENCLAW_DAEMON=true
+elif [[ -n "$GATEWAY_SERVICE" ]] && [[ -f "$SYSTEMD_UNIT" ]] && command -v systemctl &>/dev/null; then
+    USE_SYSTEMD_SERVICE=true
 fi
 _tlog "service detection done"
 
@@ -366,7 +385,25 @@ elif is_gateway_running; then
     else
         warn "Gateway did not respond in time — check logs: ${ACACLAW_LOG_FILE}"
     fi
-elif [[ "$USE_SERVICE" == "true" ]]; then
+elif [[ "$USE_OPENCLAW_DAEMON" == "true" ]]; then
+    log "Starting AcaClaw gateway via OpenClaw daemon..."
+    if openclaw daemon start 2>/dev/null; then
+        if wait_for_gateway 90; then
+            pid="$(gateway_pid 2>/dev/null || true)"
+            [[ -n "$pid" ]] && echo "$pid" > "$ACACLAW_PID_FILE"
+            log "Gateway ready on port ${ACACLAW_PORT} ✓ (managed by OpenClaw daemon)"
+        else
+            warn "OpenClaw daemon is starting — may need a moment"
+        fi
+    else
+        warn "OpenClaw daemon start failed — falling back to direct start"
+        nohup OPENCLAW_CONFIG_PATH="${ACACLAW_CONFIG}" openclaw gateway run \
+            --bind loopback --port "$ACACLAW_PORT" --force \
+            >> "$ACACLAW_LOG_FILE" 2>&1 &
+        echo "$!" > "$ACACLAW_PID_FILE"
+        log "Gateway starting (PID $!)..."
+    fi
+elif [[ "$USE_SYSTEMD_SERVICE" == "true" ]]; then
     log "Starting AcaClaw gateway via systemd service..."
     if systemctl --user start "${GATEWAY_SERVICE}" 2>/dev/null; then
         if wait_for_gateway 90; then

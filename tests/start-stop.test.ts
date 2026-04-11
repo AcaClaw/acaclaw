@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, readFile, stat, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, readFile, stat, writeFile, mkdir, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -297,7 +297,7 @@ describe("start.sh", () => {
 	// ---------------------------------------------------------------
 	// Service detection
 	// ---------------------------------------------------------------
-	describe("service detection", () => {
+		describe("service detection", () => {
 		it("detects systemd unit file when present", async () => {
 			const unitPath = join(
 				fakeHome,
@@ -317,18 +317,70 @@ describe("start.sh", () => {
 			expect(stdout.trim()).toBe("true");
 		});
 
-		it("does not detect service when unit file is absent", async () => {
-			const { stdout } = await runBash(`
-				SYSTEMD_UNIT="/nonexistent/acaclaw-gateway.service"
-				USE_SERVICE=false
+			it("does not detect service when unit file is absent", async () => {
+				const { stdout } = await runBash(`
+					SYSTEMD_UNIT="/nonexistent/acaclaw-gateway.service"
+					USE_SERVICE=false
 				if [[ -f "$SYSTEMD_UNIT" ]]; then
 					USE_SERVICE=true
 				fi
 				echo "$USE_SERVICE"
-			`);
-			expect(stdout.trim()).toBe("false");
+				`);
+				expect(stdout.trim()).toBe("false");
+			});
+
+			it("detects macOS OpenClaw daemon when launch agent plist exists", async () => {
+				const plistDir = join(fakeHome, "Library/LaunchAgents");
+				const fakeBin = join(fakeHome, "bin");
+				await mkdir(plistDir, { recursive: true });
+				await mkdir(fakeBin, { recursive: true });
+				await writeFile(join(plistDir, "ai.openclaw.gateway.plist"), "<plist/>");
+				await writeFile(
+					join(fakeBin, "uname"),
+					"#!/usr/bin/env bash\necho Darwin\n",
+				);
+				await writeFile(
+					join(fakeBin, "openclaw"),
+					"#!/usr/bin/env bash\nif [[ \"$1 $2\" == \"daemon status\" ]]; then exit 0; fi\nexit 1\n",
+				);
+				await chmod(join(fakeBin, "uname"), 0o755);
+				await chmod(join(fakeBin, "openclaw"), 0o755);
+
+				const { stdout } = await runBash(
+					`
+					HOME="${fakeHome}"
+					PATH="${fakeBin}:$PATH"
+					detect_gateway_service() {
+						if command -v systemctl &>/dev/null; then
+							for unit in "openclaw-gateway.service" "acaclaw-gateway.service" "openclaw-gateway-acaclaw.service"; do
+								local unit_path="\${HOME}/.config/systemd/user/\${unit}"
+								[[ -f "$unit_path" ]] && grep -q -- "--profile" "$unit_path" 2>/dev/null && continue
+								if systemctl --user is-active "$unit" &>/dev/null 2>&1 || [[ -f "$unit_path" ]]; then
+									echo "$unit"
+									return 0
+								fi
+							done
+						fi
+						if [[ "$(uname -s)" == "Darwin" ]] && command -v openclaw &>/dev/null; then
+							for plist in "\${HOME}/Library/LaunchAgents/ai.openclaw.gateway.plist" "\${HOME}/Library/LaunchAgents/com.acaclaw.gateway.plist"; do
+								if [[ -f "$plist" ]]; then
+									echo "openclaw-daemon"
+									return 0
+								fi
+							done
+							if openclaw daemon status &>/dev/null 2>&1; then
+								echo "openclaw-daemon"
+								return 0
+							fi
+						fi
+						return 1
+					}
+					detect_gateway_service
+				`,
+				);
+				expect(stdout.trim()).toBe("openclaw-daemon");
+			});
 		});
-	});
 
 	// ---------------------------------------------------------------
 	// Port configuration
@@ -486,7 +538,7 @@ describe("stop.sh", () => {
 	// ---------------------------------------------------------------
 	// Systemd service detection
 	// ---------------------------------------------------------------
-	describe("systemd service detection", () => {
+		describe("systemd service detection", () => {
 		it("selects systemd stop path when service unit is active", async () => {
 			const { stdout } = await runBash(`
 				HAS_SYSTEMD=true
@@ -500,25 +552,60 @@ describe("stop.sh", () => {
 			expect(stdout.trim()).toBe("systemd-stop");
 		});
 
-		it("falls back to manual stop when no systemd", async () => {
-			const { stdout } = await runBash(`
-				HAS_SYSTEMD=false
-				SERVICE_ACTIVE=false
+			it("falls back to manual stop when no systemd", async () => {
+				const { stdout } = await runBash(`
+					HAS_SYSTEMD=false
+					SERVICE_ACTIVE=false
 				if [[ "$HAS_SYSTEMD" == "true" && "$SERVICE_ACTIVE" == "true" ]]; then
 					echo "systemd-stop"
 				else
 					echo "manual-stop"
 				fi
-			`);
-			expect(stdout.trim()).toBe("manual-stop");
+				`);
+				expect(stdout.trim()).toBe("manual-stop");
+			});
+
+			it("uses OpenClaw daemon stop on macOS when launch agent exists", async () => {
+				const fakeBin = join(fakeHome, "bin");
+				const plistDir = join(fakeHome, "Library/LaunchAgents");
+				const marker = join(fakeHome, "daemon-stop-called");
+				await mkdir(fakeBin, { recursive: true });
+				await mkdir(plistDir, { recursive: true });
+				await writeFile(join(plistDir, "ai.openclaw.gateway.plist"), "<plist/>");
+				await writeFile(
+					join(fakeBin, "uname"),
+					"#!/usr/bin/env bash\necho Darwin\n",
+				);
+				await writeFile(
+					join(fakeBin, "openclaw"),
+					`#!/usr/bin/env bash
+if [[ "$1 $2" == "daemon status" ]]; then
+  exit 0
+fi
+if [[ "$1 $2" == "daemon stop" ]]; then
+  : > "${marker}"
+  exit 0
+fi
+exit 1
+`,
+				);
+				await chmod(join(fakeBin, "uname"), 0o755);
+				await chmod(join(fakeBin, "openclaw"), 0o755);
+
+				const { code, stdout } = await runBash(
+					`HOME="${fakeHome}" PATH="${fakeBin}:$PATH" bash "${STOP_SCRIPT}"`,
+				);
+				expect(code).toBe(0);
+				expect(stdout).toContain("OpenClaw daemon stopped");
+				expect(await exists(marker)).toBe(true);
+			});
 		});
-	});
 
 	// ---------------------------------------------------------------
 	// Reports "not running" when no gateway found
 	// ---------------------------------------------------------------
-	describe("no gateway running", () => {
-		it("reports 'not running' cleanly", async () => {
+		describe("no gateway running", () => {
+			it("reports 'not running' cleanly", async () => {
 			const dataDir = join(fakeHome, ".acaclaw");
 			await mkdir(dataDir, { recursive: true });
 			// No PID file
@@ -530,8 +617,49 @@ describe("stop.sh", () => {
 				else
 					echo "might-be-running"
 				fi
-			`);
-			expect(stdout.trim()).toBe("not-running");
+				`);
+				expect(stdout.trim()).toBe("not-running");
+			});
+
+			it("finds a bare openclaw-gateway process title when port args are absent", async () => {
+				const { stdout } = await runBash(`
+					ACACLAW_PID_FILE="/nonexistent/gateway.pid"
+					pgrep() {
+						if [[ "$*" == *"openclaw.*gateway.*--port 2090"* ]]; then
+							return 1
+						fi
+						if [[ "$*" == *"^openclaw-gateway( |$)"* ]]; then
+							echo "4242"
+							return 0
+						fi
+						return 1
+					}
+					find_gateway_pid() {
+						if [[ -f "$ACACLAW_PID_FILE" ]]; then
+							local pid
+							pid="$(cat "$ACACLAW_PID_FILE" 2>/dev/null)"
+							if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+								echo "$pid"
+								return 0
+							fi
+							rm -f "$ACACLAW_PID_FILE"
+						fi
+						local pid
+						pid="$(pgrep -f "openclaw.*gateway.*--port 2090" 2>/dev/null | head -1)" || true
+						if [[ -n "$pid" ]]; then
+							echo "$pid"
+							return 0
+						fi
+						pid="$(pgrep -f "^openclaw-gateway( |$)" 2>/dev/null | head -1)" || true
+						if [[ -n "$pid" ]]; then
+							echo "$pid"
+							return 0
+						fi
+						return 1
+					}
+					find_gateway_pid
+				`);
+				expect(stdout.trim()).toBe("4242");
+			});
 		});
 	});
-});

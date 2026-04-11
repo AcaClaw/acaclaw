@@ -89,6 +89,10 @@ All skills share a single Conda environment (`env/conda/environment-base.yml`). 
 - Every contributor is showcased on [acaclaw.com/hub](https://acaclaw.com/hub)
 - Git history is the canonical authorship record
 
+## Contributing to the AcaClaw App
+
+The sections above focus on contributing skills. The commands below are for developing the AcaClaw application and distribution itself, not the separate `acaclaw-skills` repository.
+
 ## Development Setup
 
 ```bash
@@ -105,6 +109,20 @@ npx vitest run
 # Type check
 npx tsc --noEmit
 ```
+
+### Local Development Commands
+
+Run these commands from the repository root when working on the local app:
+
+| Task | Command |
+|------|---------|
+| Start the local gateway and open the UI | `bash scripts/start.sh` |
+| Start the local gateway without opening the UI automatically | `bash scripts/start.sh --no-browser` |
+| Check whether the gateway is running | `bash scripts/start.sh --status` |
+| Stop the local gateway | `bash scripts/stop.sh` |
+| Restart the local gateway | `bash scripts/stop.sh && bash scripts/start.sh` |
+| Reinstall the current checkout into your local AcaClaw profile after plugin/script/config changes | `bash scripts/install.sh` |
+| Rebuild and deploy UI-only changes | `npm --prefix ui run build && npm run deploy` |
 
 ## License
 
