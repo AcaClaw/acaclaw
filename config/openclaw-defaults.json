@@ -32,9 +32,9 @@
         "default": true,
         "workspace": "~/AcaClaw",
         "reasoningDefault": "stream",
-        "identity": { "name": "Aca", "emoji": "🎓" },
-        "tools": {
-          "deny": ["gateway", "cron", "mcp_install", "mcp_uninstall", "config_set"]
+        "identity": {
+          "name": "Aca",
+          "emoji": "🎓"
         }
       },
       {
@@ -42,9 +42,9 @@
         "name": "Dr. Gene",
         "workspace": "~/AcaClaw/agents/biologist",
         "reasoningDefault": "stream",
-        "identity": { "name": "Dr. Gene", "emoji": "🧬" },
-        "tools": {
-          "deny": ["gateway", "cron", "mcp_install", "mcp_uninstall", "config_set"]
+        "identity": {
+          "name": "Dr. Gene",
+          "emoji": "🧬"
         }
       },
       {
@@ -52,9 +52,9 @@
         "name": "Dr. Curie",
         "workspace": "~/AcaClaw/agents/medscientist",
         "reasoningDefault": "stream",
-        "identity": { "name": "Dr. Curie", "emoji": "🏥" },
-        "tools": {
-          "deny": ["gateway", "cron", "mcp_install", "mcp_uninstall", "config_set"]
+        "identity": {
+          "name": "Dr. Curie",
+          "emoji": "🏥"
         }
       },
       {
@@ -62,9 +62,9 @@
         "name": "Dr. Turing",
         "workspace": "~/AcaClaw/agents/ai-researcher",
         "reasoningDefault": "stream",
-        "identity": { "name": "Dr. Turing", "emoji": "🤖" },
-        "tools": {
-          "deny": ["gateway", "cron", "mcp_install", "mcp_uninstall", "config_set"]
+        "identity": {
+          "name": "Dr. Turing",
+          "emoji": "🤖"
         }
       },
       {
@@ -72,9 +72,9 @@
         "name": "Dr. Bayes",
         "workspace": "~/AcaClaw/agents/data-analyst",
         "reasoningDefault": "stream",
-        "identity": { "name": "Dr. Bayes", "emoji": "📊" },
-        "tools": {
-          "deny": ["gateway", "cron", "mcp_install", "mcp_uninstall", "config_set"]
+        "identity": {
+          "name": "Dr. Bayes",
+          "emoji": "📊"
         }
       },
       {
@@ -82,9 +82,9 @@
         "name": "Dr. Knuth",
         "workspace": "~/AcaClaw/agents/cs-scientist",
         "reasoningDefault": "stream",
-        "identity": { "name": "Dr. Knuth", "emoji": "💻" },
-        "tools": {
-          "deny": ["gateway", "cron", "mcp_install", "mcp_uninstall", "config_set"]
+        "identity": {
+          "name": "Dr. Knuth",
+          "emoji": "💻"
         }
       }
     ]
@@ -97,7 +97,9 @@
       "applyPatch": {
         "workspaceOnly": true
       },
-      "pathPrepend": ["~/.acaclaw/miniforge3/bin"],
+      "pathPrepend": [
+        "~/.acaclaw/miniforge3/bin"
+      ],
       "security": "full",
       "ask": "always"
     },
@@ -108,7 +110,22 @@
       "sessions_send",
       "mcp_install",
       "mcp_uninstall",
-      "config_set"
+      "config_set",
+      "canvas",
+      "nodes",
+      "agents_list",
+      "sessions_list",
+      "sessions_history",
+      "subagents",
+      "sessions_yield",
+      "tts",
+      "backup_list",
+      "backup_restore",
+      "compat_check",
+      "env_status",
+      "event_log",
+      "security_audit",
+      "security_status"
     ]
   },
   "models": {
