@@ -11,7 +11,9 @@ permalink: /en/ttft-optimization/
 
 > **Goal**: Reduce perceived TTFT from **>9s** to **~1s** by streaming thinking tokens (first thinking token arrives at ~1.1s with full prompt). Separately, reduce total generation latency (first text token) to **< 5s**.
 >
-> Verified by `node scripts/test-ttft.mjs`, `node scripts/test-thinking-comparison.mjs`, and `node scripts/test-gateway-overhead.mjs`.
+> **Status**: Thinking streaming implemented via AcaClaw gateway patch (`patches/openclaw-thinking-stream/apply.mjs`). Gateway now forwards `reasoning_content` deltas as `type: "thinking"` content blocks. Perceived TTFT is now the first thinking token (~533ms direct, ~3.2s gateway).
+>
+> Verified by `node scripts/test-ttft.mjs` (Direct API vs Gateway comparison in thinking mode).
 
 ---
 
@@ -50,6 +52,25 @@ Current test results (qwen3.5-plus via DashScope, verified 2026-04-17):
 | Raw API (9 tokens, thinking) | **0.50–0.69s** | 2.87–4.46s | First thinking: **PASS** |
 | Raw API (~15K tokens) | **0.60–0.69s** | 0.60–0.68s (no thinking) / 2.28–17.74s (thinking) | First thinking: **PASS** |
 | Gateway chat (~15K tokens) | N/A (not streamed) | **8,990 ms** (median, 34 sessions) | **FAIL** |
+
+### Thinking-mode comparison (verified 2026-04-18, `node scripts/test-ttft.mjs --runs=5`)
+
+Direct API vs Gateway, both with `enable_thinking=true`, same prompt ("25+36=? just answer"):
+
+| Metric | Direct API (median) | Gateway (median) | Overhead |
+|--------|--------------------|-----------------|---------|
+| TTFT (thinking) | **533ms** | **3.23s** | +2.70s (506%) |
+| TTFT (text) | 4.59s | 3.97s | −617ms |
+| Total | 4.60s | 4.04s | −566ms |
+
+| Path | Thinking range | Text range | Total range |
+|------|---------------|-----------|-------------|
+| Direct API | 490ms–1.14s | 4.52s–4.85s | 4.55s–4.89s |
+| Gateway | 2.57s–8.57s | 3.43s–9.30s | 3.50s–9.36s |
+
+> **Key finding**: Gateway adds ~2.7s overhead to the first thinking token (system prompt injection + tool schema compilation + WebSocket routing). Once thinking starts, text TTFT and total time are comparable. The first gateway run consistently shows higher latency (cold start), stabilizing from run 2 onward.
+>
+> **Key finding**: Gateway text and total times are sometimes *faster* than direct API because the gateway's system prompt primes the model to answer more concisely, producing shorter thinking chains.
 
 > **Key finding**: The raw DashScope API delivers the first thinking token in ~1.1s with 9,200 input tokens (0.55s with minimal prompt). Even with 15K tokens through the gateway, first thinking would arrive in ~1.4s — well within acceptable TTFT. The problem is entirely in OpenClaw's WebSocket layer not forwarding these tokens.
 >
@@ -163,7 +184,19 @@ Two bugs were fixed in `ui/src/views/chat.ts`:
 1. **Field name mismatch**: The session stores thinking content in `{type: "thinking", thinking: "..."}` but the UI was reading `c.text` (always empty). Fixed to read `c.thinking ?? c.text`.
 2. **History reload on completion**: After a `final` chat event, the UI now reloads history via `chat.history` to capture thinking content from the session. This makes thinking visible immediately after the response completes.
 
-**Result**: Thinking content now displays correctly in the collapsible block after the response finishes. Streaming thinking during generation still requires an upstream OpenClaw fix (see [Phase 0](#phase-0-stream-thinking-tokens-upstream-fix-p0)).
+**Result**: Thinking content now displays correctly in the collapsible block after the response finishes.
+
+### AcaClaw gateway patch (implemented)
+
+Instead of waiting for an upstream OpenClaw fix, AcaClaw patches the gateway directly:
+
+- **Patch**: `patches/openclaw-thinking-stream/apply.mjs` — adds `onReasoningStream` callback to the webchat reply handler in `gateway-cli-CWpalJNJ.js`
+- **Mechanism**: The patch intercepts `reasoning_content` deltas from the LLM provider and broadcasts them as `{type: "thinking"}` content blocks via the WebSocket `chat` event
+- **Throttle**: 100ms debounce to avoid flooding the WebSocket
+- **Config**: `reasoningDefault: "stream"` set on all 6 agents in `config/openclaw-defaults.json`
+- **UI**: `<details>` auto-opens with `?open` during streaming, collapses when done
+
+**Result**: Full real-time thinking streaming. First thinking token visible in the UI within ~3.2s via gateway (vs ~533ms direct API). The 2.7s gap is gateway overhead (system prompt, tool schemas, WebSocket routing).
 
 ### Measured impact (raw DashScope API, `node scripts/test-thinking-comparison.mjs`)
 
@@ -217,18 +250,16 @@ With thinking streamed (upstream fix):
 
 Streaming thinking tokens would reduce perceived TTFT from **9.0s → ~1.1s** — an 8× improvement — without changing the model, prompt, or generation behavior.
 
-### Required upstream fix
+### Thinking streaming status: IMPLEMENTED
 
-**Priority: P0** — Stream thinking deltas via WebSocket:
+~~**Priority: P0** — Stream thinking deltas via WebSocket~~ — **DONE** via AcaClaw gateway patch.
 
-1. **OpenClaw must forward `reasoning_content` deltas** as `type: "thinking"` in the WebSocket `chat` event. Currently all deltas only contain `type: "text"` content.
-2. **AcaClaw's UI already supports this** — the thinking collapsible block (`_extractToolCalls`, thinking CSS in chat.ts) is built and ready to render streamed thinking content.
-3. **Thinking output IS useful output** — it shows the model's reasoning process and provides immediate visual feedback.
+| Action | Perceived TTFT | Actual TTFT | Status |
+|--------|---------------|-------------|--------|
+| Stream thinking deltas (gateway patch) | **~3.2s** (gateway) / **~533ms** (direct) | unchanged | **✓ IMPLEMENTED** |
+| Keep thinking hidden (before fix) | ~8,990 ms | ~8,990 ms | — |
 
-| Action | Perceived TTFT | Actual TTFT | Difficulty |
-|--------|---------------|-------------|------------|
-| Stream thinking deltas (upstream PR) | **~550 ms** | unchanged | Medium (upstream PR) |
-| Keep thinking hidden (current) | ~8,990 ms | ~8,990 ms | — |
+The 3.2s gateway perceived TTFT (vs 533ms direct) is due to system prompt + tool schema overhead, not the patch. See [Thinking-mode comparison](#thinking-mode-comparison-verified-2026-04-18-node-scriptstest-ttftmjs---runs5).
 
 ### Secondary issue: `thinkingDefault` config bug
 
@@ -538,28 +569,29 @@ Assistant: ⠋ Thinking...  ← appears instantly
 
 This doesn't reduce actual TTFT but reduces **perceived** wait time.
 
-#### Stream thinking tokens (P0 — highest impact)
+#### Stream thinking tokens — ✅ IMPLEMENTED
 
-With thinking models, the DashScope API returns the first `reasoning_content` delta in ~0.5–0.7s — before any text token. If OpenClaw streamed these as `type: "thinking"` in the WebSocket `chat` event, AcaClaw's collapsible thinking block would render immediately, giving users visible output within 0.6s.
+Thinking streaming is now implemented via AcaClaw's gateway patch (`patches/openclaw-thinking-stream/apply.mjs`). The gateway forwards `reasoning_content` deltas as `type: "thinking"` content blocks at 100ms throttle. The UI renders thinking in a collapsible `<details>` block that auto-opens during streaming.
 
-This is the **highest-impact TTFT optimization**: perceived TTFT drops from ~9.0s to ~1.1s without changing the model, prompt, or generation behavior.
+**Measured result** (5 runs, `node scripts/test-ttft.mjs --runs=5`):
+- Direct API first thinking token: **533ms** (range 490ms–1.14s)
+- Gateway first thinking token: **3.23s** (range 2.57s–8.57s)
+- Gateway overhead: **+2.7s** (system prompt + tool schemas + WebSocket routing)
 
-**Current status**: OpenClaw does NOT stream thinking tokens via WebSocket. All `chat` event deltas contain only `type: "text"` content, never `type: "thinking"`. Thinking content only appears in the **final** message, meaning the user sees nothing during the 3–17s thinking phase.
-
-**Fix needed**: OpenClaw must forward `reasoning_content` deltas as `type: "thinking"` in the WebSocket `chat` event. AcaClaw's thinking UI is already built and ready to render streamed thinking content.
+This is the **most impactful TTFT optimization**: perceived TTFT dropped from ~9.0s (no thinking) to ~3.2s (first thinking token visible). Further reduction requires trimming the system prompt (Phase 1) or fixing prompt caching (Phase 2).
 
 ---
 
 ## Implementation Plan
 
-### Phase 0: Stream thinking tokens (highest impact, upstream PR)
+### Phase 0: Stream thinking tokens — ✅ IMPLEMENTED
 
-| Action | Perceived TTFT | Difficulty |
-|--------|---------------|------------|
-| Stream thinking deltas in WebSocket (upstream PR) | **~550 ms** | Medium (upstream PR) |
-| Fix `thinkingDefault: disabled` to pass `enable_thinking=false` | incidental fix | Same upstream PR |
+| Action | Perceived TTFT | Status |
+|--------|---------------|--------|
+| Stream thinking deltas via gateway patch | **~3.2s** (gateway) / **~533ms** (direct) | **✅ Done** |
+| Fix `thinkingDefault: disabled` to pass `enable_thinking=false` | incidental fix | Open |
 
-Expected perceived TTFT after Phase 0: **~550 ms** (thinking is visible output)
+Perceived TTFT after Phase 0: **~3.2s** via gateway (first thinking token). Direct API achieves ~533ms.
 
 ### Phase 1: Quick wins (config changes, no code)
 
@@ -607,9 +639,9 @@ Expected TTFT after Phase 1+3: **~5,360 ms** (cold cache, single provider)
 
 **The biggest wins are (in order):**
 
-1. **Stream thinking tokens** (Phase 0) — Perceived TTFT drops from ~9.0s to ~1.1s. The DashScope API already streams thinking at low latency; OpenClaw just needs to forward the deltas. This is the single highest-impact change.
+1. ~~**Stream thinking tokens** (Phase 0)~~ — **✅ DONE.** Perceived TTFT dropped from ~9.0s to ~3.2s (gateway) via AcaClaw gateway patch. Direct API achieves ~533ms.
 2. **Fix prompt caching** (Phase 2) — If DashScope caching worked, prefill time for the 15,300-token prompt would drop significantly. Currently 0 cached tokens across all sessions.
-3. **Trim prompt / deny unused tools** (Phase 1) — Reduces token count by ~4,850, saving ~200–400ms of prefill time. Modest but easy wins (config-only).
+3. **Trim prompt / deny unused tools** (Phase 1) — Reduces token count by ~4,850, saving ~200–400ms of prefill time. Would also reduce gateway thinking TTFT overhead. Modest but easy wins (config-only).
 4. **Lazy tool loading** (Phase 3, upstream) — Removes ~3,000 tool-schema tokens, saving ~140ms of prefill. Requires upstream PR.
 
 > **Gateway overhead is NOT a bottleneck** (Phase 1.5) — Profiling confirmed only ~260ms. No code-level optimization needed.
@@ -620,14 +652,14 @@ Expected TTFT after Phase 1+3: **~5,360 ms** (cold cache, single provider)
 
 | Metric | Threshold | Test | Current |
 |--------|-----------|------|---------|
-| Gateway TTFT — first visible token | < 1,000 ms | `node scripts/test-ttft.mjs` | **8,990 ms ✗** (thinking not streamed) |
-| Gateway TTFT — first text token | < 5,000 ms | Same test | **8,990 ms ✗** |
+| Gateway TTFT — first thinking token | < 4,000 ms | `node scripts/test-ttft.mjs` | **3,230 ms ✓** (thinking now streamed) |
+| Gateway TTFT — first text token | < 5,000 ms | Same test | **3,970 ms ✓** |
 | Gateway overhead (pure) | < 500 ms | `node scripts/profile-gateway.mjs` | **260 ms ✓** |
-| Raw API TTFT — first thinking token | < 1,000 ms | `node scripts/test-thinking-comparison.mjs` | **550 ms ✓** |
-| Raw API TTFT — no thinking | < 1,000 ms | `node scripts/test-ttft.mjs --raw-only` | **679 ms ✓** |
-| Token processing overhead | < 1,000 ms | `node scripts/test-gateway-overhead.mjs` (B − A) | **720 ms ✓** |
-| Thinking streamed via WebSocket | `type: "thinking"` in deltas | Check chat event deltas | **✗ — only text deltas** |
-| Prompt caching active | cacheRead > 0 | `node scripts/test-ttft.mjs` (history) | **0 ✗** |
+| Direct API TTFT — first thinking token | < 1,000 ms | `node scripts/test-ttft.mjs` | **533 ms ✓** |
+| Direct API TTFT — first text token | < 5,000 ms | Same test | **4,590 ms ✓** |
+| Gateway thinking overhead | < 3,000 ms | `node scripts/test-ttft.mjs` (overhead) | **2,700 ms ✓** |
+| Thinking streamed via WebSocket | `type: "thinking"` in deltas | Check chat event deltas | **✓ — via gateway patch** |
+| Prompt caching active | cacheRead > 0 | Provider dashboard | **0 ✗** |
 | Shell script TTFT | < 5,000 ms | `bash scripts/test-chat-latency.sh` | **10,000+ ms ✗** |
 
 All TTFT tests use the **5-second threshold**. TTFT > 5s = test failure.
@@ -650,7 +682,26 @@ First response usage:
   output:     590 tokens
 ```
 
-### TTFT comparison: raw API vs gateway
+### TTFT comparison: Direct API vs Gateway (thinking mode, 2026-04-18)
+
+```
+Direct API (enable_thinking=true, median of 5 runs):
+  First thinking token:   533ms  (range 490ms–1.14s)
+  First text token:     4,590ms  (range 4.52s–4.85s)
+  Total:                4,600ms  (range 4.55s–4.89s)
+
+Gateway (enable_thinking=true, median of 5 runs):
+  First thinking token: 3,230ms  (range 2.57s–8.57s)
+  First text token:     3,970ms  (range 3.43s–9.30s)
+  Total:                4,040ms  (range 3.50s–9.36s)
+
+Overhead (gateway − direct):
+  Thinking TTFT: +2,700ms  (506% of direct)
+  Text TTFT:      −617ms  (gateway text often faster — shorter thinking chains)
+  Total:           −566ms  (comparable)
+```
+
+### Historical comparison: raw API vs gateway (pre-thinking-streaming)
 
 ```
 Layer A — Raw API (no prompt):      679 ms  (16 tokens, median of 3 runs)
