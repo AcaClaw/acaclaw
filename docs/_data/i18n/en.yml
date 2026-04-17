@@ -13,6 +13,8 @@ nav:
     url: /en/providers-and-models/
   - title: Chat Handling
     url: /en/chat-handling/
+  - title: TTFT Optimization
+    url: /en/ttft-optimization/
   - title: Skills
     url: /en/skills/
   - title: Digital Life Agents
@@ -27,6 +29,8 @@ nav:
     url: /en/workspace/
   - title: Web GUI
     url: /en/desktop-gui/
+  - title: Auth & App Launch
+    url: /en/auth-and-app-launch/
   - title: Testing
     url: /en/testing/
   - title: Contributing

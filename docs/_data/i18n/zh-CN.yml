@@ -13,6 +13,8 @@ nav:
     url: /zh-CN/providers-and-models/
   - title: 聊天处理
     url: /zh-CN/chat-handling/
+  - title: TTFT 优化
+    url: /zh-CN/ttft-optimization/
   - title: 技能管理
     url: /zh-CN/skills/
   - title: 数字科研助手
