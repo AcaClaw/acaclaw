@@ -132,7 +132,7 @@ permalink: /zh-CN/ttft-optimization/
 
 ### 网关开销性能分析
 
-> **关键发现**：网关开销仅 **~260ms** — 通过 `node scripts/profile-gateway.mjs` 验证。从 `chat.send` 到 `llm_input` 的所有钩子在 260ms 内完成。剩余 5+ 秒是 DashScope API 时间（预填充 + 思考）。
+> **关键发现**：网关开销仅 **~260ms** — 通过网关性能分析器验证（已移除；数据保留在下方）。从 `chat.send` 到 `llm_input` 的所有钩子在 260ms 内完成。剩余 5+ 秒是 DashScope API 时间（预填充 + 思考）。
 
 性能分析器时间线（3 次运行，一致）：
 
@@ -198,7 +198,7 @@ AcaClaw 不等待上游 OpenClaw 修复，而是直接打补丁到网关：
 
 **结果**：完整的实时思考流式传输。首个思考 token 在 UI 中 ~3.2s 内可见（直连 API ~533ms）。2.7s 的差距是网关开销（系统提示词、工具 schema、WebSocket 路由）。
 
-### 测量影响（裸 DashScope API，`node scripts/test-thinking-comparison.mjs`）
+### 测量影响（裸 DashScope API，历史数据）
 
 | 指标 | `enable_thinking=false` | `enable_thinking=true` |
 |------|------------------------|------------------------|
@@ -651,7 +651,7 @@ Assistant: ⠋ 思考中...  ← 立即出现
 |------|------|------|------|
 | 网关 TTFT — 首个思考 token | < 4,000 ms | `node scripts/test-ttft.mjs` | **3,230 ms ✓**（思考现在流式传输） |
 | 网关 TTFT — 首个文本 token | < 5,000 ms | 同上 | **3,970 ms ✓** |
-| 网关开销（纯） | < 500 ms | `node scripts/profile-gateway.mjs` | **260 ms ✓** |
+| 网关开销（纯） | < 500 ms | 网关性能分析器（历史数据） | **260 ms ✓** |
 | 直连 API TTFT — 首个思考 token | < 1,000 ms | `node scripts/test-ttft.mjs` | **533 ms ✓** |
 | 直连 API TTFT — 首个文本 token | < 5,000 ms | 同上 | **4,590 ms ✓** |
 | 网关思考开销 | < 3,000 ms | `node scripts/test-ttft.mjs`（开销） | **2,700 ms ✓** |
@@ -709,7 +709,7 @@ Query: "search aptamer drugs in recent 5 years and write a report in word"
 Token 开销（B − A）：  431ms，额外 9,187 token = 0.047ms/token
 Token 开销（C − A）：3,741ms，额外 ~15,384 token
 
-网关性能分析（profile-gateway.mjs，3 次运行）：
+网关性能分析（历史数据，3 次运行）：
   chat.send → llm_input：   ~260ms（网关代码开销）
   llm_input → 首个增量：  ~5,200ms（DashScope API：预填充 + 思考）
   网关总 TTFT：             ~5,460ms

@@ -132,7 +132,7 @@ However, thinking tokens ARE output — if they were streamed, the user would se
 
 ### Gateway Overhead Profiling
 
-> **Key finding**: Gateway overhead is only **~260ms** — verified by `node scripts/profile-gateway.mjs`. All hooks from `chat.send` to `llm_input` complete in 260ms. The remaining 5+ seconds is DashScope API time (prefill + thinking).
+> **Key finding**: Gateway overhead is only **~260ms** — verified by gateway profiler (removed; data preserved below). All hooks from `chat.send` to `llm_input` complete in 260ms. The remaining 5+ seconds is DashScope API time (prefill + thinking).
 
 Profiler timeline (3 runs, consistent):
 
@@ -198,7 +198,7 @@ Instead of waiting for an upstream OpenClaw fix, AcaClaw patches the gateway dir
 
 **Result**: Full real-time thinking streaming. First thinking token visible in the UI within ~3.2s via gateway (vs ~533ms direct API). The 2.7s gap is gateway overhead (system prompt, tool schemas, WebSocket routing).
 
-### Measured impact (raw DashScope API, `node scripts/test-thinking-comparison.mjs`)
+### Measured impact (raw DashScope API, historical data)
 
 | Metric | `enable_thinking=false` | `enable_thinking=true` |
 |--------|------------------------|------------------------|
@@ -654,7 +654,7 @@ Expected TTFT after Phase 1+3: **~5,360 ms** (cold cache, single provider)
 |--------|-----------|------|---------|
 | Gateway TTFT — first thinking token | < 4,000 ms | `node scripts/test-ttft.mjs` | **3,230 ms ✓** (thinking now streamed) |
 | Gateway TTFT — first text token | < 5,000 ms | Same test | **3,970 ms ✓** |
-| Gateway overhead (pure) | < 500 ms | `node scripts/profile-gateway.mjs` | **260 ms ✓** |
+| Gateway overhead (pure) | < 500 ms | Gateway profiler (historical) | **260 ms ✓** |
 | Direct API TTFT — first thinking token | < 1,000 ms | `node scripts/test-ttft.mjs` | **533 ms ✓** |
 | Direct API TTFT — first text token | < 5,000 ms | Same test | **4,590 ms ✓** |
 | Gateway thinking overhead | < 3,000 ms | `node scripts/test-ttft.mjs` (overhead) | **2,700 ms ✓** |
@@ -712,7 +712,7 @@ Gateway historical:                8,990 ms  (~15,300 tokens, median of 34 sessi
 Token overhead (B − A):   431ms for 9,187 extra tokens = 0.047ms/token
 Token overhead (C − A): 3,741ms for ~15,384 extra tokens
 
-Gateway profiling (profile-gateway.mjs, 3 runs):
+Gateway profiling (historical, 3 runs):
   chat.send → llm_input:    ~260ms  (gateway code overhead)
   llm_input → first delta: ~5,200ms (DashScope API: prefill + thinking)
   Total gateway TTFT:      ~5,460ms
