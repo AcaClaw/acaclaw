@@ -63,14 +63,20 @@ Direct API vs Gateway, both with `enable_thinking=true`, same prompt ("25+36=? j
 | TTFT (text) | 4.59s | 3.97s | −617ms |
 | Total | 4.60s | 4.04s | −566ms |
 
+### After Phase 1 prompt trimming (22 tools denied, verified 2026-04-18)
+
+| Metric | Direct API (median) | Gateway (median) | Overhead |
+|--------|--------------------|-----------------|----------|
+| TTFT (thinking) | **546ms** | **2.61s** | +2.06s (378%) |
+| TTFT (text) | 4.56s | 3.65s | −915ms |
+| Total | 4.72s | 3.70s | −1.01s |
+
 | Path | Thinking range | Text range | Total range |
 |------|---------------|-----------|-------------|
-| Direct API | 490ms–1.14s | 4.52s–4.85s | 4.55s–4.89s |
-| Gateway | 2.57s–8.57s | 3.43s–9.30s | 3.50s–9.36s |
+| Direct API | 459ms–774ms | 4.49s–4.70s | 4.52s–4.73s |
+| Gateway | 2.27s–5.66s | 3.17s–6.56s | 3.23s–6.62s |
 
-> **Key finding**: Gateway adds ~2.7s overhead to the first thinking token (system prompt injection + tool schema compilation + WebSocket routing). Once thinking starts, text TTFT and total time are comparable. The first gateway run consistently shows higher latency (cold start), stabilizing from run 2 onward.
->
-> **Key finding**: Gateway text and total times are sometimes *faster* than direct API because the gateway's system prompt primes the model to answer more concisely, producing shorter thinking chains.
+> **Phase 1 impact**: Denying 15 additional tools (22 total) saved **620ms** on thinking TTFT (3.23s → 2.61s, −19%). Gateway overhead dropped from 2.70s to 2.06s.
 
 > **Key finding**: The raw DashScope API delivers the first thinking token in ~1.1s with 9,200 input tokens (0.55s with minimal prompt). Even with 15K tokens through the gateway, first thinking would arrive in ~1.4s — well within acceptable TTFT. The problem is entirely in OpenClaw's WebSocket layer not forwarding these tokens.
 >
@@ -593,15 +599,14 @@ This is the **most impactful TTFT optimization**: perceived TTFT dropped from ~9
 
 Perceived TTFT after Phase 0: **~3.2s** via gateway (first thinking token). Direct API achieves ~533ms.
 
-### Phase 1: Quick wins (config changes, no code)
+### Phase 1: Quick wins — PARTIALLY DONE
 
-| Action | Token Savings | TTFT Impact |
-|--------|--------------|-------------|
-| Deny 7 AcaClaw utility tools | ~1,600 | −720 ms |
-| Deny 5 OpenClaw unused tools (LSP, notebook) | ~2,000 | −900 ms |
-| Add `skillFilter` to main agent | ~1,000 | −450 ms |
-| Compress SOUL.md | ~250 | −110 ms |
-| **Total** | **~4,850** | **~2,180 ms** |
+| Action | Token Savings | TTFT Impact | Status |
+|--------|--------------|-------------|--------|
+| Deny 15 additional tools (22 total) | ~3,750 | **−620 ms** | **✅ Done** |
+| Add `skillFilter` to main agent | ~1,000 | −450 ms | N/A (not supported by OpenClaw) |
+| Compress SOUL.md | ~250 | −110 ms | Not started |
+| **Total applied** | **~3,750** | **~620 ms** | |
 
 Expected cold-cache TTFT after Phase 1: **~6,800 ms** (still above 5s)
 
@@ -640,8 +645,8 @@ Expected TTFT after Phase 1+3: **~5,360 ms** (cold cache, single provider)
 **The biggest wins are (in order):**
 
 1. ~~**Stream thinking tokens** (Phase 0)~~ — **✅ DONE.** Perceived TTFT dropped from ~9.0s to ~3.2s (gateway) via AcaClaw gateway patch. Direct API achieves ~533ms.
-2. **Fix prompt caching** (Phase 2) — If DashScope caching worked, prefill time for the 15,300-token prompt would drop significantly. Currently 0 cached tokens across all sessions.
-3. **Trim prompt / deny unused tools** (Phase 1) — Reduces token count by ~4,850, saving ~200–400ms of prefill time. Would also reduce gateway thinking TTFT overhead. Modest but easy wins (config-only).
+2. ~~**Trim prompt / deny unused tools** (Phase 1)~~ — **✅ PARTIALLY DONE.** 22 tools denied, saving 620ms (3.23s → 2.61s thinking TTFT). `skillFilter` not supported by OpenClaw.
+3. **Fix prompt caching** (Phase 2) — If DashScope caching worked, prefill time for the 15,300-token prompt would drop significantly. Currently 0 cached tokens across all sessions.
 4. **Lazy tool loading** (Phase 3, upstream) — Removes ~3,000 tool-schema tokens, saving ~140ms of prefill. Requires upstream PR.
 
 > **Gateway overhead is NOT a bottleneck** (Phase 1.5) — Profiling confirmed only ~260ms. No code-level optimization needed.
@@ -652,12 +657,12 @@ Expected TTFT after Phase 1+3: **~5,360 ms** (cold cache, single provider)
 
 | Metric | Threshold | Test | Current |
 |--------|-----------|------|---------|
-| Gateway TTFT — first thinking token | < 4,000 ms | `node scripts/test-ttft.mjs` | **3,230 ms ✓** (thinking now streamed) |
-| Gateway TTFT — first text token | < 5,000 ms | Same test | **3,970 ms ✓** |
+| Gateway TTFT — first thinking token | < 4,000 ms | `node scripts/test-ttft.mjs` | **2,610 ms ✓** (after Phase 1) |
+| Gateway TTFT — first text token | < 5,000 ms | Same test | **3,650 ms ✓** |
 | Gateway overhead (pure) | < 500 ms | Gateway profiler (historical) | **260 ms ✓** |
-| Direct API TTFT — first thinking token | < 1,000 ms | `node scripts/test-ttft.mjs` | **533 ms ✓** |
-| Direct API TTFT — first text token | < 5,000 ms | Same test | **4,590 ms ✓** |
-| Gateway thinking overhead | < 3,000 ms | `node scripts/test-ttft.mjs` (overhead) | **2,700 ms ✓** |
+| Direct API TTFT — first thinking token | < 1,000 ms | `node scripts/test-ttft.mjs` | **546 ms ✓** |
+| Direct API TTFT — first text token | < 5,000 ms | Same test | **4,560 ms ✓** |
+| Gateway thinking overhead | < 3,000 ms | `node scripts/test-ttft.mjs` (overhead) | **2,060 ms ✓** |
 | Thinking streamed via WebSocket | `type: "thinking"` in deltas | Check chat event deltas | **✓ — via gateway patch** |
 | Prompt caching active | cacheRead > 0 | Provider dashboard | **0 ✗** |
 | Shell script TTFT | < 5,000 ms | `bash scripts/test-chat-latency.sh` | **10,000+ ms ✗** |
@@ -685,20 +690,20 @@ First response usage:
 ### TTFT comparison: Direct API vs Gateway (thinking mode, 2026-04-18)
 
 ```
-Direct API (enable_thinking=true, median of 5 runs):
-  First thinking token:   533ms  (range 490ms–1.14s)
-  First text token:     4,590ms  (range 4.52s–4.85s)
-  Total:                4,600ms  (range 4.55s–4.89s)
+Direct API (enable_thinking=true, median of 5 runs, after Phase 1):
+  First thinking token:   546ms  (range 459ms–774ms)
+  First text token:     4,560ms  (range 4.49s–4.70s)
+  Total:                4,720ms  (range 4.52s–4.73s)
 
-Gateway (enable_thinking=true, median of 5 runs):
-  First thinking token: 3,230ms  (range 2.57s–8.57s)
-  First text token:     3,970ms  (range 3.43s–9.30s)
-  Total:                4,040ms  (range 3.50s–9.36s)
+Gateway (enable_thinking=true, median of 5 runs, after Phase 1):
+  First thinking token: 2,610ms  (range 2.27s–5.66s)
+  First text token:     3,650ms  (range 3.17s–6.56s)
+  Total:                3,700ms  (range 3.23s–6.62s)
 
 Overhead (gateway − direct):
-  Thinking TTFT: +2,700ms  (506% of direct)
-  Text TTFT:      −617ms  (gateway text often faster — shorter thinking chains)
-  Total:           −566ms  (comparable)
+  Thinking TTFT: +2,060ms  (378% of direct)
+  Text TTFT:      −915ms  (gateway text faster — shorter thinking chains)
+  Total:         −1,014ms  (gateway total faster)
 ```
 
 ### Historical comparison: raw API vs gateway (pre-thinking-streaming)
