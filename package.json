@@ -20,6 +20,7 @@
     "agents/",
     "scripts/",
     "ui/dist/",
+    "public/logo/",
     "skills.json"
   ],
   "bin": {

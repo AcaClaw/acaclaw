@@ -50,10 +50,12 @@ PLATFORM="$(detect_platform)"
 find_icon() {
     local candidates=(
         "${SCRIPT_DIR}/../public/logo/AcaClaw.png"
+        "${SCRIPT_DIR}/../ui/dist/logo/icon-512.png"
         "${SCRIPT_DIR}/../ui/src/logo/AcaClaw.png"
         "${SCRIPT_DIR}/../ui/public/logo/AcaClaw.png"
         "${SCRIPT_DIR}/../docs/assets/logo/AcaClaw.png"
         "${SCRIPT_DIR}/../public/logo/AcaClaw.svg"
+        "${SCRIPT_DIR}/../ui/dist/logo/AcaClaw.svg"
         "${SCRIPT_DIR}/../ui/src/logo/AcaClaw.svg"
         "${SCRIPT_DIR}/../ui/public/logo/AcaClaw.svg"
         "${SCRIPT_DIR}/../ui/src/public/logo/AcaClaw.svg"
@@ -256,6 +258,10 @@ PLIST
         done
         iconutil -c icns "$iconset_dir" -o "${resources_dir}/AcaClaw.icns" 2>/dev/null || true
         rm -rf "$(dirname "$iconset_dir")"
+    fi
+    # Flush macOS icon cache so the Dock picks up the new icon immediately
+    if [[ -f "${resources_dir}/AcaClaw.icns" ]]; then
+        /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app_bundle" 2>/dev/null || true
     fi
     touch "$app_bundle"
     log "  ✓ ~/Applications/AcaClaw.app (Launchpad, Spotlight, drag to Dock)"
