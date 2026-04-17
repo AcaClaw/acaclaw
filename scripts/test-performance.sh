@@ -391,7 +391,7 @@ perf_first_chat_response() {
     preview="$(echo "$result" | python3 -c "import json,sys; print(json.load(sys.stdin).get('response_preview','')[:80])" 2>/dev/null)" || preview=""
 
     if [[ -n "$first_token" && "$first_token" != "None" ]]; then
-        _perf "Time to first token" "$first_token" 10000 30000
+        _perf "Time to first token" "$first_token" 5000 10000
     else
         _warn "Time to first token" "Not measured (no delta events)"
     fi
@@ -430,7 +430,7 @@ perf_web_search() {
     preview="$(echo "$result" | python3 -c "import json,sys; print(json.load(sys.stdin).get('response_preview','')[:80])" 2>/dev/null)" || preview=""
 
     if [[ -n "$first_token" && "$first_token" != "None" ]]; then
-        _perf "Time to first token (web search)" "$first_token" 30000 90000
+        _perf "Time to first token (web search)" "$first_token" 5000 10000
     else
         _warn "Time to first token (web search)" "Not measured"
     fi

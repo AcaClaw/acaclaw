@@ -233,8 +233,8 @@ _fmt_ms() {
 
 _color_ttft() {
     local ms=$1 label=$2
-    if [[ $ms -ge 10000 ]]; then
-        echo -e "  ${RED}✗ ${label}: $(_fmt_ms "$ms")${NC}"
+    if [[ $ms -ge 5000 ]]; then
+        echo -e "  ${RED}✗ ${label}: $(_fmt_ms "$ms") [FAIL: >5s]${NC}"
     elif [[ $ms -ge 3000 ]]; then
         echo -e "  ${YELLOW}⚠ ${label}: $(_fmt_ms "$ms")${NC}"
     else

@@ -129,7 +129,7 @@ interface ProviderDef {
 	envVar: string;
 	baseUrl: string;
 	model: string;
-	/** Max acceptable TTFT in ms */
+	/** Max acceptable TTFT in ms (raw API, no system prompt) */
 	ttftThreshold: number;
 	/** Max acceptable total response time in ms */
 	totalThreshold: number;
@@ -141,7 +141,7 @@ const PROVIDERS: ProviderDef[] = [
 		envVar: "MODELSTUDIO_API_KEY",
 		baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
 		model: "qwen-plus",
-		ttftThreshold: 10_000,
+		ttftThreshold: 5_000,
 		totalThreshold: 30_000,
 	},
 	{
@@ -149,7 +149,7 @@ const PROVIDERS: ProviderDef[] = [
 		envVar: "OPENROUTER_API_KEY",
 		baseUrl: "https://openrouter.ai/api/v1",
 		model: "anthropic/claude-sonnet-4",
-		ttftThreshold: 10_000,
+		ttftThreshold: 5_000,
 		totalThreshold: 30_000,
 	},
 	{
@@ -157,14 +157,129 @@ const PROVIDERS: ProviderDef[] = [
 		envVar: "MOONSHOT_API_KEY",
 		baseUrl: "https://api.moonshot.cn/v1",
 		model: "kimi-k2.5",
-		ttftThreshold: 10_000,
+		ttftThreshold: 5_000,
 		totalThreshold: 30_000,
 	},
 ];
 
+/** Max TTFT through the gateway (includes ~15K token system prompt) */
+const GATEWAY_TTFT_THRESHOLD = 5_000;
+const GATEWAY_PORT = process.env.ACACLAW_PORT ?? "2090";
+
+/**
+ * Measure TTFT through the gateway WebSocket — this reflects real user experience
+ * including system prompt, agent instructions, and tool definitions.
+ */
+function testGatewayTTFT(port: string): {
+	ok: boolean;
+	ttft_ms?: number;
+	total_ms: number;
+	delta_count?: number;
+	response_preview?: string;
+	error?: string;
+} {
+	const result = execSync(
+		`node --no-warnings -e '
+const WebSocket = require("ws");
+const {randomUUID} = require("crypto");
+const port = ${JSON.stringify(port)};
+const MESSAGE = "What is 2+2? Reply with just the number.";
+const SESSION_KEY = "agent:main:web:ttft-test-" + Date.now();
+
+const t0 = Date.now();
+let t_connected, t_first_delta, t_final;
+let responseText = "";
+let deltaCount = 0;
+let targetRunId = null;
+
+const ws = new WebSocket("ws://localhost:" + port + "/", { origin: "http://localhost:" + port });
+
+ws.on("message", (data) => {
+    const msg = JSON.parse(data);
+
+    if (msg.type === "event" && msg.event === "connect.challenge") {
+        ws.send(JSON.stringify({
+            type: "req", id: randomUUID(), method: "connect",
+            params: {
+                minProtocol: 3, maxProtocol: 3,
+                client: { id: "openclaw-control-ui", version: "ttft-test", platform: "test", mode: "ui" },
+                role: "operator",
+                scopes: ["operator.admin","operator.read","operator.write","operator.approvals","operator.pairing"]
+            }
+        }));
+    } else if (msg.type === "res" && !t_connected) {
+        t_connected = Date.now();
+        if (msg.ok === false) {
+            console.log(JSON.stringify({ ok: false, error: "connect_failed", total_ms: t_connected - t0 }));
+            ws.close(); process.exit(0);
+        }
+        ws.send(JSON.stringify({
+            type: "req", id: randomUUID(), method: "chat.send",
+            params: { sessionKey: SESSION_KEY, message: MESSAGE, idempotencyKey: randomUUID() }
+        }));
+    } else if (msg.type === "res" && t_connected && !targetRunId) {
+        if (msg.ok && msg.payload && msg.payload.runId) {
+            targetRunId = msg.payload.runId;
+        } else {
+            console.log(JSON.stringify({ ok: false, error: "chat_send_failed", total_ms: Date.now() - t0 }));
+            ws.close(); process.exit(0);
+        }
+    } else if (msg.type === "event" && msg.event === "chat") {
+        const d = msg.payload || {};
+        if (d.runId !== targetRunId) return;
+
+        if (d.state === "delta") {
+            deltaCount++;
+            if (!t_first_delta) t_first_delta = Date.now();
+            const text = (d.message?.content || []).filter(c => c.type === "text").map(c => c.text || "").join("");
+            if (text) responseText = text;
+        } else if (d.state === "final") {
+            t_final = Date.now();
+            const text = (d.message?.content || []).filter(c => c.type === "text").map(c => c.text || "").join("");
+            if (text) responseText = text;
+            console.log(JSON.stringify({
+                ok: true,
+                ttft_ms: t_first_delta ? t_first_delta - t_connected : null,
+                total_ms: t_final - t_connected,
+                delta_count: deltaCount,
+                response_preview: responseText.substring(0, 120)
+            }));
+            ws.close(); process.exit(0);
+        } else if (d.state === "error") {
+            t_final = Date.now();
+            console.log(JSON.stringify({
+                ok: false, error: d.errorMessage || "agent_error",
+                ttft_ms: t_first_delta ? t_first_delta - t_connected : null,
+                total_ms: t_final - t_connected
+            }));
+            ws.close(); process.exit(0);
+        }
+    }
+});
+
+ws.on("error", (e) => {
+    console.log(JSON.stringify({ ok: false, error: e.message, total_ms: Date.now() - t0 }));
+    process.exit(0);
+});
+
+setTimeout(() => {
+    console.log(JSON.stringify({
+        ok: false, error: "timeout_60s",
+        ttft_ms: t_first_delta ? t_first_delta - (t_connected || t0) : null,
+        total_ms: Date.now() - t0
+    }));
+    ws.close(); process.exit(0);
+}, 60000);
+'`,
+		{ encoding: "utf-8", timeout: 90_000 } as ExecSyncOptionsWithStringEncoding,
+	).trim();
+
+	return JSON.parse(result);
+}
+
 // ─── Tests ───
 
-describe("Provider API Latency", () => {
+describe("Provider Raw API Latency", () => {
 	for (const provider of PROVIDERS) {
 		describe(provider.name, () => {
 			const apiKey = resolveKey(provider.envVar);
@@ -182,7 +297,7 @@ describe("Provider API Latency", () => {
 				expect(result.response_preview).toBeTruthy();
 			});
 
-			it("TTFT is within threshold", { timeout: 90_000 }, () => {
+			it("raw API TTFT is within threshold", { timeout: 90_000 }, () => {
 				if (!apiKey) {
 					console.log(`  [skip] ${provider.envVar} not set`);
 					return;
@@ -196,7 +311,7 @@ describe("Provider API Latency", () => {
 				}
 
 				if (result.ttft_ms != null) {
-					console.log(`  [${provider.name}] TTFT: ${result.ttft_ms}ms (threshold: ${provider.ttftThreshold}ms)`);
+					console.log(`  [${provider.name}] Raw API TTFT: ${result.ttft_ms}ms (threshold: ${provider.ttftThreshold}ms)`);
 					expect(result.ttft_ms).toBeLessThan(provider.ttftThreshold);
 				}
 			});
@@ -221,4 +336,27 @@ describe("Provider API Latency", () => {
 			});
 		});
 	}
+});
+
+describe("Gateway TTFT (real user experience)", () => {
+	it("TTFT through gateway is under 5s", { timeout: 90_000 }, () => {
+		const result = testGatewayTTFT(GATEWAY_PORT);
+
+		if (!result.ok) {
+			console.log(`  [Gateway] Error: ${result.error}`);
+			// If gateway is not running, skip rather than fail
+			if (result.error?.includes("ECONNREFUSED") || result.error?.includes("connect_failed")) {
+				console.log("  [skip] Gateway not running");
+				return;
+			}
+			expect.fail(`Gateway error: ${result.error}`);
+		}
+
+		console.log(`  [Gateway] TTFT: ${result.ttft_ms}ms (threshold: ${GATEWAY_TTFT_THRESHOLD}ms)`);
+		console.log(`  [Gateway] Total: ${result.total_ms}ms | Deltas: ${result.delta_count} | Response: "${result.response_preview}"`);
+
+		if (result.ttft_ms != null) {
+			expect(result.ttft_ms).toBeLessThan(GATEWAY_TTFT_THRESHOLD);
+		}
+	});
 });
