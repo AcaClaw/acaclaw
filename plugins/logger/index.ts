@@ -45,6 +45,8 @@ const loggerPlugin = {
 				model: event.model,
 				provider: event.provider,
 			});
+			// Dump full prompt to dedicated file for token-counting
+			await journal.writeLlmInput(event as unknown as Record<string, unknown>);
 		});
 
 		api.on("llm_output", async (event) => {
@@ -55,7 +57,41 @@ const loggerPlugin = {
 			});
 		});
 
-		// --- Session events ---
+		// --- Prompt / Agent lifecycle (profiling) ---
+
+		api.on("message_received", async (event) => {
+			await journal.write("profile.message_received", "info", {
+				sessionKey: (event as Record<string, unknown>).sessionKey,
+			});
+		});
+
+		api.on("before_prompt_build", async (event) => {
+			await journal.write("profile.before_prompt_build", "info", {
+				agentId: (event as Record<string, unknown>).agentId,
+			});
+		});
+
+		api.on("before_agent_start", async (event) => {
+			await journal.write("profile.before_agent_start", "info", {
+				agentId: (event as Record<string, unknown>).agentId,
+			});
+		});
+
+		api.on("before_dispatch", async (event) => {
+			await journal.write("profile.before_dispatch", "info", {
+				agentId: (event as Record<string, unknown>).agentId,
+			});
+		});
+
+		api.on("before_model_resolve", async () => {
+			await journal.write("profile.before_model_resolve", "info", {});
+		});
+
+		api.on("before_agent_reply", async (event) => {
+			await journal.write("profile.before_agent_reply", "info", {
+				agentId: event.agentId,
+			});
+		});
 
 		api.on("session_start", async (event) => {
 			await journal.write("session.start", "info", {
@@ -116,20 +152,6 @@ const loggerPlugin = {
 
 		api.on("gateway_stop", async () => {
 			await journal.write("gateway.stop", "info", {});
-		});
-
-		// --- Model resolution ---
-
-		api.on("before_model_resolve", async () => {
-			await journal.write("model.resolve", "debug", {});
-		});
-
-		// --- Agent reply (4.2) ---
-
-		api.on("before_agent_reply", async (event) => {
-			await journal.write("agent.reply", "debug", {
-				agentId: event.agentId,
-			});
 		});
 
 		// --- UI-forwarded events (connection, auth, API keys) ---

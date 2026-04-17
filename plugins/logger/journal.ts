@@ -137,6 +137,39 @@ export class EventJournal {
 		return pruned;
 	}
 
+	/**
+	 * Write the raw LLM input (full messages array, tools, etc.) to a
+	 * dedicated file.  Bypasses the 4 KB per-entry limit so the complete
+	 * prompt is preserved for token-counting and debugging.
+	 */
+	async writeLlmInput(event: Record<string, unknown>): Promise<void> {
+		if (!this._config.enabled) return;
+
+		const date = new Date().toISOString().slice(0, 10);
+		const logPath = join(this._config.logDir, `llm-input-${date}.jsonl`);
+
+		await mkdir(dirname(logPath), { recursive: true });
+
+		const entry = {
+			ts: new Date().toISOString(),
+			model: event.model,
+			provider: event.provider,
+			systemPrompt: event.systemPrompt,
+			prompt: event.prompt,
+			historyMessages: event.historyMessages,
+			tools: event.tools,
+			thinking: event.thinking,
+			tokens: event.tokens,
+			usage: event.usage,
+			imagesCount: event.imagesCount,
+			// Capture any additional keys
+			_keys: Object.keys(event),
+		};
+
+		const line = JSON.stringify(entry) + "\n";
+		await appendFile(logPath, line, "utf-8");
+	}
+
 	private async _append(entry: EventEntry): Promise<void> {
 		const date = entry.ts.slice(0, 10); // YYYY-MM-DD
 		const logPath = join(this._config.logDir, `events-${date}.jsonl`);
