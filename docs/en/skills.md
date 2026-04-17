@@ -53,7 +53,8 @@ Cross-discipline skills recommended for every researcher. They are listed in the
 |---|---|---|
 | `literature-search` | Literature | Search arXiv, PubMed, Semantic Scholar |
 | `academic-deep-research` | Literature | Transparent, rigorous research across academic databases with audit trail |
-| `literature-review` | Literature | Structured literature reviews with synthesis and gap analysis |
+| `literature-review` | Literature | Search Semantic Scholar, OpenAlex, Crossref, and PubMed with auto-dedup and synthesis |
+| `pubmed-edirect` | Literature | Deep PubMed search via NCBI EDirect — batch abstracts, CSV export, cross-database linking |
 | `arxiv-cli-tools` | Literature | CLI tools for fetching and searching arXiv papers |
 | `academic-citation-manager` | Writing | Format references in APA, Vancouver, Nature, and 9000+ styles |
 | `ai-humanizer` | Writing | Detect and remove AI-typical writing patterns |

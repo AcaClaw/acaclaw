@@ -135,7 +135,8 @@ export const AVAILABLE_SKILLS: AvailableSkill[] = [
   // ── Literature & Research ──
   { id: "literature-search", name: "literature-search", description: "Search arXiv, PubMed, Semantic Scholar", category: "Literature", default: false, disciplines: ["cross"] },
   { id: "academic-deep-research", name: "academic-deep-research", description: "Transparent, rigorous research across academic databases with audit trail", category: "Literature", default: false, disciplines: ["cross"] },
-  { id: "literature-review", name: "literature-review", description: "Structured literature reviews with synthesis and gap analysis", category: "Literature", default: false, disciplines: ["cross"] },
+  { id: "literature-review", name: "literature-review", description: "Search Semantic Scholar, OpenAlex, Crossref, and PubMed with auto-dedup and synthesis", category: "Literature", default: false, disciplines: ["cross"] },
+  { id: "pubmed-edirect", name: "pubmed-edirect", description: "Deep PubMed search via NCBI EDirect — batch abstracts, CSV export, cross-database linking", category: "Literature", default: false, disciplines: ["cross"] },
   { id: "arxiv-cli-tools", name: "arxiv-cli-tools", description: "CLI tools for fetching and searching arXiv papers", category: "Literature", default: false, disciplines: ["cross"] },
   { id: "autonomous-research", name: "autonomous-research", description: "Multi-step independent research for qualitative or quantitative studies", category: "Research", default: false, disciplines: ["cross"] },
 

@@ -32,6 +32,8 @@ export const FEATURED_CATEGORIES: SkillCategory[] = [
       { name: "Deep Research Pro", slug: "parags/deep-research-pro", author: "parags", description: "Multi-source deep research: searches, synthesizes, and delivers cited reports", url: "https://clawhub.ai/parags/deep-research-pro", rank: 91 },
     ],
     curated: [
+      { name: "Literature Review", slug: "weird-aftertaste/literature-review", author: "weird-aftertaste", description: "Search Semantic Scholar, OpenAlex, Crossref, and PubMed with auto-dedup and synthesis", url: "https://clawhub.ai/weird-aftertaste/literature-review" },
+      { name: "PubMed EDirect", slug: "killgfat/pubmed-edirect", author: "killgfat", description: "Deep PubMed search via NCBI EDirect — batch abstracts, CSV export, cross-database linking", url: "https://clawhub.ai/killgfat/pubmed-edirect" },
       { name: "Academic Deep Research", slug: "kesslerio/academic-deep-research", author: "kesslerio", description: "Transparent, rigorous research across academic databases with full audit trail", url: "https://clawhub.ai/kesslerio/academic-deep-research" },
       { name: "Agentic Paper Digest", slug: "matanle51/agentic-paper-digest", author: "matanle51", description: "Fetch and summarize recent arXiv and Hugging Face papers automatically", url: "https://clawhub.ai/matanle51/agentic-paper-digest" },
       { name: "arXiv Watcher", slug: "rubenfb23/arxiv-watcher", author: "rubenfb23", description: "Search and summarize arXiv papers on any topic for continuous literature monitoring", url: "https://clawhub.ai/rubenfb23/arxiv-watcher" },

@@ -84,7 +84,8 @@ const CURATED_SKILLS: ClawHubSkill[] = [
   { name: "data-analyst", description: "Data visualisation, reports, SQL, spreadsheets", author: "clawhub", category: "Data Analysis", recommended: true },
   { name: "mermaid", description: "Generate diagrams (flowcharts, sequence, class) from text", author: "clawhub", category: "Data Analysis" },
   { name: "academic-writing", description: "Expert agent for scholarly papers, literature reviews, methodology", author: "clawhub", category: "Writing" },
-  { name: "literature-review", description: "Structured literature reviews with synthesis and gap analysis", author: "clawhub", category: "Research" },
+  { name: "literature-review", description: "Search Semantic Scholar, OpenAlex, Crossref, and PubMed with auto-dedup and synthesis", author: "weird-aftertaste", category: "Research", recommended: true },
+  { name: "pubmed-edirect", description: "Deep PubMed search via NCBI EDirect — batch abstracts, CSV export, cross-database linking", author: "killgfat", category: "Research", recommended: true },
   { name: "pandoc-convert-openclaw", description: "Convert between Word, PDF, LaTeX, and Markdown via Pandoc", author: "clawhub", category: "Documents", gatewayName: "pandoc-convert" },
   { name: "autonomous-research", description: "Multi-step independent research for qualitative or quantitative studies", author: "clawhub", category: "Research" },
 ];
