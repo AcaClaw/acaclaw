@@ -344,4 +344,481 @@ describe("ChatView DOM", () => {
 
     cleanup(el);
   });
+
+  it("renders tool calls from history as collapsible panels", async () => {
+    const el = document.createElement("acaclaw-chat") as CV;
+    localStorage.removeItem("acaclaw-staff-customizations");
+    localStorage.removeItem("acaclaw-staff-added");
+
+    mockCall.mockImplementation(async (method: string) => {
+      if (method === "chat.history") return {
+        messages: [
+          { role: "user", content: "Search for aptamers" },
+          {
+            role: "assistant",
+            content: [
+              { type: "thinking", text: "I will search for aptamer info." },
+              { type: "toolCall", id: "call_001", name: "web_search", arguments: { query: "aptamer drugs" } },
+              { type: "toolCall", id: "call_002", name: "web_fetch", arguments: { url: "https://example.com" } },
+            ],
+          },
+          {
+            role: "toolResult",
+            toolCallId: "call_001",
+            toolName: "web_search",
+            content: [{ type: "text", text: '{"results": [{"title": "Aptamer review"}]}' }],
+          },
+          {
+            role: "toolResult",
+            toolCallId: "call_002",
+            toolName: "web_fetch",
+            content: [{ type: "text", text: "Fetched page content" }],
+          },
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "Here is the aptamer report." }],
+          },
+        ],
+      };
+      if (method === "acaclaw.workspace.getWorkdir") return { workdir: "~/AcaClaw" };
+      return undefined;
+    });
+
+    document.body.appendChild(el);
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 100));
+    await el.updateComplete;
+
+    // Should have tool call panels rendered
+    const toolPanels = qa(el, ".msg-tool");
+    expect(toolPanels.length).toBe(2);
+
+    // Check tool icon (⚡) is displayed in each panel
+    const toolIcons = qa(el, ".tool-icon");
+    expect(toolIcons.length).toBe(2);
+    for (const icon of Array.from(toolIcons)) {
+      expect(icon.textContent?.trim()).toBe("\u26A1");
+    }
+
+    // Check tool names are displayed
+    const toolNames = qa(el, ".tool-name");
+    const names = Array.from(toolNames).map((n) => n.textContent?.trim());
+    expect(names).toContain("web_search");
+    expect(names).toContain("web_fetch");
+
+    // Tool results should be attached
+    const toolOutputs = qa(el, ".tool-output");
+    expect(toolOutputs.length).toBe(2);
+
+    cleanup(el);
+  });
+
+  it("renders tool calls from streaming delta events", async () => {
+    const el = document.createElement("acaclaw-chat") as CV;
+    localStorage.removeItem("acaclaw-staff-customizations");
+    localStorage.removeItem("acaclaw-staff-added");
+
+    // Capture the notification handlers
+    const handlers = new Map<string, (data: unknown) => void>();
+    mockOnNotification.mockImplementation((event: string, handler: (data: unknown) => void) => {
+      handlers.set(event, handler);
+      return () => handlers.delete(event);
+    });
+    mockCall.mockImplementation(async (method: string) => {
+      if (method === "chat.history") return { messages: [] };
+      if (method === "acaclaw.workspace.getWorkdir") return { workdir: "~/AcaClaw" };
+      if (method === "chat.send") return { runId: "run-tool-1" };
+      return undefined;
+    });
+
+    document.body.appendChild(el);
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 50));
+    await el.updateComplete;
+
+    // Send a message to create the assistant placeholder
+    const textarea = q(el, ".input-area textarea") as HTMLTextAreaElement;
+    textarea.value = "Search for papers";
+    textarea.dispatchEvent(new Event("input"));
+    await el.updateComplete;
+    (q(el, ".send-btn") as HTMLButtonElement).click();
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 50));
+    await el.updateComplete;
+
+    // Simulate a chat delta with toolCall content
+    const chatHandler = handlers.get("chat");
+    expect(chatHandler).toBeTruthy();
+    chatHandler!({
+      runId: "run-tool-1",
+      state: "delta",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "toolCall", id: "call_100", name: "web_search", arguments: { query: "test" } },
+        ],
+      },
+    });
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 50));
+    await el.updateComplete;
+
+    // Tool call panel should appear
+    const toolPanels = qa(el, ".msg-tool");
+    expect(toolPanels.length).toBe(1);
+    expect(q(el, ".tool-name")?.textContent?.trim()).toBe("web_search");
+
+    cleanup(el);
+  });
+
+  it("session.tool events update tool state", async () => {
+    const el = document.createElement("acaclaw-chat") as CV;
+    localStorage.removeItem("acaclaw-staff-customizations");
+    localStorage.removeItem("acaclaw-staff-added");
+
+    const handlers = new Map<string, (data: unknown) => void>();
+    mockOnNotification.mockImplementation((event: string, handler: (data: unknown) => void) => {
+      handlers.set(event, handler);
+      return () => handlers.delete(event);
+    });
+    mockCall.mockImplementation(async (method: string) => {
+      if (method === "chat.history") return { messages: [] };
+      if (method === "acaclaw.workspace.getWorkdir") return { workdir: "~/AcaClaw" };
+      if (method === "chat.send") return { runId: "run-tool-2" };
+      return undefined;
+    });
+
+    document.body.appendChild(el);
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 50));
+    await el.updateComplete;
+
+    // Send a message
+    const textarea = q(el, ".input-area textarea") as HTMLTextAreaElement;
+    textarea.value = "Search something";
+    textarea.dispatchEvent(new Event("input"));
+    await el.updateComplete;
+    (q(el, ".send-btn") as HTMLButtonElement).click();
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 50));
+    await el.updateComplete;
+
+    // Simulate session.tool event (tool starts running)
+    const toolHandler = handlers.get("session.tool");
+    expect(toolHandler).toBeTruthy();
+    const t0 = performance.now();
+    toolHandler!({
+      runId: "run-tool-2",
+      toolName: "bash",
+      toolCallId: "call_200",
+      input: { command: "ls -la" },
+      state: "running",
+    });
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 50));
+    await el.updateComplete;
+    const t1 = performance.now();
+
+    // Should show a running tool panel with icon
+    let toolPanels = qa(el, ".msg-tool");
+    expect(toolPanels.length).toBe(1);
+    expect(q(el, ".tool-name")?.textContent?.trim()).toBe("bash");
+    expect(q(el, ".tool-icon")?.textContent?.trim()).toBe("\u26A1");
+    expect(q(el, ".tool-state-running")).toBeTruthy();
+    const renderRunningMs = t1 - t0;
+
+    // Tool completes
+    const t2 = performance.now();
+    toolHandler!({
+      runId: "run-tool-2",
+      toolName: "bash",
+      toolCallId: "call_200",
+      output: "total 42\ndrwxr-xr-x ...",
+      state: "done",
+    });
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 50));
+    await el.updateComplete;
+    const t3 = performance.now();
+
+    // Running state should be gone, output should be present
+    expect(q(el, ".tool-state-running")).toBeFalsy();
+    const toolOutput = q(el, ".tool-output");
+    expect(toolOutput).toBeTruthy();
+    expect(toolOutput?.textContent).toContain("total 42");
+    const renderDoneMs = t3 - t2;
+
+    // Report timing
+    console.log(`[tool-display] icon rendered: YES (\u26A1)`);
+    console.log(`[tool-display] running state rendered in: ${renderRunningMs.toFixed(1)}ms`);
+    console.log(`[tool-display] done state rendered in: ${renderDoneMs.toFixed(1)}ms`);
+    console.log(`[tool-display] total tool lifecycle (running→done): ${(t3 - t0).toFixed(1)}ms`);
+
+    cleanup(el);
+  });
+
+  it("toolResult messages are not rendered as standalone messages", async () => {
+    const el = document.createElement("acaclaw-chat") as CV;
+    localStorage.removeItem("acaclaw-staff-customizations");
+    localStorage.removeItem("acaclaw-staff-added");
+
+    mockCall.mockImplementation(async (method: string) => {
+      if (method === "chat.history") return {
+        messages: [
+          { role: "user", content: "Search" },
+          {
+            role: "assistant",
+            content: [{ type: "toolCall", id: "call_300", name: "web_search", arguments: { query: "test" } }],
+          },
+          {
+            role: "toolResult",
+            toolCallId: "call_300",
+            toolName: "web_search",
+            content: [{ type: "text", text: "result data" }],
+          },
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "Done." }],
+          },
+        ],
+      };
+      if (method === "acaclaw.workspace.getWorkdir") return { workdir: "~/AcaClaw" };
+      return undefined;
+    });
+
+    document.body.appendChild(el);
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 100));
+    await el.updateComplete;
+
+    // Should have 1 user + 2 assistant messages, NOT a toolResult message
+    const userMsgs = qa(el, ".message.user");
+    const asstMsgs = qa(el, ".message.assistant");
+    expect(userMsgs.length).toBe(1);
+    expect(asstMsgs.length).toBe(2);
+    // Total messages should be 3, not 4 (toolResult is merged)
+    const allMsgs = qa(el, ".message");
+    expect(allMsgs.length).toBe(3);
+
+    cleanup(el);
+  });
+
+  it("tool icon ⚡ is displayed for every tool in every rendering path", async () => {
+    const el = document.createElement("acaclaw-chat") as CV;
+    localStorage.removeItem("acaclaw-staff-customizations");
+    localStorage.removeItem("acaclaw-staff-added");
+
+    const handlers = new Map<string, (data: unknown) => void>();
+    mockOnNotification.mockImplementation((event: string, handler: (data: unknown) => void) => {
+      handlers.set(event, handler);
+      return () => handlers.delete(event);
+    });
+    mockCall.mockImplementation(async (method: string) => {
+      if (method === "chat.history") return {
+        messages: [
+          { role: "user", content: "Run tools" },
+          {
+            role: "assistant",
+            content: [
+              { type: "toolCall", id: "hist_001", name: "web_search", arguments: { query: "from history" } },
+            ],
+          },
+          { role: "toolResult", toolCallId: "hist_001", toolName: "web_search", content: "result" },
+          { role: "assistant", content: [{ type: "text", text: "Done from history." }] },
+        ],
+      };
+      if (method === "acaclaw.workspace.getWorkdir") return { workdir: "~/AcaClaw" };
+      if (method === "chat.send") return { runId: "run-icon-test" };
+      return undefined;
+    });
+
+    document.body.appendChild(el);
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 100));
+    await el.updateComplete;
+
+    // 1) History-loaded tool should have icon
+    let icons = qa(el, ".tool-icon");
+    expect(icons.length).toBeGreaterThanOrEqual(1);
+    console.log(`[tool-icon] history-loaded tools: ${icons.length} icon(s) displayed`);
+    for (const icon of Array.from(icons)) {
+      expect(icon.textContent?.trim()).toBe("\u26A1");
+    }
+
+    // 2) Send a new message to test streaming path
+    const textarea = q(el, ".input-area textarea") as HTMLTextAreaElement;
+    textarea.value = "Run more tools";
+    textarea.dispatchEvent(new Event("input"));
+    await el.updateComplete;
+    (q(el, ".send-btn") as HTMLButtonElement).click();
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 50));
+    await el.updateComplete;
+
+    // 3) session.tool event path
+    const toolHandler = handlers.get("session.tool");
+    toolHandler!({ runId: "run-icon-test", toolName: "web_fetch", toolCallId: "live_001", state: "running", input: { url: "https://example.com" } });
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 50));
+    await el.updateComplete;
+
+    icons = qa(el, ".tool-icon");
+    expect(icons.length).toBeGreaterThanOrEqual(2);
+    console.log(`[tool-icon] after session.tool event: ${icons.length} icon(s) displayed`);
+    for (const icon of Array.from(icons)) {
+      expect(icon.textContent?.trim()).toBe("\u26A1");
+    }
+
+    // 4) chat delta path
+    const chatHandler = handlers.get("chat");
+    chatHandler!({
+      runId: "run-icon-test",
+      state: "delta",
+      message: {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "live_002", name: "bash", arguments: { command: "echo hi" } }],
+      },
+    });
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 50));
+    await el.updateComplete;
+
+    icons = qa(el, ".tool-icon");
+    console.log(`[tool-icon] after chat delta: ${icons.length} icon(s) displayed`);
+    for (const icon of Array.from(icons)) {
+      expect(icon.textContent?.trim()).toBe("\u26A1");
+    }
+    console.log("[tool-icon] PASS — all tool icons correctly render ⚡");
+
+    cleanup(el);
+  });
+
+  it("measures web_fetch tool display duration through lifecycle", async () => {
+    const el = document.createElement("acaclaw-chat") as CV;
+    localStorage.removeItem("acaclaw-staff-customizations");
+    localStorage.removeItem("acaclaw-staff-added");
+
+    const handlers = new Map<string, (data: unknown) => void>();
+    mockOnNotification.mockImplementation((event: string, handler: (data: unknown) => void) => {
+      handlers.set(event, handler);
+      return () => handlers.delete(event);
+    });
+    mockCall.mockImplementation(async (method: string) => {
+      if (method === "chat.history") return { messages: [] };
+      if (method === "acaclaw.workspace.getWorkdir") return { workdir: "~/AcaClaw" };
+      if (method === "chat.send") return { runId: "run-fetch-timing" };
+      return undefined;
+    });
+
+    document.body.appendChild(el);
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 50));
+    await el.updateComplete;
+
+    // Send a message
+    const textarea = q(el, ".input-area textarea") as HTMLTextAreaElement;
+    textarea.value = "Fetch a page";
+    textarea.dispatchEvent(new Event("input"));
+    await el.updateComplete;
+    (q(el, ".send-btn") as HTMLButtonElement).click();
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 50));
+    await el.updateComplete;
+
+    const toolHandler = handlers.get("session.tool")!;
+
+    // web_fetch starts
+    const fetchStart = performance.now();
+    toolHandler({
+      runId: "run-fetch-timing",
+      toolName: "web_fetch",
+      toolCallId: "fetch_001",
+      input: { url: "https://example.com/paper.html" },
+      state: "running",
+    });
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 50));
+    await el.updateComplete;
+    const fetchDisplayed = performance.now();
+
+    // Verify running state
+    expect(q(el, ".tool-name")?.textContent?.trim()).toBe("web_fetch");
+    expect(q(el, ".tool-state-running")).toBeTruthy();
+    expect(q(el, ".tool-icon")?.textContent?.trim()).toBe("\u26A1");
+    const inputPre = q(el, ".tool-input pre");
+    expect(inputPre?.textContent).toContain("example.com");
+    console.log(`[web_fetch] running state rendered in: ${(fetchDisplayed - fetchStart).toFixed(1)}ms`);
+
+    // Simulate a realistic delay (the test just measures rendering, not actual fetch)
+    // web_fetch completes
+    const fetchDoneStart = performance.now();
+    toolHandler({
+      runId: "run-fetch-timing",
+      toolName: "web_fetch",
+      toolCallId: "fetch_001",
+      output: "<!DOCTYPE html><html><body>Research paper content about aptamers...</body></html>",
+      state: "done",
+    });
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 50));
+    await el.updateComplete;
+    const fetchDoneRendered = performance.now();
+
+    // Verify done state
+    expect(q(el, ".tool-state-running")).toBeFalsy();
+    const toolOutput = q(el, ".tool-output");
+    expect(toolOutput).toBeTruthy();
+    expect(toolOutput?.textContent).toContain("aptamers");
+    console.log(`[web_fetch] done state rendered in: ${(fetchDoneRendered - fetchDoneStart).toFixed(1)}ms`);
+    console.log(`[web_fetch] total display lifecycle: ${(fetchDoneRendered - fetchStart).toFixed(1)}ms`);
+    console.log(`[web_fetch] icon displayed: ${q(el, ".tool-icon")?.textContent?.trim() === "\u26A1" ? "YES ⚡" : "NO ❌"}`);
+
+    cleanup(el);
+  });
+
+  it("renders thinking content from session format (thinking field, not text)", async () => {
+    const el = document.createElement("acaclaw-chat") as CV;
+    localStorage.removeItem("acaclaw-staff-customizations");
+    localStorage.removeItem("acaclaw-staff-added");
+
+    // Session format: thinking blocks have {type:"thinking", thinking:"...", thinkingSignature:"..."}
+    // NOT {type:"thinking", text:"..."} — this is the actual format from OpenClaw sessions
+    mockCall.mockImplementation(async (method: string) => {
+      if (method === "chat.history") return {
+        messages: [
+          { role: "user", content: "25+36=? just answer" },
+          {
+            role: "assistant",
+            content: [
+              { type: "thinking", thinking: "This is a simple arithmetic problem. 25 + 36 = 61." },
+              { type: "text", text: "61" },
+            ],
+          },
+        ],
+      };
+      if (method === "acaclaw.workspace.getWorkdir") return { workdir: "~/AcaClaw" };
+      return undefined;
+    });
+
+    document.body.appendChild(el);
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 100));
+    await el.updateComplete;
+
+    // Thinking block should render with content from the `thinking` field
+    const thinkingBlock = q(el, ".msg-thinking");
+    expect(thinkingBlock).toBeTruthy();
+    const thinkingBody = q(el, ".msg-thinking-body");
+    expect(thinkingBody?.textContent).toContain("simple arithmetic");
+
+    // Text content should also render
+    const msgBodies = qa(el, ".msg-body");
+    const assistantText = Array.from(msgBodies).map((b) => b.textContent?.trim()).find((t) => t?.includes("61"));
+    expect(assistantText).toBeTruthy();
+
+    console.log(`[thinking-field] thinking block rendered: ${thinkingBlock ? "YES" : "NO"}`);
+    console.log(`[thinking-field] thinking content: "${thinkingBody?.textContent?.trim().slice(0, 60)}"`);
+
+    cleanup(el);
+  });
 });

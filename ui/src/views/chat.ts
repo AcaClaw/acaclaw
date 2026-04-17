@@ -52,12 +52,21 @@ interface ChatAttachment {
   mimeType: string;
 }
 
+interface ToolCall {
+  id: string;
+  name: string;
+  arguments?: Record<string, unknown>;
+  state: "running" | "done" | "error";
+  output?: string;
+}
+
 interface Message {
   role: "user" | "assistant";
   content: string;
   thinking: string;
   timestamp: string;
   attachments?: ChatAttachment[];
+  toolCalls?: ToolCall[];
 }
 
 interface AgentTab {
@@ -127,6 +136,7 @@ export class ChatView extends LitElement {
   @state() private _newProjectName = "";
   @state() private _newProjectCreating = false;
   private _cleanupChat: (() => void) | null = null;
+  private _cleanupTool: (() => void) | null = null;
   private _handleGatewayState: ((e: Event) => void) | null = null;
   private _handleDefaultModelChanged: EventListener | null = null;
   /** Maps title-gen runId → original session UUID for pending LLM title requests. */
@@ -883,6 +893,87 @@ export class ChatView extends LitElement {
       overflow-y: auto;
     }
 
+    /* ── Tool call collapsible panels ── */
+    .msg-tools {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+    .msg-tool {
+      border-radius: 10px;
+      background: rgba(168, 85, 247, 0.04);
+      border: 1px solid rgba(168, 85, 247, 0.12);
+      overflow: hidden;
+    }
+    .msg-tool summary {
+      cursor: pointer;
+      padding: 6px 12px;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--ac-text-muted, #94a3b8);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      user-select: none;
+      list-style: none;
+    }
+    .msg-tool summary::-webkit-details-marker { display: none; }
+    .msg-tool summary:hover {
+      color: var(--ac-text-secondary, #64748b);
+    }
+    .tool-chevron {
+      display: inline-flex;
+      transition: transform 0.15s ease;
+      flex-shrink: 0;
+    }
+    .msg-tool[open] .tool-chevron {
+      transform: rotate(90deg);
+    }
+    .tool-icon { font-size: 13px; }
+    .tool-name {
+      font-family: var(--ac-font-mono, ui-monospace, monospace);
+      font-size: 12px;
+    }
+    .tool-state {
+      font-size: 11px;
+      padding: 1px 6px;
+      border-radius: 8px;
+      margin-left: auto;
+    }
+    .tool-state-running {
+      background: rgba(251, 191, 36, 0.12);
+      color: #f59e0b;
+    }
+    .tool-state-error {
+      background: rgba(239, 68, 68, 0.12);
+      color: #ef4444;
+    }
+    .tool-running {
+      border-color: rgba(251, 191, 36, 0.25);
+    }
+    .msg-tool-body {
+      border-top: 1px solid rgba(168, 85, 247, 0.08);
+      padding: 6px 12px 10px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .msg-tool-body pre {
+      margin: 0;
+      font-size: 12px;
+      font-family: var(--ac-font-mono, ui-monospace, monospace);
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--ac-text-secondary, #64748b);
+      line-height: 1.5;
+    }
+    .tool-input {
+      margin-bottom: 6px;
+    }
+    .tool-output pre {
+      color: var(--ac-text-primary, #e2e8f0);
+    }
+
     /* ── Message avatar (assistant only) ── */
     .msg-row {
       display: flex;
@@ -1154,6 +1245,11 @@ export class ChatView extends LitElement {
       this._handleChatEvent(data);
     });
 
+    // Listen for real-time tool execution events from the gateway
+    this._cleanupTool = gateway.onNotification("session.tool", (data: unknown) => {
+      this._handleToolEvent(data);
+    });
+
     // Load history for the active tab
     this._loadHistory(this._activeTabId);
 
@@ -1195,6 +1291,8 @@ export class ChatView extends LitElement {
     }
     this._cleanupChat?.();
     this._cleanupChat = null;
+    this._cleanupTool?.();
+    this._cleanupTool = null;
   }
 
   
@@ -1566,7 +1664,7 @@ export class ChatView extends LitElement {
       runId?: string;
       sessionKey?: string;
       state?: string;
-      message?: { role?: string; content?: Array<{ type?: string; text?: string }> };
+      message?: { role?: string; content?: Array<{ type?: string; text?: string; id?: string; name?: string; arguments?: Record<string, unknown> }> };
       errorMessage?: string;
     };
 
@@ -1602,13 +1700,15 @@ export class ChatView extends LitElement {
         .join("") ?? "";
       const thinking = d.message.content
         ?.filter((c) => c.type === "thinking")
-        .map((c) => c.text ?? "")
+        .map((c) => (c as Record<string, string>).thinking ?? c.text ?? "")
         .join("") ?? "";
-      if ((text || thinking) && tab.messages.length > 0) {
+      const toolCalls = this._extractToolCalls(d.message.content);
+      if ((text || thinking || toolCalls.length) && tab.messages.length > 0) {
         const last = tab.messages[tab.messages.length - 1];
         if (last.role === "assistant") {
           if (text) last.content = text;
           if (thinking) last.thinking = thinking;
+          if (toolCalls.length) last.toolCalls = this._mergeToolCalls(last.toolCalls, toolCalls);
           last.timestamp = new Date().toLocaleTimeString();
         }
       }
@@ -1619,18 +1719,26 @@ export class ChatView extends LitElement {
         .join("") ?? "";
       const thinking = d.message.content
         ?.filter((c) => c.type === "thinking")
-        .map((c) => c.text ?? "")
+        .map((c) => (c as Record<string, string>).thinking ?? c.text ?? "")
         .join("") ?? "";
+      const toolCalls = this._extractToolCalls(d.message.content);
       if (tab.messages.length > 0) {
         const last = tab.messages[tab.messages.length - 1];
         if (last.role === "assistant") {
           if (text) last.content = text;
           if (thinking) last.thinking = thinking;
+          if (toolCalls.length) last.toolCalls = this._mergeToolCalls(last.toolCalls, toolCalls);
           last.timestamp = new Date().toLocaleTimeString();
         }
       }
       tab.sending = false;
       tab.activeRunId = "";
+
+      // Backfill thinking from session only if nothing arrived via streaming deltas
+      const lastAssistant = tab.messages.length > 0 ? tab.messages[tab.messages.length - 1] : undefined;
+      if (!thinking && !(lastAssistant?.role === "assistant" && lastAssistant.thinking)) {
+        this._backfillThinking(tab);
+      }
 
       // Generate LLM title after first exchange (1 user + 1 assistant = 2 messages)
       const userMsgs = tab.messages.filter((m) => m.role === "user");
@@ -1655,6 +1763,117 @@ export class ChatView extends LitElement {
     this._tabs = [...this._tabs];
   }
 
+  /** Extract toolCall content entries from a message content array. */
+  private _extractToolCalls(content?: Array<{ type?: string; id?: string; name?: string; arguments?: Record<string, unknown> }>): ToolCall[] {
+    if (!content) return [];
+    return content
+      .filter((c) => c.type === "toolCall")
+      .map((c) => ({
+        id: c.id ?? "",
+        name: c.name ?? "unknown",
+        arguments: c.arguments,
+        state: "running" as const,
+      }));
+  }
+
+  /** Merge incoming tool calls with existing ones (update by id, append new). */
+  private _mergeToolCalls(existing: ToolCall[] | undefined, incoming: ToolCall[]): ToolCall[] {
+    const merged = [...(existing ?? [])];
+    for (const tc of incoming) {
+      const idx = merged.findIndex((m) => m.id === tc.id);
+      if (idx >= 0) {
+        merged[idx] = { ...merged[idx], ...tc };
+      } else {
+        merged.push(tc);
+      }
+    }
+    return merged;
+  }
+
+  /** Handle real-time session.tool events — updates tool state (running→done). */
+  private _handleToolEvent(data: unknown) {
+    const d = data as {
+      runId?: string;
+      toolName?: string;
+      toolCallId?: string;
+      input?: Record<string, unknown>;
+      output?: string;
+      state?: "running" | "done" | "error";
+    };
+    if (!d.runId || !d.toolCallId) return;
+
+    const tab = this._tabs.find((t) => t.activeRunId === d.runId);
+    if (!tab) return;
+
+    // Find the last assistant message that has this tool call
+    for (let i = tab.messages.length - 1; i >= 0; i--) {
+      const msg = tab.messages[i];
+      if (msg.role !== "assistant" || !msg.toolCalls) continue;
+      const tc = msg.toolCalls.find((t) => t.id === d.toolCallId);
+      if (tc) {
+        if (d.state) tc.state = d.state;
+        if (d.output != null) tc.output = d.output;
+        if (d.input && !tc.arguments) tc.arguments = d.input;
+        this._tabs = [...this._tabs];
+        return;
+      }
+    }
+
+    // Tool event arrived before the chat delta — create a placeholder entry
+    const last = tab.messages[tab.messages.length - 1];
+    if (last?.role === "assistant") {
+      if (!last.toolCalls) last.toolCalls = [];
+      last.toolCalls.push({
+        id: d.toolCallId,
+        name: d.toolName ?? "unknown",
+        arguments: d.input,
+        state: d.state ?? "running",
+        output: d.output,
+      });
+      this._tabs = [...this._tabs];
+    }
+  }
+
+  /**
+   * After a response completes, fetch the last assistant message from history
+   * to backfill thinking content (which the gateway doesn't stream via WebSocket).
+   * Only updates the thinking field of the last assistant message — avoids
+   * rebuilding the entire message list which would cause a visual jump.
+   */
+  private async _backfillThinking(tab: AgentTab) {
+    const sessionKey = this._getSessionKey(tab.agentId);
+    try {
+      const res = await gateway.call<{
+        messages?: Array<{
+          role?: string;
+          content?: string | Array<{ type?: string; text?: string; thinking?: string }>;
+        }>;
+      }>("chat.history", { sessionKey, limit: 100 });
+      if (!res?.messages) return;
+
+      // Find the last assistant message with thinking content
+      for (let i = res.messages.length - 1; i >= 0; i--) {
+        const m = res.messages[i];
+        if (m.role !== "assistant" || !Array.isArray(m.content)) continue;
+        const thinking = m.content
+          .filter((c) => c.type === "thinking")
+          .map((c) => (c as Record<string, string>).thinking ?? c.text ?? "")
+          .join("");
+        if (!thinking) continue;
+
+        // Update the last assistant message in the tab
+        for (let j = tab.messages.length - 1; j >= 0; j--) {
+          if (tab.messages[j].role === "assistant") {
+            tab.messages[j].thinking = thinking;
+            this._tabs = [...this._tabs];
+            return;
+          }
+        }
+        return;
+      }
+    } catch { /* gateway unavailable */ }
+  }
+
   private async _loadHistory(agentId: string, overrideKey?: string) {
     const tab = this._tabs.find((t) => t.agentId === agentId);
     const snapshotSessionId = tab?.sessionId;
@@ -1663,7 +1882,9 @@ export class ChatView extends LitElement {
       const res = await gateway.call<{
         messages?: Array<{
           role?: string;
-          content?: string | Array<{ type?: string; text?: string }>;
+          content?: string | Array<{ type?: string; text?: string; id?: string; name?: string; arguments?: Record<string, unknown> }>;
+          toolCallId?: string;
+          toolName?: string;
         }>;
       }>("chat.history", { sessionKey, limit: 100 });
       if (res?.messages) {
@@ -1671,27 +1892,55 @@ export class ChatView extends LitElement {
         const current = this._tabs.find((t) => t.agentId === agentId);
         if (!current || current.sessionId !== snapshotSessionId) return;
         if (current) {
-          current.messages = res.messages
-            .filter((m) => m.role === "user" || m.role === "assistant")
-            .map((m) => {
+          const parsed: Message[] = [];
+          for (const m of res.messages) {
+            if (m.role === "user") {
               let text = "";
               if (typeof m.content === "string") {
                 text = m.content;
               } else if (Array.isArray(m.content)) {
-                text = m.content
-                  .filter((c) => c.type === "text")
-                  .map((c) => c.text ?? "")
-                  .join("");
+                text = m.content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("");
               }
+              parsed.push({ role: "user", content: text, thinking: "", timestamp: "" });
+            } else if (m.role === "assistant") {
+              let text = "";
               let thinking = "";
-              if (Array.isArray(m.content)) {
-                thinking = m.content
-                  .filter((c) => c.type === "thinking")
-                  .map((c) => c.text ?? "")
-                  .join("");
+              let toolCalls: ToolCall[] | undefined;
+              if (typeof m.content === "string") {
+                text = m.content;
+              } else if (Array.isArray(m.content)) {
+                text = m.content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("");
+                thinking = m.content.filter((c) => c.type === "thinking").map((c) => (c as Record<string, string>).thinking ?? c.text ?? "").join("");
+                const tcs = m.content.filter((c) => c.type === "toolCall");
+                if (tcs.length) {
+                  toolCalls = tcs.map((c) => ({
+                    id: c.id ?? "",
+                    name: c.name ?? "unknown",
+                    arguments: c.arguments,
+                    state: "done" as const,
+                  }));
+                }
               }
-              return { role: m.role as "user" | "assistant", content: text, thinking, timestamp: "" };
-            });
+              parsed.push({ role: "assistant", content: text, thinking, timestamp: "", toolCalls });
+            } else if (m.role === "toolResult" && m.toolCallId) {
+              // Attach tool result to the most recent assistant message's matching tool call
+              for (let i = parsed.length - 1; i >= 0; i--) {
+                const prev = parsed[i];
+                if (prev.role !== "assistant" || !prev.toolCalls) continue;
+                const tc = prev.toolCalls.find((t) => t.id === m.toolCallId);
+                if (tc) {
+                  tc.state = "done";
+                  if (Array.isArray(m.content)) {
+                    tc.output = m.content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("");
+                  } else if (typeof m.content === "string") {
+                    tc.output = m.content;
+                  }
+                  break;
+                }
+              }
+            }
+          }
+          current.messages = parsed;
           this._tabs = [...this._tabs];
         }
       }
@@ -2072,7 +2321,7 @@ export class ChatView extends LitElement {
                                   ${m.timestamp ? ` \u00B7 ${m.timestamp}` : ""}
                                 </div>
                                 ${m.thinking
-                                  ? html`<details class="msg-thinking" open>
+                                  ? html`<details class="msg-thinking" ?open=${isLastAssistant}>
                                       <summary>
                                         <span class="thinking-chevron">
                                           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
@@ -2081,6 +2330,30 @@ export class ChatView extends LitElement {
                                       </summary>
                                       <div class="msg-thinking-body">${m.thinking}</div>
                                     </details>`
+                                  : ""}
+                                ${m.toolCalls?.length
+                                  ? html`<div class="msg-tools">
+                                      ${m.toolCalls.map((tc) => html`
+                                        <details class="msg-tool${tc.state === "running" ? " tool-running" : ""}">
+                                          <summary>
+                                            <span class="tool-chevron">
+                                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                                            </span>
+                                            <span class="tool-icon">\u26A1</span>
+                                            <span class="tool-name">${tc.name}</span>
+                                            ${tc.state === "running"
+                                              ? html`<span class="tool-state tool-state-running">${t("chat.tool.running")}</span>`
+                                              : tc.state === "error"
+                                                ? html`<span class="tool-state tool-state-error">${t("chat.tool.error")}</span>`
+                                                : ""}
+                                          </summary>
+                                          <div class="msg-tool-body">
+                                            ${tc.arguments ? html`<div class="tool-input"><pre>${JSON.stringify(tc.arguments, null, 2)}</pre></div>` : ""}
+                                            ${tc.output ? html`<div class="tool-output"><pre>${tc.output.length > 2000 ? tc.output.slice(0, 2000) + "\u2026" : tc.output}</pre></div>` : ""}
+                                          </div>
+                                        </details>
+                                      `)}
+                                    </div>`
                                   : ""}
                                 <div class="msg-content" @click=${this._handleContentClick}>
                                   ${m.content
