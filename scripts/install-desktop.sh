@@ -334,33 +334,50 @@ install_wsl2() {
 
     # Convert WSL path to Windows path for the script
     local wsl_script="${ACACLAW_DATA_DIR}/start.sh"
-    local win_script
-    if command -v wslpath &>/dev/null; then
-        win_script="$(wslpath -w "$wsl_script")"
-    else
-        # Fallback: manual conversion
-        win_script="\\\\wsl\$\\${_distro}${wsl_script}"
-    fi
 
     # --- App shortcut: launches gateway + opens browser ---
-    powershell.exe -NoProfile -Command "
-        \$desktop = [Environment]::GetFolderPath('Desktop')
-        \$shortcut_path = Join-Path \$desktop 'AcaClaw.lnk'
-        \$shell = New-Object -ComObject WScript.Shell
-        \$shortcut = \$shell.CreateShortcut(\$shortcut_path)
-        \$shortcut.TargetPath = 'wsl.exe'
-        \$shortcut.Arguments = '-d ${_distro} -- bash ${wsl_script}'
-        \$shortcut.Description = 'AcaClaw - AI Academic Research Assistant'
-        \$shortcut.WorkingDirectory = '%USERPROFILE%'
-        \$shortcut.WindowStyle = 7
-        \$shortcut.Save()
-    " 2>/dev/null
+    # Use a .bat fallback if PowerShell COM shortcut creation fails
+    local _ps_ok=false
+    local _ps_err
+    _ps_err="$(powershell.exe -NoProfile -Command "
+        try {
+            \$desktop = [Environment]::GetFolderPath('Desktop')
+            \$shortcut_path = Join-Path \$desktop 'AcaClaw.lnk'
+            \$shell = New-Object -ComObject WScript.Shell
+            \$shortcut = \$shell.CreateShortcut(\$shortcut_path)
+            \$shortcut.TargetPath = 'wsl.exe'
+            \$shortcut.Arguments = '-d ${_distro} -- bash ${wsl_script}'
+            \$shortcut.Description = 'AcaClaw - AI Academic Research Assistant'
+            \$shortcut.WorkingDirectory = \$env:USERPROFILE
+            \$shortcut.WindowStyle = 7
+            \$shortcut.Save()
+            Write-Output 'OK'
+        } catch {
+            Write-Error \$_.Exception.Message
+            exit 1
+        }
+    " 2>&1)"
 
-    if [[ $? -eq 0 ]]; then
+    if [[ "$_ps_err" == *"OK"* ]]; then
+        _ps_ok=true
         log "Windows Desktop: app shortcut created ✓"
     else
-        error "Failed to create app shortcut"
-        warn "Start manually: bash ${ACACLAW_DATA_DIR}/start.sh"
+        warn "PowerShell shortcut failed: ${_ps_err}"
+        # Fallback: create a .bat file on the Desktop instead
+        local _bat_err
+        _bat_err="$(powershell.exe -NoProfile -Command "
+            \$desktop = [Environment]::GetFolderPath('Desktop')
+            \$bat = Join-Path \$desktop 'AcaClaw.bat'
+            Set-Content -Path \$bat -Value '@echo off'
+            Add-Content -Path \$bat -Value 'wsl.exe -d ${_distro} -- bash ${wsl_script}'
+            Write-Output 'OK'
+        " 2>&1)"
+        if [[ "$_bat_err" == *"OK"* ]]; then
+            log "Windows Desktop: app shortcut created (.bat fallback) ✓"
+        else
+            error "Failed to create app shortcut"
+            warn "Start manually: bash ${ACACLAW_DATA_DIR}/start.sh"
+        fi
     fi
 
     # --- Workspace shortcut: opens ~/AcaClaw in Windows Explorer ---
@@ -372,20 +389,27 @@ install_wsl2() {
         _win_workspace="\\\\wsl\$\\${_distro}\\home\\${_wsl_user}\\AcaClaw"
     fi
 
-    powershell.exe -NoProfile -Command "
-        \$desktop = [Environment]::GetFolderPath('Desktop')
-        \$shortcut_path = Join-Path \$desktop 'AcaClaw Workspace.lnk'
-        \$shell = New-Object -ComObject WScript.Shell
-        \$shortcut = \$shell.CreateShortcut(\$shortcut_path)
-        \$shortcut.TargetPath = '${_win_workspace}'
-        \$shortcut.Description = 'AcaClaw Research Workspace (WSL2)'
-        \$shortcut.Save()
-    " 2>/dev/null
+    local _ws_err
+    _ws_err="$(powershell.exe -NoProfile -Command "
+        try {
+            \$desktop = [Environment]::GetFolderPath('Desktop')
+            \$shortcut_path = Join-Path \$desktop 'AcaClaw Workspace.lnk'
+            \$shell = New-Object -ComObject WScript.Shell
+            \$shortcut = \$shell.CreateShortcut(\$shortcut_path)
+            \$shortcut.TargetPath = '${_win_workspace}'
+            \$shortcut.Description = 'AcaClaw Research Workspace (WSL2)'
+            \$shortcut.Save()
+            Write-Output 'OK'
+        } catch {
+            Write-Error \$_.Exception.Message
+            exit 1
+        }
+    " 2>&1)"
 
-    if [[ $? -eq 0 ]]; then
+    if [[ "$_ws_err" == *"OK"* ]]; then
         log "Windows Desktop: workspace shortcut created ✓"
     else
-        warn "Workspace shortcut skipped (non-fatal)"
+        warn "Workspace shortcut skipped: ${_ws_err}"
     fi
 
     log "Double-click 'AcaClaw' on your Windows Desktop to launch"

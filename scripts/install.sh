@@ -1971,15 +1971,50 @@ SETUPJSON
 			wsl2)
 				# WSL2: open Windows-side browser for the app window experience
 				# Edge is pre-installed on Windows 10/11
-				local _edge_win="/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"
-				local _chrome_win="/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"
-				if [[ -x "$_edge_win" ]]; then
-					"$_edge_win" "${_app_flags[@]}" &>/dev/null &
-					return 0
-				elif [[ -x "$_chrome_win" ]]; then
-					"$_chrome_win" "${_app_flags[@]}" &>/dev/null &
-					return 0
+				# NOTE: Use -f not -x — WSL2 may not set execute bits on /mnt/c/ files
+				local _edge_paths=(
+					"/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"
+					"/mnt/c/Program Files/Microsoft/Edge/Application/msedge.exe"
+				)
+				local _chrome_paths=(
+					"/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"
+					"/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe"
+				)
+
+				# Convert user-data-dir to Windows UNC path for the Windows browser
+				local _win_profile
+				if command -v wslpath &>/dev/null; then
+					_win_profile="$(wslpath -w "$_app_profile")"
+				else
+					_win_profile="\\\\wsl\$\\${WSL_DISTRO_NAME:-Ubuntu}${_app_profile}"
 				fi
+				local -a _win_flags=()
+				for _flag in "${_app_flags[@]}"; do
+					if [[ "$_flag" == --user-data-dir=* ]]; then
+						_win_flags+=("--user-data-dir=${_win_profile}")
+					else
+						_win_flags+=("$_flag")
+					fi
+				done
+
+				local _found_browser=""
+				for _edge in "${_edge_paths[@]}"; do
+					if [[ -f "$_edge" ]]; then
+						"$_edge" "${_win_flags[@]}" &>/dev/null &
+						_found_browser="edge"
+						break
+					fi
+				done
+				if [[ -z "$_found_browser" ]]; then
+					for _chrome in "${_chrome_paths[@]}"; do
+						if [[ -f "$_chrome" ]]; then
+							"$_chrome" "${_win_flags[@]}" &>/dev/null &
+							_found_browser="chrome"
+							break
+						fi
+					done
+				fi
+				[[ -n "$_found_browser" ]] && return 0
 				;;
 			linux)
 				if [[ -z "${DISPLAY:-}" ]] && [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
