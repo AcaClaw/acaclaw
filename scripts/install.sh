@@ -1208,6 +1208,7 @@ log "${_plugin_done} plugins installed"
 		local patches_dir="${SCRIPT_DIR}/../patches/openclaw-weixin"
 
 		log "Installing WeChat channel plugin (openclaw-weixin)..."
+		dimlog "patches dir: $patches_dir (exists: $(test -d "$patches_dir" && echo yes || echo no))"
 
 		# Download latest via npm pack (non-interactive, no QR prompt)
 		# Use the cached registry mirror if available (critical for CN users)
@@ -1217,16 +1218,19 @@ log "${_plugin_done} plugins installed"
 		fi
 		local tgz
 		tgz=$(cd /tmp && npm pack @tencent-weixin/openclaw-weixin@latest "${_reg_args[@]}" 2>/dev/null) || {
-			warn "WeChat plugin download failed (npm pack)"
+			warn "WeChat plugin download failed (npm pack — check network)"
 			return 1
 		}
 		mkdir -p "$ext_dir"
-		tar xzf "/tmp/$tgz" -C "$ext_dir" --strip-components=1 || return 1
+		tar xzf "/tmp/$tgz" -C "$ext_dir" --strip-components=1 || {
+			warn "WeChat plugin extract failed"
+			return 1
+		}
 		rm -f "/tmp/$tgz"
 
 		# Runtime dependencies
-		(cd "$ext_dir" && npm install --omit=dev --ignore-scripts >> "$INSTALL_LOG" 2>&1) || true
-		(cd "$ext_dir" && npm install --save qrcode >> "$INSTALL_LOG" 2>&1) || true
+		(cd "$ext_dir" && npm install --omit=dev --ignore-scripts "${_reg_args[@]}" >> "$INSTALL_LOG" 2>&1) || true
+		(cd "$ext_dir" && npm install --save qrcode "${_reg_args[@]}" >> "$INSTALL_LOG" 2>&1) || true
 
 		# Apply AcaClaw patches (gatewayMethods, accountToSession, QR data URI)
 		if [[ -d "$patches_dir" ]]; then
@@ -1234,8 +1238,10 @@ log "${_plugin_done} plugins installed"
 				command cp -f "$patches_dir/channel.ts" "$ext_dir/src/channel.ts"
 			[[ -f "$patches_dir/login-qr.ts" ]] && \
 				command cp -f "$patches_dir/login-qr.ts" "$ext_dir/src/auth/login-qr.ts"
+			log "WeChat patches applied"
 		else
-			warn "patches/openclaw-weixin not found — WeChat web QR login will not work"
+			warn "patches/openclaw-weixin not found at $patches_dir"
+			warn "WeChat web QR login will not work"
 		fi
 
 		log "WeChat plugin installed"
