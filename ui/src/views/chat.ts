@@ -153,15 +153,12 @@ export class ChatView extends LitElement {
     .header {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      margin-bottom: 16px;
-      gap: 12px;
+      justify-content: flex-end;
+      margin-bottom: 4px;
+      gap: 8px;
     }
     h1 {
-      font-size: 32px;
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      color: var(--ac-text);
+      display: none;
     }
     .header-right {
       display: flex;
@@ -697,11 +694,11 @@ export class ChatView extends LitElement {
     /* ── Agent Tabs ── */
     .tabs-bar {
       display: flex;
-      gap: 8px;
-      padding: 6px;
+      gap: 4px;
+      padding: 3px;
       background: var(--ac-bg-hover, #f1f5f9);
-      border-radius: 16px;
-      margin-bottom: 24px;
+      border-radius: 10px;
+      margin-bottom: 8px;
       overflow-x: auto;
       flex-shrink: 0;
     }
@@ -709,11 +706,11 @@ export class ChatView extends LitElement {
     .tab {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      padding: 10px 20px;
-      border-radius: 12px;
+      gap: 5px;
+      padding: 5px 12px;
+      border-radius: 8px;
       cursor: pointer;
-      font-size: 14.5px;
+      font-size: 13px;
       font-weight: 500;
       color: var(--ac-text-secondary);
       background: transparent;
@@ -1012,32 +1009,32 @@ export class ChatView extends LitElement {
       justify-content: center;
       height: 100%;
       color: var(--ac-text-muted);
-      gap: 12px;
+      gap: 8px;
     }
     .empty-icon {
-      font-size: 48px;
+      font-size: 40px;
       opacity: 0.5;
     }
     .empty-text {
-      font-size: 20px;
+      font-size: 18px;
       font-weight: 600;
       color: var(--ac-text-secondary);
     }
     .empty-sub {
-      font-size: 15px;
+      font-size: 14px;
       color: var(--ac-text-muted);
     }
     .suggestions {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 16px;
+      gap: 6px;
+      margin-top: 10px;
     }
     .suggestion {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 12px 20px;
+      padding: 9px 16px;
       background: var(--ac-bg-surface);
       border: 1px solid var(--ac-border);
       border-radius: var(--ac-radius-full, 9999px);
@@ -1061,11 +1058,11 @@ export class ChatView extends LitElement {
     .input-area {
       display: flex;
       flex-direction: column;
-      padding: 16px 24px 12px;
+      padding: 8px 14px 6px;
       background: var(--ac-bg-surface);
       border: 1px solid var(--ac-border);
-      border-radius: 24px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+      border-radius: 16px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.03);
     }
     .input-top-row {
       display: flex;
@@ -1077,10 +1074,10 @@ export class ChatView extends LitElement {
       display: flex;
       align-items: center;
       gap: 6px;
-      padding: 10px 16px;
+      padding: 7px 12px;
       background: var(--ac-bg-hover);
-      border-radius: 14px;
-      font-size: 14px;
+      border-radius: 10px;
+      font-size: 13px;
       font-weight: 600;
       color: var(--ac-text-secondary);
       flex-shrink: 0;
@@ -1091,11 +1088,11 @@ export class ChatView extends LitElement {
       flex: 1;
       resize: none;
       border: none;
-      padding: 10px 0;
-      font-size: 16px;
+      padding: 6px 0;
+      font-size: 15px;
       line-height: 1.5;
       background: transparent;
-      min-height: 44px;
+      min-height: 36px;
       max-height: 200px;
       transition: all 0.2s ease;
       color: var(--ac-text);
@@ -1106,25 +1103,25 @@ export class ChatView extends LitElement {
     }
     .input-area textarea::placeholder {
       color: var(--ac-text-tertiary, #94a3b8);
-      font-size: 16px;
+      font-size: 15px;
     }
 
     .input-bottom-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding-top: 8px;
+      padding-top: 4px;
       border-top: 1px solid var(--ac-border-subtle);
-      margin-top: 8px;
+      margin-top: 4px;
     }
 
     .send-btn {
-      padding: 10px 24px;
+      padding: 8px 18px;
       background: var(--ac-primary, #0ea5e9);
       color: #fff;
-      border-radius: 14px;
+      border-radius: 12px;
       font-weight: 600;
-      font-size: 15px;
+      font-size: 14px;
       transition: all 0.2s ease;
       box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
       border: none;

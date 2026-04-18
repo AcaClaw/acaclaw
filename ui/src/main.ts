@@ -132,8 +132,8 @@ export class AcaClawApp extends LitElement {
       display: flex;
       flex: 1;
       overflow: hidden;
-      padding: 16px 16px 16px 0;
-      gap: 12px;
+      padding: 10px 10px 10px 0;
+      gap: 8px;
     }
 
     /* ── Sidebar ── */
@@ -153,8 +153,8 @@ export class AcaClawApp extends LitElement {
     .sidebar-header {
       display: flex;
       align-items: center;
-      gap: 14px;
-      padding: 16px 24px 24px;
+      gap: 12px;
+      padding: 12px 20px 14px;
     }
     .sidebar-toggle {
       margin-left: auto;
@@ -236,12 +236,7 @@ export class AcaClawApp extends LitElement {
 
     
     .nav-group-title {
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--ac-text-muted);
-      margin: 16px 0 8px 12px;
+      display: none;
     }
     .sidebar.collapsed .nav-group-title {
       display: none;
@@ -251,14 +246,14 @@ export class AcaClawApp extends LitElement {
     .nav-item {
       display: flex;
       align-items: center;
-      gap: 12px;
-      padding: 10px 12px;
-      border-radius: 12px;
+      gap: 10px;
+      padding: 7px 10px;
+      border-radius: 10px;
       cursor: pointer;
       color: var(--ac-text-secondary);
       transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
       border: 1px solid transparent;
-      margin-bottom: 2px;
+      margin-bottom: 1px;
       background: transparent;
     }
 
@@ -325,7 +320,7 @@ export class AcaClawApp extends LitElement {
       overflow: hidden;
     }
     .nav-item .label {
-      font-size: 14.5px;
+      font-size: 13.5px;
       font-weight: 500;
       color: var(--ac-text-secondary);
       transition: color var(--ac-transition-fast);
@@ -335,9 +330,9 @@ export class AcaClawApp extends LitElement {
       font-weight: 600;
     }
     .nav-item .desc {
-      font-size: 12px;
+      font-size: 11px;
       color: var(--ac-text-muted);
-      margin-top: 1px;
+      margin-top: 0px;
     }
     .sidebar.collapsed .label-group {
       display: none;
@@ -362,7 +357,7 @@ export class AcaClawApp extends LitElement {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 10px 24px;
+      padding: 6px 24px;
       flex-shrink: 0;
     }
     .breadcrumb {
@@ -392,7 +387,7 @@ export class AcaClawApp extends LitElement {
       border-radius: var(--ac-radius-xl);
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 10px 24px rgba(0, 0, 0, 0.04);
       margin-bottom: 0px;
-      padding: 40px 48px;
+      padding: 20px 28px;
     }
 
     /* ── Sidebar Footer & Status ── */
@@ -717,7 +712,6 @@ export class AcaClawApp extends LitElement {
           <div class="nav-list">
             ${NAV_GROUPS.map(
               (group) => html`
-                <div class="nav-group-title">${group.title}</div>
                 ${group.items.map(
                   (item) => {
                     const locked = !this._keysConfigured && item.id !== "api-keys";
