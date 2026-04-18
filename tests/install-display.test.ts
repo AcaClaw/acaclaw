@@ -42,7 +42,7 @@ function runBash(
  * We pre-set variables that the extracted lines expect to exist.
  */
 function displayScript(body: string, envOverrides?: Record<string, string>) {
-	// Extract lines 17-306 (after shebang/comments, through info_box end)
+	// Extract lines 17-314 (after shebang/comments, through info_box end)
 	// Pre-set variables the fragment depends on (OS, ARCH, ACACLAW_VERSION, dirs)
 	return runBash(
 		`
@@ -53,7 +53,7 @@ ACACLAW_DIR="/tmp/acaclaw-test-$$"
 OPENCLAW_DIR="/tmp/openclaw-test-$$"
 INSTALL_LOG="/dev/null"
 
-eval "$(sed -n '17,306p' '${INSTALL_SCRIPT}')"
+eval "$(sed -n '17,314p' '${INSTALL_SCRIPT}')"
 
 ${body}
 `,

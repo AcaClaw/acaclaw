@@ -15,6 +15,7 @@
   },
   "files": [
     "plugins/",
+    "patches/",
     "config/",
     "env/",
     "agents/",

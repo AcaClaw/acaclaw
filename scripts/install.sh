@@ -25,6 +25,14 @@ CLAWHUB_SKILL_TIMEOUT="${CLAWHUB_SKILL_TIMEOUT:-15}"
 NETWORK_TIMEOUT="${NETWORK_TIMEOUT:-60}"
 NPM_INSTALL_TIMEOUT="${NPM_INSTALL_TIMEOUT:-600}"
 
+# nvm mirror for China users (gitee mirror)
+NVM_MIRROR="${NVM_MIRROR:-https://gitee.com/mirrors/nvm/raw/master/install.sh}"
+NVM_GITHUB_URL="${NVM_GITHUB_URL:-https://github.com/nvm-sh/nvm.git}"
+# Node.js binary mirror (npmmirror for China)
+NVM_NODEJS_ORG_MIRROR="${NVM_NODEJS_ORG_MIRROR:-}"
+# npm registry mirror (set automatically if China mirror is faster)
+NPM_REGISTRY_MIRROR="${NPM_REGISTRY_MIRROR:-https://registry.npmmirror.com}"
+
 # Install log — verbose command output goes here instead of terminal
 INSTALL_LOG="${TMPDIR:-/tmp}/acaclaw-install-$(date +%s).log"
 : > "$INSTALL_LOG"
@@ -168,9 +176,10 @@ BANNER
 
 	# System info box
 	local os_display arch_display
-	case "$OS" in
-		linux)  os_display="Linux" ;;
-		macos)  os_display="macOS" ;;
+	case "$PLATFORM" in
+		wsl2)    os_display="WSL2 (Linux)" ;;
+		linux)   os_display="Linux" ;;
+		macos)   os_display="macOS" ;;
 		windows) os_display="Windows" ;;
 		*) os_display="$OS" ;;
 	esac
@@ -518,6 +527,18 @@ detect_arch() {
 OS="$(detect_os)"
 ARCH="$(detect_arch)"
 
+# Platform: distinguish WSL2 from native Linux
+# OS stays "linux" for WSL2 (same packages, same install path)
+# PLATFORM is used for browser launch and desktop integration
+detect_platform() {
+	if [[ -n "${WSL_DISTRO_NAME:-}" ]] || grep -qi microsoft /proc/version 2>/dev/null; then
+		echo "wsl2"
+	else
+		echo "$OS"
+	fi
+}
+PLATFORM="$(detect_platform)"
+
 # --- Prerequisite checks ---
 
 check_command() {
@@ -533,7 +554,8 @@ show_banner
 
 header "Checking Prerequisites" "$SYM_GEAR"
 
-# Check Node.js
+# Check Node.js — auto-install if missing or too old
+_need_node_install=false
 start_spinner "Checking Node.js..."
 if check_command node; then
 	NODE_VERSION="$(node --version | sed 's/^v//')"
@@ -542,13 +564,130 @@ if check_command node; then
 		stop_spinner "Node.js ${NODE_VERSION} found"
 	else
 		stop_spinner_fail "Node.js ${NODE_MIN_VERSION}+ required (found ${NODE_VERSION})"
-		info_box "Install Node.js from https://nodejs.org/" "$SYM_ARROW"
-		exit 1
+		_need_node_install=true
 	fi
 else
 	stop_spinner_fail "Node.js is not installed"
-	info_box "Install Node.js ${NODE_MIN_VERSION}+ from https://nodejs.org/" "$SYM_ARROW"
-	exit 1
+	_need_node_install=true
+fi
+
+if [[ "$_need_node_install" == "true" ]]; then
+	info "Auto-installing Node.js ${NODE_MIN_VERSION} via nvm (no root required)..."
+
+	export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+
+	# --- Install nvm if not present ---
+	if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
+		info "Installing nvm..."
+
+		# Determine nvm install script URL.
+		# Try the GitHub origin first; fall back to the Gitee mirror (faster in China).
+		_nvm_install_url="https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh"
+		_nvm_install_ok=false
+
+		_try_nvm_install() {
+			local _url="$1"
+			if check_command curl; then
+				curl -fsSL --max-time "$NETWORK_TIMEOUT" "$_url" 2>>"$INSTALL_LOG" | PROFILE=/dev/null bash >> "$INSTALL_LOG" 2>&1
+			elif check_command wget; then
+				wget -qO- --timeout="$NETWORK_TIMEOUT" "$_url" 2>>"$INSTALL_LOG" | PROFILE=/dev/null bash >> "$INSTALL_LOG" 2>&1
+			else
+				error "Cannot download nvm: neither curl nor wget found"
+				exit 1
+			fi
+		}
+
+		# Try GitHub first
+		if _try_nvm_install "$_nvm_install_url" 2>/dev/null && [[ -s "$NVM_DIR/nvm.sh" ]]; then
+			_nvm_install_ok=true
+		fi
+
+		# Fall back to Gitee mirror (for China users behind GFW)
+		if [[ "$_nvm_install_ok" != "true" ]]; then
+			warn "GitHub nvm install failed, trying Gitee mirror..."
+			_nvm_gitee_url="${NVM_MIRROR}"
+			if _try_nvm_install "$_nvm_gitee_url" 2>/dev/null && [[ -s "$NVM_DIR/nvm.sh" ]]; then
+				_nvm_install_ok=true
+			fi
+		fi
+
+		if [[ "$_nvm_install_ok" != "true" ]]; then
+			error "Failed to install nvm from GitHub and Gitee mirror."
+			info_box "Install nvm manually: https://github.com/nvm-sh/nvm" "$SYM_ARROW"
+			info_box "China users: ${NVM_MIRROR}" "$SYM_ARROW"
+			exit 1
+		fi
+		log "nvm installed"
+	else
+		dimlog "nvm already installed at ${NVM_DIR}"
+	fi
+
+	# Load nvm into current shell
+	# shellcheck disable=SC1091
+	source "$NVM_DIR/nvm.sh"
+
+	# --- Set Node.js binary mirror for China users ---
+	# If NVM_NODEJS_ORG_MIRROR is already set, use it.
+	# Otherwise, auto-detect: test npmmirror vs official and pick the faster one.
+	if [[ -z "${NVM_NODEJS_ORG_MIRROR:-}" ]]; then
+		_node_mirror_official="https://nodejs.org/dist/"
+		_node_mirror_china="https://npmmirror.com/mirrors/node/"
+		_off_ms=999999
+		_cn_ms=999999
+
+		_start=$(date +%s%N 2>/dev/null || echo 0)
+		if curl -fsSL --max-time 5 -o /dev/null "${_node_mirror_official}" 2>/dev/null; then
+			_end=$(date +%s%N 2>/dev/null || echo 0)
+			_off_ms=$(( (_end - _start) / 1000000 ))
+		fi
+		_start=$(date +%s%N 2>/dev/null || echo 0)
+		if curl -fsSL --max-time 5 -o /dev/null "${_node_mirror_china}" 2>/dev/null; then
+			_end=$(date +%s%N 2>/dev/null || echo 0)
+			_cn_ms=$(( (_end - _start) / 1000000 ))
+		fi
+
+		if [[ $_cn_ms -lt $_off_ms ]]; then
+			export NVM_NODEJS_ORG_MIRROR="$_node_mirror_china"
+			dimlog "Using Node.js mirror: npmmirror.com (${_cn_ms}ms vs ${_off_ms}ms)"
+		fi
+	else
+		export NVM_NODEJS_ORG_MIRROR
+		dimlog "Using Node.js mirror: ${NVM_NODEJS_ORG_MIRROR}"
+	fi
+
+	# --- Install Node.js via nvm ---
+	info "Installing Node.js ${NODE_MIN_VERSION} via nvm..."
+	if ! nvm install "$NODE_MIN_VERSION" >> "$INSTALL_LOG" 2>&1; then
+		error "nvm install ${NODE_MIN_VERSION} failed. Check ${INSTALL_LOG} for details."
+		exit 1
+	fi
+	nvm use "$NODE_MIN_VERSION" >> "$INSTALL_LOG" 2>&1
+
+	# Verify
+	if check_command node; then
+		NODE_VERSION="$(node --version | sed 's/^v//')"
+		NODE_MAJOR="${NODE_VERSION%%.*}"
+		if [[ "$NODE_MAJOR" -ge "$NODE_MIN_VERSION" ]]; then
+			log "Node.js ${NODE_VERSION} installed via nvm"
+		else
+			error "Installed Node.js ${NODE_VERSION} but ${NODE_MIN_VERSION}+ is required"
+			exit 1
+		fi
+	else
+		error "Node.js installation via nvm failed. Check ${INSTALL_LOG} for details."
+		info_box "Install Node.js ${NODE_MIN_VERSION}+ manually from https://nodejs.org/" "$SYM_ARROW"
+		exit 1
+	fi
+
+	# --- Configure npm registry mirror ---
+	# Pick fastest npm registry (official vs npmmirror)
+	if [[ -z "${_CACHED_NPM_REGISTRY:-}" ]]; then
+		_CACHED_NPM_REGISTRY="$(_pick_npm_registry)"
+	fi
+	if [[ -n "$_CACHED_NPM_REGISTRY" && "$_CACHED_NPM_REGISTRY" != "https://registry.npmjs.org" ]]; then
+		npm config set registry "$_CACHED_NPM_REGISTRY" >> "$INSTALL_LOG" 2>&1
+		dimlog "npm registry set to ${_CACHED_NPM_REGISTRY}"
+	fi
 fi
 
 # Check npm
@@ -1087,6 +1226,8 @@ log "${_plugin_done} plugins installed"
 				command cp -f "$patches_dir/channel.ts" "$ext_dir/src/channel.ts"
 			[[ -f "$patches_dir/login-qr.ts" ]] && \
 				command cp -f "$patches_dir/login-qr.ts" "$ext_dir/src/auth/login-qr.ts"
+		else
+			warn "patches/openclaw-weixin not found — WeChat web QR login will not work"
 		fi
 
 		log "WeChat plugin installed"
@@ -1549,6 +1690,31 @@ WSREADME
 	log "Workspace created at ~/AcaClaw"
 fi
 
+# --- WSL2: Create workspace shortcut on Windows Desktop ---
+if [[ "$PLATFORM" == "wsl2" ]] && command -v powershell.exe &>/dev/null; then
+	_wsl_distro="${WSL_DISTRO_NAME:-Ubuntu}"
+	_wsl_user="$(whoami)"
+	_win_workspace_target="\\\\wsl\$\\${_wsl_distro}\\home\\${_wsl_user}\\AcaClaw"
+
+	# Use wslpath for more reliable path conversion if available
+	if command -v wslpath &>/dev/null; then
+		_win_workspace_target="$(wslpath -w "$WORKSPACE_DIR" 2>/dev/null || echo "$_win_workspace_target")"
+	fi
+
+	powershell.exe -NoProfile -Command "
+		\$desktop = [Environment]::GetFolderPath('Desktop')
+		\$shortcutPath = Join-Path \$desktop 'AcaClaw Workspace.lnk'
+		if (-not (Test-Path \$shortcutPath)) {
+			\$shell = New-Object -ComObject WScript.Shell
+			\$shortcut = \$shell.CreateShortcut(\$shortcutPath)
+			\$shortcut.TargetPath = '${_win_workspace_target}'
+			\$shortcut.Description = 'AcaClaw Research Workspace (WSL2)'
+			\$shortcut.Save()
+		}
+	" >> "$INSTALL_LOG" 2>&1 && log "Windows Desktop: workspace shortcut created" \
+		|| dimlog "Windows Desktop: workspace shortcut skipped (non-fatal)"
+fi
+
 # --- Sync agent identity files ---
 # Copy IDENTITY.md + SOUL.md from the repo into the runtime workspace for each agent.
 AGENTS_SOURCE="${SCRIPT_DIR}/../agents"
@@ -1790,7 +1956,7 @@ SETUPJSON
 			--password-store=basic
 		)
 
-		case "$OS" in
+		case "$PLATFORM" in
 			macos)
 				# Prefer the native WKWebView wrapper (compiled at install time, no signing needed)
 				if [[ -d "${HOME}/Applications/AcaClaw.app" ]]; then
@@ -1800,6 +1966,19 @@ SETUPJSON
 					open -na "Microsoft Edge" --args "${_app_flags[@]}" 2>/dev/null && return 0
 				elif [[ -d "/Applications/Google Chrome.app" ]]; then
 					open -na "Google Chrome" --args "${_app_flags[@]}" 2>/dev/null && return 0
+				fi
+				;;
+			wsl2)
+				# WSL2: open Windows-side browser for the app window experience
+				# Edge is pre-installed on Windows 10/11
+				local _edge_win="/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"
+				local _chrome_win="/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"
+				if [[ -x "$_edge_win" ]]; then
+					"$_edge_win" "${_app_flags[@]}" &>/dev/null &
+					return 0
+				elif [[ -x "$_chrome_win" ]]; then
+					"$_chrome_win" "${_app_flags[@]}" &>/dev/null &
+					return 0
 				fi
 				;;
 			linux)
@@ -1825,8 +2004,9 @@ SETUPJSON
 		log "AcaClaw app opened — complete setup there"
 	else
 		# Fallback: open a regular browser tab
-		case "$OS" in
+		case "$PLATFORM" in
 			macos)   open "$SETUP_URL" 2>/dev/null || true ;;
+			wsl2)    cmd.exe /c start "" "$SETUP_URL" 2>/dev/null || true ;;
 			linux)   xdg-open "$SETUP_URL" 2>/dev/null || true ;;
 			windows) start "$SETUP_URL" 2>/dev/null || true ;;
 		esac

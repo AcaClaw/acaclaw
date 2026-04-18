@@ -908,6 +908,7 @@ SETUPJSON
 				export PATH="${fakeBinDir}:$PATH"
 				ACACLAW_DIR="${acaclawDir}"
 				OS="linux"
+				PLATFORM="linux"
 				SETUP_URL="http://localhost:2090/"
 				DISPLAY=":0"
 
@@ -954,6 +955,7 @@ SETUPJSON
 			const acaclawDir = join(fakeHome, ".acaclaw");
 			const script = `
 				OS="linux"
+				PLATFORM="linux"
 				SETUP_URL="http://localhost:2090/"
 				ACACLAW_DIR="${acaclawDir}"
 				unset DISPLAY
@@ -1065,6 +1067,102 @@ EOF
 	// ---------------------------------------------------------------
 	// npm registry mirror fallback
 	// ---------------------------------------------------------------
+	// ---------------------------------------------------------------
+	// nvm-based Node.js auto-install
+	// ---------------------------------------------------------------
+	describe("nvm-based Node.js auto-install", () => {
+		it("uses nvm to install Node.js instead of direct tarball download", async () => {
+			const { code } = await runBash(
+				`grep -q 'nvm install' "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+		});
+
+		it("defines NVM_DIR defaulting to ~/.nvm", async () => {
+			const { code } = await runBash(
+				`grep -q 'NVM_DIR.*HOME/.nvm' "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+		});
+
+		it("tries GitHub nvm install first, then Gitee mirror as fallback", async () => {
+			const { stdout, code } = await runBash(
+				`grep -cE '_nvm_install_url|NVM_MIRROR|gitee' "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+			expect(Number(stdout.trim())).toBeGreaterThanOrEqual(2);
+		});
+
+		it("defines NVM_MIRROR with gitee fallback URL", async () => {
+			const { stdout, code } = await runBash(
+				`grep 'NVM_MIRROR=' "${INSTALL_SCRIPT}" | head -1`,
+			);
+			expect(code).toBe(0);
+			expect(stdout).toContain("gitee.com");
+		});
+
+		it("NVM_MIRROR is overridable via environment variable", async () => {
+			const { stdout } = await runBash(
+				`grep 'NVM_MIRROR=' "${INSTALL_SCRIPT}" | head -1`,
+			);
+			expect(stdout).toContain("${NVM_MIRROR:-");
+		});
+
+		it("defines NVM_NODEJS_ORG_MIRROR for China Node.js binary mirror", async () => {
+			const { stdout, code } = await runBash(
+				`grep 'NVM_NODEJS_ORG_MIRROR' "${INSTALL_SCRIPT}" | head -3`,
+			);
+			expect(code).toBe(0);
+			expect(stdout).toContain("NVM_NODEJS_ORG_MIRROR");
+		});
+
+		it("auto-detects fastest Node.js binary mirror (official vs npmmirror)", async () => {
+			const { code } = await runBash(
+				`grep -q 'npmmirror.com/mirrors/node' "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+		});
+
+		it("sources nvm.sh before installing Node.js", async () => {
+			const { code } = await runBash(
+				`grep -q 'source.*NVM_DIR.*nvm.sh' "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+		});
+
+		it("uses PROFILE=/dev/null to prevent nvm from modifying shell profiles", async () => {
+			const { code } = await runBash(
+				`grep -q 'PROFILE=/dev/null' "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+		});
+
+		it("does not require root or sudo for Node.js install", async () => {
+			const { stdout } = await runBash(
+				`grep -c 'sudo' "${INSTALL_SCRIPT}" || echo 0`,
+			);
+			// nvm install section should not use sudo
+			const { code } = await runBash(`
+				awk '/_need_node_install/,/^fi$/' "${INSTALL_SCRIPT}" | grep -q 'sudo'
+			`);
+			expect(code).not.toBe(0);
+		});
+
+		it("sets npm registry to mirror after nvm install when mirror is faster", async () => {
+			const { code } = await runBash(
+				`grep -q 'npm config set registry' "${INSTALL_SCRIPT}"`,
+			);
+			expect(code).toBe(0);
+		});
+
+		it("verifies Node.js version after nvm install", async () => {
+			const { code } = await runBash(`
+				awk '/_need_node_install/,/^fi$/' "${INSTALL_SCRIPT}" | grep -q 'NODE_MAJOR.*NODE_MIN_VERSION'
+			`);
+			expect(code).toBe(0);
+		});
+	});
+
 	describe("npm registry mirror fallback", () => {
 		it("defines _pick_npm_registry with official + npmmirror.com", async () => {
 			const { code } = await runBash(

@@ -308,20 +308,26 @@ PLIST
 # ===================================================================
 
 install_wsl2() {
+    local _distro="${WSL_DISTRO_NAME:-Ubuntu}"
+    local _wsl_user
+    _wsl_user="$(whoami)"
+
     if [[ "$REMOVE" == "true" ]]; then
         if command -v powershell.exe &>/dev/null; then
             powershell.exe -NoProfile -Command "
                 \$desktop = [Environment]::GetFolderPath('Desktop')
-                \$shortcut = Join-Path \$desktop 'AcaClaw.lnk'
-                if (Test-Path \$shortcut) { Remove-Item \$shortcut -Force }
+                \$app = Join-Path \$desktop 'AcaClaw.lnk'
+                \$ws = Join-Path \$desktop 'AcaClaw Workspace.lnk'
+                if (Test-Path \$app) { Remove-Item \$app -Force }
+                if (Test-Path \$ws) { Remove-Item \$ws -Force }
             " 2>/dev/null || true
         fi
-        log "Windows desktop shortcut removed"
+        log "Windows desktop shortcuts removed"
         return
     fi
 
     if ! command -v powershell.exe &>/dev/null; then
-        error "powershell.exe not available — cannot create Windows shortcut"
+        error "powershell.exe not available — cannot create Windows shortcuts"
         warn "You can still start AcaClaw manually: bash ${ACACLAW_DATA_DIR}/start.sh"
         exit 1
     fi
@@ -333,28 +339,57 @@ install_wsl2() {
         win_script="$(wslpath -w "$wsl_script")"
     else
         # Fallback: manual conversion
-        win_script="\\\\wsl\$\\${WSL_DISTRO_NAME:-Ubuntu}${wsl_script}"
+        win_script="\\\\wsl\$\\${_distro}${wsl_script}"
     fi
 
+    # --- App shortcut: launches gateway + opens browser ---
     powershell.exe -NoProfile -Command "
         \$desktop = [Environment]::GetFolderPath('Desktop')
         \$shortcut_path = Join-Path \$desktop 'AcaClaw.lnk'
         \$shell = New-Object -ComObject WScript.Shell
         \$shortcut = \$shell.CreateShortcut(\$shortcut_path)
         \$shortcut.TargetPath = 'wsl.exe'
-        \$shortcut.Arguments = '-d ${WSL_DISTRO_NAME:-Ubuntu} -- bash ${wsl_script}'
+        \$shortcut.Arguments = '-d ${_distro} -- bash ${wsl_script}'
         \$shortcut.Description = 'AcaClaw - AI Academic Research Assistant'
         \$shortcut.WorkingDirectory = '%USERPROFILE%'
+        \$shortcut.WindowStyle = 7
         \$shortcut.Save()
     " 2>/dev/null
 
     if [[ $? -eq 0 ]]; then
-        log "Windows desktop shortcut created ✓"
-        log "Double-click 'AcaClaw' on your Windows Desktop to launch"
+        log "Windows Desktop: app shortcut created ✓"
     else
-        error "Failed to create Windows shortcut"
+        error "Failed to create app shortcut"
         warn "Start manually: bash ${ACACLAW_DATA_DIR}/start.sh"
     fi
+
+    # --- Workspace shortcut: opens ~/AcaClaw in Windows Explorer ---
+    local _workspace_dir="${HOME}/AcaClaw"
+    local _win_workspace
+    if command -v wslpath &>/dev/null; then
+        _win_workspace="$(wslpath -w "$_workspace_dir" 2>/dev/null || echo "\\\\wsl\$\\${_distro}\\home\\${_wsl_user}\\AcaClaw")"
+    else
+        _win_workspace="\\\\wsl\$\\${_distro}\\home\\${_wsl_user}\\AcaClaw"
+    fi
+
+    powershell.exe -NoProfile -Command "
+        \$desktop = [Environment]::GetFolderPath('Desktop')
+        \$shortcut_path = Join-Path \$desktop 'AcaClaw Workspace.lnk'
+        \$shell = New-Object -ComObject WScript.Shell
+        \$shortcut = \$shell.CreateShortcut(\$shortcut_path)
+        \$shortcut.TargetPath = '${_win_workspace}'
+        \$shortcut.Description = 'AcaClaw Research Workspace (WSL2)'
+        \$shortcut.Save()
+    " 2>/dev/null
+
+    if [[ $? -eq 0 ]]; then
+        log "Windows Desktop: workspace shortcut created ✓"
+    else
+        warn "Workspace shortcut skipped (non-fatal)"
+    fi
+
+    log "Double-click 'AcaClaw' on your Windows Desktop to launch"
+    log "Double-click 'AcaClaw Workspace' to open research files in Explorer"
 }
 
 # --- Dispatch ---

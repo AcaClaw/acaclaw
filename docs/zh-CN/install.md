@@ -13,6 +13,7 @@ permalink: /zh-CN/install/
 - [步骤 2：GUI 设置向导（浏览器）](#步骤-2gui-设置向导浏览器)
 - [安装后：添加技能与软件包](#安装后添加技能与软件包)
 - [各平台说明](#各平台说明)
+  - [Windows（WSL2）](#windowswsl2)
 - [安装脚本做了什么](#安装脚本做了什么)
   - [网络镜像与超时配置](#网络镜像与超时配置)
 - [卸载](#卸载)
@@ -42,7 +43,7 @@ AcaClaw **不单独运行桌面 GUI 程序**。它在自己的网关端口提供
 |---|---|---|
 | **Linux**（Ubuntu、Debian、Fedora 等） | **阶段 1 — 已提供** | 通过 CLI 安装脚本完整支持 |
 | **macOS**（Intel 与 Apple Silicon） | **阶段 1 — 已提供** | 通过 CLI 安装脚本完整支持 |
-| **Windows（WSL2）** | **阶段 2 — 规划中** | 将在后续版本提供 |
+| **Windows（WSL2）** | **阶段 1 — 已提供** | 在 WSL2 终端中安装，浏览器窗口在 Windows 侧打开 |
 
 ---
 
@@ -154,9 +155,135 @@ curl -fsSL https://acaclaw.com/install.sh | bash
 - 通过 `open http://localhost:2090/` 打开向导
 - **桌面集成**：`~/Applications/AcaClaw.app`、桌面别名、书签三层保障
 
-### Windows（WSL2）— 阶段 2
+### Windows（WSL2）
 
-> WSL2 支持计划在阶段 2 提供，当前版本尚未适配。
+```bash
+# 在 WSL2 终端中执行
+curl -fsSL https://acaclaw.com/install.sh | bash
+```
+
+安装脚本自动检测 WSL2（通过 `WSL_DISTRO_NAME` 或 `/proc/version`），走标准 Linux 安装流程，并附加四项 WSL2 专属操作：
+
+#### WSL2 与原生 Linux 的区别
+
+| 方面 | 原生 Linux | WSL2 |
+|---|---|---|
+| 安装位置 | `~/.openclaw/`、`~/.acaclaw/` | 相同（位于 WSL2 文件系统内） |
+| Node.js / Conda / 插件 | 安装在 Linux 中 | 相同 |
+| 网关进程 | 运行在 Linux 中 | 相同 — `localhost:2090` 自动转发到 Windows |
+| 应用窗口 | 通过 Linux Chrome/Edge PWA | 打开 Windows 侧浏览器（通过 `cmd.exe /c start`） |
+| 设置向导 | 在 Linux 浏览器中打开 | 在 Windows 浏览器中打开（API 密钥在 Windows 侧输入） |
+| 桌面快捷方式 | `.desktop` 文件 | Windows 桌面 `.lnk` 文件（通过 `wsl.exe` 启动） |
+| 工作区快捷方式 | 无 | Windows 桌面快捷方式 → `~/AcaClaw/` |
+
+#### 1. 通过 Windows 浏览器实现独立应用窗口
+
+WSL2 没有原生显示服务器。安装脚本不尝试打开 Linux 浏览器（那需要 WSLg 或 X 服务器），而是直接启动 **Windows 侧浏览器**：
+
+```bash
+# install.sh 在 PLATFORM=wsl2 时的检测逻辑
+cmd.exe /c start "" "http://localhost:2090/"
+```
+
+WSL2 自动将 `localhost` 端口转发到 Windows，因此 `http://localhost:2090/` 会在用户的默认 Windows 浏览器（通常是 Edge 或 Chrome）中打开 AcaClaw 界面。
+
+为实现独立应用窗口体验（无地址栏、无浏览器标签页），安装脚本尝试在 Windows 侧使用 Chromium `--app` 模式：
+
+```bash
+# 优先尝试 Edge（Windows 10/11 预装）
+"/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" \
+  --app="http://localhost:2090/" --no-first-run --disable-fre &
+
+# 回退：Chrome
+"/mnt/c/Program Files/Google/Chrome/Application/chrome.exe" \
+  --app="http://localhost:2090/" --no-first-run &
+
+# 最终回退：普通浏览器标签页
+cmd.exe /c start "" "http://localhost:2090/"
+```
+
+这为用户提供了与 macOS（WKWebView）和原生 Linux（PWA）相同的无框应用窗口体验，但使用的是 Windows Edge/Chrome。
+
+#### 2. 设置向导在 Windows 侧打开
+
+设置向导（API 密钥输入、学科选择、安全级别）在 **Windows 浏览器**中打开，而不在 WSL2 内部打开。原因：
+
+- 用户从 Windows 密码管理器 / 浏览器会话中复制粘贴 API 密钥
+- Windows 是主要桌面环境；WSL2 是计算后端
+- 不依赖 WSLg 或 X11 转发
+
+安装脚本检测 WSL2 后调用 `cmd.exe /c start` 而非 `xdg-open`：
+
+```bash
+case "$PLATFORM" in
+  wsl2)
+    # 在 Windows 浏览器中打开，而非 WSL2 Linux 浏览器
+    cmd.exe /c start "" "$SETUP_URL" 2>/dev/null || true
+    ;;
+esac
+```
+
+#### 3. Windows 桌面上的工作区快捷方式
+
+在 WSL2 内创建 `~/AcaClaw/` 后，安装脚本在用户的 Windows 桌面上创建一个**快捷方式**，指向 WSL2 工作区文件夹：
+
+```
+Windows 桌面/
+  AcaClaw Workspace.lnk  →  \\wsl$\Ubuntu\home\user\AcaClaw\
+```
+
+用户可以从 Windows 文件资源管理器直接浏览研究文件，无需手动输入 `\\wsl$\` 路径。通过 PowerShell 创建：
+
+```powershell
+$desktop = [Environment]::GetFolderPath('Desktop')
+$shell = New-Object -ComObject WScript.Shell
+$shortcut = $shell.CreateShortcut("$desktop\AcaClaw Workspace.lnk")
+$shortcut.TargetPath = "\\wsl$\$distro\home\$user\AcaClaw"
+$shortcut.Description = "AcaClaw Research Workspace (WSL2)"
+$shortcut.Save()
+```
+
+#### 4. Windows 桌面上的应用快捷方式
+
+第二个 `.lnk` 快捷方式创建在 Windows 桌面上，用于**启动 AcaClaw**：
+
+```
+Windows 桌面/
+  AcaClaw.lnk  →  wsl.exe -d Ubuntu -- bash ~/.acaclaw/start.sh
+```
+
+双击此快捷方式：
+1. 在 WSL2 内启动网关（如果尚未运行）
+2. 在 Windows 浏览器中以独立应用窗口打开 `http://localhost:2090/`
+3. 无终端窗口保留（快捷方式以最小化方式运行）
+
+通过 PowerShell 创建：
+
+```powershell
+$shortcut.TargetPath = "wsl.exe"
+$shortcut.Arguments = "-d $distro -- bash $HOME/.acaclaw/start.sh"
+$shortcut.WindowStyle = 7  # 最小化
+```
+
+#### WSL2 桌面集成汇总
+
+安装完成后，Windows 桌面上有两个快捷方式：
+
+| 快捷方式 | 目标 | 用途 |
+|---|---|---|
+| **AcaClaw** | `wsl.exe -- bash ~/.acaclaw/start.sh` | 启动应用（网关 + 浏览器窗口） |
+| **AcaClaw Workspace** | `\\wsl$\Ubuntu\home\user\AcaClaw\` | 在 Windows 文件资源管理器中打开研究文件 |
+
+#### WSL2 前置要求
+
+| 要求 | 检查方式 | 说明 |
+|---|---|---|
+| 已安装 WSL2 | 在 PowerShell 中运行 `wsl --version` | Windows 10 2004+ 或 Windows 11 |
+| Ubuntu（或其他发行版） | 在 PowerShell 中运行 `wsl -l -v` | 推荐 Ubuntu 22.04+ |
+| `wslpath` 可用 | 在 WSL2 中运行 `which wslpath` | 所有现代 WSL2 发行版均自带 |
+| Windows 侧有 Edge 或 Chrome | Windows 10/11 预装 | 用于独立应用窗口 |
+
+Node.js、npm 和 Conda 由安装脚本在 **WSL2 内部**安装 — 无需在 Windows 侧安装 Node.js。
 
 ---
 
@@ -171,6 +298,9 @@ curl -fsSL https://acaclaw.com/install.sh | bash
 | 5 | 写入 AcaClaw 配置 | `~/.openclaw/openclaw.json`（复制已有 API 密钥） |
 | 6 | 注册 systemd 用户服务 | `~/.config/systemd/user/acaclaw-gateway.service` |
 | 7 | 启动网关并打开向导 | `openclaw gateway run` → `http://localhost:2090/` |
+| 7a | （仅 WSL2）打开 Windows 浏览器而非 Linux 浏览器 | `cmd.exe /c start` 或 Edge/Chrome `--app` 模式 |
+| 7b | （仅 WSL2）在 Windows 桌面创建工作区快捷方式 | `AcaClaw Workspace.lnk` → `\\wsl$\...\AcaClaw\` |
+| 7c | （仅 WSL2）在 Windows 桌面创建应用快捷方式 | `AcaClaw.lnk` → `wsl.exe -- bash start.sh` |
 
 向导随后创建 Conda 环境、保存配置、创建 `~/AcaClaw/` 结构。除包下载与密钥测试外，不向互联网发送你的私密数据。
 
@@ -182,6 +312,8 @@ curl -fsSL https://acaclaw.com/install.sh | bash
 
 | 来源 | 主源 | 镜像回退 |
 |---|---|---|
+| **nvm**（Node.js 安装器） | `github.com/nvm-sh/nvm` | `gitee.com/mirrors/nvm` |
+| **Node.js 二进制文件** | `nodejs.org/dist/` | `npmmirror.com/mirrors/node/` |
 | **Git clone** | `github.com` HTTPS | GitHub 代理（`ghproxy.com`）→ SSH |
 | **npm 包** | `registry.npmjs.org` | `registry.npmmirror.com` |
 | **Miniforge** | `github.com` releases | 清华镜像 → 北外镜像 |
@@ -193,6 +325,12 @@ curl -fsSL https://acaclaw.com/install.sh | bash
 所有镜像地址和超时值均可配置，在运行安装脚本前设置即可：
 
 ```bash
+# nvm 安装脚本镜像（墙内用户使用 gitee 镜像）
+export NVM_MIRROR="https://gitee.com/mirrors/nvm/raw/master/install.sh"  # 默认值
+
+# Node.js 二进制下载镜像（自动检测，或手动设置）
+export NVM_NODEJS_ORG_MIRROR="https://npmmirror.com/mirrors/node/"  # 默认值：自动检测
+
 # GitHub 镜像代理（github.com 克隆慢时使用）
 export GITHUB_MIRROR="https://ghproxy.com"          # 默认值
 

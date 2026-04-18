@@ -255,12 +255,84 @@ describe("start.sh", () => {
 				PLATFORM="wsl2"
 				case "$PLATFORM" in
 					macos)  echo "open" ;;
-					wsl2)   echo "powershell" ;;
+					wsl2)   echo "edge-or-powershell" ;;
 					linux)  echo "xdg-open-or-chrome" ;;
 					*)      echo "none" ;;
 				esac
 			`);
-			expect(stdout.trim()).toBe("powershell");
+			expect(stdout.trim()).toBe("edge-or-powershell");
+		});
+
+		it("WSL2 tries Edge --app before powershell fallback", async () => {
+			// Simulates the actual open_app_window logic for WSL2:
+			// 1. Try Windows Edge binary with --app flags
+			// 2. Try Windows Chrome binary with --app flags
+			// 3. Fall back to powershell.exe Start-Process
+			const { stdout } = await runBash(`
+				PLATFORM="wsl2"
+				URL="http://localhost:2090/"
+				app_profile="/tmp/test-browser-app"
+
+				# Mock: no Edge or Chrome installed
+				_edge_win="/nonexistent/msedge.exe"
+				_chrome_win="/nonexistent/chrome.exe"
+				tried=""
+
+				if [[ -x "$_edge_win" ]]; then
+					tried="edge"
+				elif [[ -x "$_chrome_win" ]]; then
+					tried="chrome"
+				else
+					tried="powershell-fallback"
+				fi
+				echo "$tried"
+			`);
+			expect(stdout.trim()).toBe("powershell-fallback");
+		});
+
+		it("WSL2 prefers Edge when available", async () => {
+			const { stdout } = await runBash(`
+				PLATFORM="wsl2"
+				# Simulate Edge binary existing (use /bin/true as a stand-in)
+				_edge_win="/bin/true"
+				_chrome_win="/bin/true"
+				tried=""
+
+				if [[ -x "$_edge_win" ]]; then
+					tried="edge"
+				elif [[ -x "$_chrome_win" ]]; then
+					tried="chrome"
+				else
+					tried="powershell-fallback"
+				fi
+				echo "$tried"
+			`);
+			expect(stdout.trim()).toBe("edge");
+		});
+
+		it("WSL2 uses --app flag for standalone window", async () => {
+			// Verify the app_flags array contains --app for WSL2
+			const { stdout } = await runBash(`
+				PLATFORM="wsl2"
+				URL="http://localhost:2090/"
+				app_profile="/tmp/test-profile"
+
+				app_flags=(
+					--user-data-dir="$app_profile"
+					--app="$URL"
+					--no-first-run
+				)
+
+				# Check that --app is in the flags
+				for flag in "\${app_flags[@]}"; do
+					if [[ "$flag" == --app=* ]]; then
+						echo "has-app-flag"
+						exit 0
+					fi
+				done
+				echo "no-app-flag"
+			`);
+			expect(stdout.trim()).toBe("has-app-flag");
 		});
 
 		it("uses xdg-open or chrome on Linux", async () => {

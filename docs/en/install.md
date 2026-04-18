@@ -13,6 +13,7 @@ permalink: /en/install/
 - [Step 2: GUI Setup Wizard (Browser)](#step-2-gui-setup-wizard-browser)
 - [After Install: Adding Skills and Packages](#after-install-adding-skills-and-packages)
 - [Platform-Specific Notes](#platform-specific-notes)
+  - [Windows (WSL2)](#windows-wsl2)
 - [What the Installer Does](#what-the-installer-does)
   - [Network Mirrors & Timeout Configuration](#network-mirrors--timeout-configuration)
 - [Uninstall](#uninstall)
@@ -42,7 +43,7 @@ After install, you never need the terminal again. Skills, discipline packages, c
 |---|---|---|
 | **Linux** (Ubuntu, Debian, Fedora, etc.) | **Phase 1 — Available now** | Full support via CLI install script |
 | **macOS** (Intel & Apple Silicon) | **Phase 1 — Available now** | Full support via CLI install script |
-| **Windows (WSL2)** | **Phase 2 — Coming soon** | Will be available in a future release |
+| **Windows (WSL2)** | **Phase 1 — Available now** | Installs inside WSL2 Linux, launches via Windows browser |
 
 ---
 
@@ -215,9 +216,135 @@ curl -fsSL https://acaclaw.com/install.sh | bash
   2. **Desktop icon**: Finder alias on `~/Desktop/` — always visible, double-click to launch
   3. **Browser bookmark**: `http://localhost:2090/` — if layers 1 and 2 both fail, this always works
 
-### Windows (WSL2) — Phase 2
+### Windows (WSL2)
 
-> WSL2 support is planned for Phase 2 and is not yet available. The install script will be tested and adapted for the WSL2 environment in a future release.
+```bash
+# Inside WSL2 terminal
+curl -fsSL https://acaclaw.com/install.sh | bash
+```
+
+The install script auto-detects WSL2 (via `WSL_DISTRO_NAME` or `/proc/version`) and runs the standard Linux install path with four WSL2-specific additions:
+
+#### How WSL2 differs from native Linux
+
+| Aspect | Native Linux | WSL2 |
+|---|---|---|
+| Install location | `~/.openclaw/`, `~/.acaclaw/` | Same (inside WSL2 filesystem) |
+| Node.js / Conda / plugins | Installed in WSL2 | Same |
+| Gateway process | Runs in WSL2 | Same — `localhost:2090` auto-forwards to Windows |
+| App window | PWA via Linux Chrome/Edge | Opens Windows-side browser via `cmd.exe /c start` |
+| Setup wizard | Opens in Linux browser | Opens in Windows browser (API key entry on Windows side) |
+| Desktop shortcut | `.desktop` file | `.lnk` on Windows Desktop (launches via `wsl.exe`) |
+| Workspace symlink | N/A | Symlink on Windows Desktop → `~/AcaClaw/` |
+
+#### 1. Standalone app window via Windows browser
+
+WSL2 does not have a native display server. Instead of trying to open a Linux browser (which requires WSLg or an X server), the installer launches the **Windows-side browser** directly:
+
+```bash
+# Detected by install.sh when PLATFORM=wsl2
+cmd.exe /c start "" "http://localhost:2090/"
+```
+
+WSL2 automatically forwards `localhost` ports to Windows, so `http://localhost:2090/` opens the AcaClaw UI in the user's default Windows browser (typically Edge or Chrome).
+
+For the standalone app window experience (no address bar, no browser tabs), the installer attempts Chromium `--app` mode on the Windows side:
+
+```bash
+# Try Edge first (pre-installed on Windows 10/11)
+"/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" \
+  --app="http://localhost:2090/" --no-first-run --disable-fre &
+
+# Fallback: Chrome
+"/mnt/c/Program Files/Google/Chrome/Application/chrome.exe" \
+  --app="http://localhost:2090/" --no-first-run &
+
+# Final fallback: regular browser tab
+cmd.exe /c start "" "http://localhost:2090/"
+```
+
+This gives users the same frameless app window experience as macOS (WKWebView) and native Linux (PWA), but using Windows Edge/Chrome.
+
+#### 2. Setup wizard opens on Windows side
+
+The setup wizard (API key entry, discipline selection, security level) opens in the **Windows browser**, not inside WSL2. This is important because:
+
+- Users copy-paste API keys from Windows password managers / browser sessions
+- Windows is the primary desktop environment; WSL2 is the compute backend
+- No dependency on WSLg or X11 forwarding
+
+The install script detects WSL2 and calls `cmd.exe /c start` instead of `xdg-open`:
+
+```bash
+case "$PLATFORM" in
+  wsl2)
+    # Open in Windows browser, not WSL2 Linux browser
+    cmd.exe /c start "" "$SETUP_URL" 2>/dev/null || true
+    ;;
+esac
+```
+
+#### 3. Workspace symlink on Windows Desktop
+
+After creating `~/AcaClaw/` inside WSL2, the installer creates a **Windows shortcut** on the user's Desktop that points to the WSL2 workspace folder:
+
+```
+Windows Desktop/
+  AcaClaw Workspace.lnk  →  \\wsl$\Ubuntu\home\user\AcaClaw\
+```
+
+This lets users browse their research files from Windows Explorer without navigating the `\\wsl$\` path manually. Created via PowerShell:
+
+```powershell
+$desktop = [Environment]::GetFolderPath('Desktop')
+$shell = New-Object -ComObject WScript.Shell
+$shortcut = $shell.CreateShortcut("$desktop\AcaClaw Workspace.lnk")
+$shortcut.TargetPath = "\\wsl$\$distro\home\$user\AcaClaw"
+$shortcut.Description = "AcaClaw Research Workspace (WSL2)"
+$shortcut.Save()
+```
+
+#### 4. App shortcut on Windows Desktop
+
+A second `.lnk` shortcut is created on the Windows Desktop to **launch AcaClaw**:
+
+```
+Windows Desktop/
+  AcaClaw.lnk  →  wsl.exe -d Ubuntu -- bash ~/.acaclaw/start.sh
+```
+
+Double-clicking this shortcut:
+1. Starts the gateway inside WSL2 (if not already running)
+2. Opens `http://localhost:2090/` in the Windows browser as a standalone app window
+3. No terminal window stays open (the shortcut runs minimized)
+
+Created via PowerShell:
+
+```powershell
+$shortcut.TargetPath = "wsl.exe"
+$shortcut.Arguments = "-d $distro -- bash $HOME/.acaclaw/start.sh"
+$shortcut.WindowStyle = 7  # Minimized
+```
+
+#### WSL2 desktop integration summary
+
+After install, the Windows Desktop has two shortcuts:
+
+| Shortcut | Target | Purpose |
+|---|---|---|
+| **AcaClaw** | `wsl.exe -- bash ~/.acaclaw/start.sh` | Launch the app (gateway + browser window) |
+| **AcaClaw Workspace** | `\\wsl$\Ubuntu\home\user\AcaClaw\` | Open research files in Windows Explorer |
+
+#### Prerequisites for WSL2
+
+| Requirement | How to check | Notes |
+|---|---|---|
+| WSL2 installed | `wsl --version` in PowerShell | Windows 10 2004+ or Windows 11 |
+| Ubuntu (or any distro) | `wsl -l -v` in PowerShell | Ubuntu 22.04+ recommended |
+| `wslpath` available | `which wslpath` in WSL2 | Ships with all modern WSL2 distros |
+| Edge or Chrome on Windows | Pre-installed on Windows 10/11 | For standalone app window |
+
+Node.js, npm, and Conda are installed **inside WSL2** by the install script — no Windows-side Node.js needed.
 
 ---
 
@@ -234,6 +361,9 @@ For transparency, here is exactly what the install script does:
 | 5 | Writes AcaClaw config | `~/.openclaw/openclaw.json` (copies existing API keys) |
 | 6 | Registers systemd user service | `~/.config/systemd/user/acaclaw-gateway.service` |
 | 7 | Starts gateway, opens browser wizard | `openclaw gateway run` → `http://localhost:2090/` |
+| 7a | (WSL2 only) Opens Windows browser instead of Linux | `cmd.exe /c start` or Edge/Chrome `--app` mode |
+| 7b | (WSL2 only) Creates workspace symlink on Windows Desktop | `AcaClaw Workspace.lnk` → `\\wsl$\...\AcaClaw\` |
+| 7c | (WSL2 only) Creates app shortcut on Windows Desktop | `AcaClaw.lnk` → `wsl.exe -- bash start.sh` |
 
 The browser wizard then:
 
@@ -253,6 +383,8 @@ The installer automatically falls back to faster mirrors when primary sources ar
 
 | Source | Primary | Mirror fallback(s) |
 |---|---|---|
+| **nvm** (Node.js installer) | `github.com/nvm-sh/nvm` | `gitee.com/mirrors/nvm` |
+| **Node.js binaries** | `nodejs.org/dist/` | `npmmirror.com/mirrors/node/` |
 | **Git clone** | `github.com` HTTPS | GitHub proxy (`ghproxy.com`) → SSH |
 | **npm packages** | `registry.npmjs.org` | `registry.npmmirror.com` |
 | **Miniforge** | `github.com` releases | Tsinghua mirror → BFSU mirror |
@@ -264,6 +396,12 @@ The installer automatically falls back to faster mirrors when primary sources ar
 All mirror URLs and timeouts are configurable. Set these before running the install script:
 
 ```bash
+# nvm install script mirror (for China users behind GFW)
+export NVM_MIRROR="https://gitee.com/mirrors/nvm/raw/master/install.sh"  # default
+
+# Node.js binary download mirror (auto-detected, or set manually)
+export NVM_NODEJS_ORG_MIRROR="https://npmmirror.com/mirrors/node/"  # default: auto-detect
+
 # GitHub mirror proxy (for git clone when github.com is slow)
 export GITHUB_MIRROR="https://ghproxy.com"          # default
 

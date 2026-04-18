@@ -546,7 +546,32 @@ open_app_window() {
             fi
             ;;
         wsl2)
-            if command -v powershell.exe &>/dev/null; then
+            # WSL2: open Windows-side browser with --app mode for standalone window
+            local _edge_win="/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"
+            local _chrome_win="/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"
+
+            local -a app_flags=(
+                --user-data-dir="$(wslpath -w "$app_profile" 2>/dev/null || echo "$app_profile")"
+                --app="$URL"
+                --no-first-run
+                --no-default-browser-check
+                --disable-fre
+                --disable-background-networking
+                --disable-component-update
+                --disable-sync
+                --disable-translate
+                --disable-default-apps
+                --disable-extensions
+                --disable-features=TranslateUI,OptimizationHints,MediaRouter,EdgeCollections,EdgeDiscoverWidget,msEdgeShopping,EdgeWallet,msEdgeOnRamp
+                --suppress-message-center-popups
+                --password-store=basic
+            )
+
+            if [[ -x "$_edge_win" ]]; then
+                "$_edge_win" "${app_flags[@]}" &>/dev/null &
+            elif [[ -x "$_chrome_win" ]]; then
+                "$_chrome_win" "${app_flags[@]}" &>/dev/null &
+            elif command -v powershell.exe &>/dev/null; then
                 powershell.exe -NoProfile -Command "Start-Process '${URL}'" 2>/dev/null
             elif command -v cmd.exe &>/dev/null; then
                 cmd.exe /c start "" "${URL}" 2>/dev/null
