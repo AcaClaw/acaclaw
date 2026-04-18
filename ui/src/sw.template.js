@@ -7,7 +7,8 @@
 //   - /api/*, /health, /ready, WebSocket: never cached (pass through to gateway)
 //   - Offline fallback: minimal HTML page explaining the gateway is unreachable
 
-const CACHE = "acaclaw-v1";
+// __BUILD_TIMESTAMP__ is replaced at build time by Vite to bust browser SW cache.
+const CACHE = "acaclaw-__BUILD_TIMESTAMP__";
 
 // Shell assets to pre-cache on SW install (populated by Vite build output).
 // Kept intentionally empty here — assets are added to cache on first fetch.

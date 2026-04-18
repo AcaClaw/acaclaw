@@ -1210,8 +1210,16 @@ log "${_plugin_done} plugins installed"
 		log "Installing WeChat channel plugin (openclaw-weixin)..."
 
 		# Download latest via npm pack (non-interactive, no QR prompt)
+		# Use the cached registry mirror if available (critical for CN users)
+		local _reg_args=()
+		if [[ -n "${_CACHED_NPM_REGISTRY:-}" ]]; then
+			_reg_args=(--registry="$_CACHED_NPM_REGISTRY")
+		fi
 		local tgz
-		tgz=$(cd /tmp && npm pack @tencent-weixin/openclaw-weixin@latest 2>/dev/null) || return 1
+		tgz=$(cd /tmp && npm pack @tencent-weixin/openclaw-weixin@latest "${_reg_args[@]}" 2>/dev/null) || {
+			warn "WeChat plugin download failed (npm pack)"
+			return 1
+		}
 		mkdir -p "$ext_dir"
 		tar xzf "/tmp/$tgz" -C "$ext_dir" --strip-components=1 || return 1
 		rm -f "/tmp/$tgz"
