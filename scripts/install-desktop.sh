@@ -328,16 +328,95 @@ install_wsl2() {
 
     if ! command -v powershell.exe &>/dev/null; then
         error "powershell.exe not available — cannot create Windows shortcuts"
-        warn "You can still start AcaClaw manually: bash ${ACACLAW_DATA_DIR}/start.sh"
+        warn "Open http://localhost:2090/ in your browser instead"
         exit 1
     fi
 
-    # Convert WSL path to Windows path for the script
-    local wsl_script="${ACACLAW_DATA_DIR}/start.sh"
+    # --- Locate Windows-side Edge or Chrome ---
+    # Edge is pre-installed on Windows 10/11; Chrome is a common alternative.
+    local _browser_exe=""
+    local _browser_name=""
+    for _candidate in \
+        "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" \
+        "/mnt/c/Program Files/Microsoft/Edge/Application/msedge.exe" \
+        "/mnt/c/Program Files/Google/Chrome/Application/chrome.exe" \
+        "/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe"; do
+        if [[ -f "$_candidate" ]]; then
+            _browser_exe="$_candidate"
+            [[ "$_candidate" == *msedge* ]] && _browser_name="Edge" || _browser_name="Chrome"
+            break
+        fi
+    done
 
-    # --- App shortcut: launches gateway + opens browser ---
-    # Use a .bat fallback if PowerShell COM shortcut creation fails
-    local _ps_ok=false
+    if [[ -z "$_browser_exe" ]]; then
+        warn "No Chromium browser found on Windows side"
+        warn "Open http://localhost:2090/ in your browser instead"
+        return
+    fi
+
+    # Convert browser path to Windows format for the shortcut
+    local _win_browser
+    _win_browser="$(wslpath -w "$_browser_exe" 2>/dev/null || echo "$_browser_exe")"
+
+    # Browser-app profile dir — gives a separate instance with its own icon/state
+    local _app_profile="${ACACLAW_DATA_DIR}/browser-app"
+    mkdir -p "$_app_profile"
+    touch "$_app_profile/First Run"  # suppress first-run experience
+
+    local _win_profile
+    _win_profile="$(wslpath -w "$_app_profile" 2>/dev/null || echo "\\\\wsl\$\\${_distro}${_app_profile}")"
+
+    # --- Convert PNG icon to ICO for the shortcut ---
+    local _win_icon=""
+    local _icon_src=""
+    _icon_src="$(find_icon)" || true
+    if [[ -n "$_icon_src" && "$_icon_src" == *.png ]]; then
+        local _ico_path="${ACACLAW_DATA_DIR}/acaclaw.ico"
+        # Use PowerShell to convert PNG → ICO (no extra tools needed)
+        local _win_png
+        _win_png="$(wslpath -w "$_icon_src" 2>/dev/null || echo "")"
+        if [[ -n "$_win_png" ]]; then
+            local _win_ico
+            _win_ico="$(wslpath -w "$_ico_path" 2>/dev/null || echo "")"
+            powershell.exe -NoProfile -Command "
+                Add-Type -AssemblyName System.Drawing
+                \$bmp = [System.Drawing.Bitmap]::FromFile('${_win_png}')
+                \$icon = [System.Drawing.Icon]::FromHandle(\$bmp.GetHicon())
+                \$fs = [System.IO.File]::Create('${_win_ico}')
+                \$icon.Save(\$fs)
+                \$fs.Close()
+                \$icon.Dispose()
+                \$bmp.Dispose()
+            " 2>/dev/null && _win_icon="$_win_ico"
+        fi
+    fi
+
+    # --- App shortcut: opens browser in --app mode (webview-like window) ---
+    # The gateway runs as a systemd service (installed by acaclaw-service.sh).
+    # The shortcut launches Edge/Chrome with --app=URL for a native-app feel:
+    # no address bar, no tabs, standalone window with the page favicon as icon.
+    local _app_args="--app=http://localhost:2090/ --user-data-dir=\"${_win_profile}\" --no-first-run --no-default-browser-check --disable-fre --disable-extensions --disable-sync --disable-translate --disable-default-apps --disable-background-networking --disable-component-update --suppress-message-center-popups --password-store=basic"
+
+    # Also ensure gateway is running before opening the browser.
+    # Create a small VBS launcher that:
+    #   1. Starts the gateway in WSL (hidden, no console window)
+    #   2. Opens the browser in --app mode
+    local _vbs_path="${ACACLAW_DATA_DIR}/launch.vbs"
+    local _win_vbs
+    _win_vbs="$(wslpath -w "$_vbs_path" 2>/dev/null || echo "\\\\wsl\$\\${_distro}${_vbs_path}")"
+
+    cat > "$_vbs_path" << VBSEOF
+' AcaClaw Launcher — starts gateway + opens browser in app mode
+' This runs silently (no console window flashes)
+Set objShell = CreateObject("WScript.Shell")
+
+' Start gateway in WSL (hidden window, fire-and-forget)
+objShell.Run "wsl.exe -d ${_distro} -- bash -c 'if ! curl -s -o /dev/null http://localhost:2090/ 2>/dev/null; then bash ${ACACLAW_DATA_DIR}/start.sh --no-browser >/dev/null 2>&1 & sleep 3; fi'", 0, True
+
+' Open browser in app mode (standalone window, no address bar)
+objShell.Run """${_win_browser}""" & " ${_app_args}", 1, False
+VBSEOF
+
     local _ps_err
     _ps_err="$(powershell.exe -NoProfile -Command "
         try {
@@ -345,11 +424,12 @@ install_wsl2() {
             \$shortcut_path = Join-Path \$desktop 'AcaClaw.lnk'
             \$shell = New-Object -ComObject WScript.Shell
             \$shortcut = \$shell.CreateShortcut(\$shortcut_path)
-            \$shortcut.TargetPath = 'wsl.exe'
-            \$shortcut.Arguments = '-d ${_distro} -- bash ${wsl_script}'
+            \$shortcut.TargetPath = 'wscript.exe'
+            \$shortcut.Arguments = '\"${_win_vbs}\"'
             \$shortcut.Description = 'AcaClaw - AI Academic Research Assistant'
             \$shortcut.WorkingDirectory = \$env:USERPROFILE
-            \$shortcut.WindowStyle = 7
+            \$shortcut.WindowStyle = 1
+            $(if [[ -n "$_win_icon" ]]; then echo "\\\$shortcut.IconLocation = '${_win_icon}'"; fi)
             \$shortcut.Save()
             Write-Output 'OK'
         } catch {
@@ -359,25 +439,10 @@ install_wsl2() {
     " 2>&1)"
 
     if [[ "$_ps_err" == *"OK"* ]]; then
-        _ps_ok=true
-        log "Windows Desktop: app shortcut created ✓"
+        log "Windows Desktop: app shortcut created (${_browser_name} --app mode) ✓"
     else
-        warn "PowerShell shortcut failed: ${_ps_err}"
-        # Fallback: create a .bat file on the Desktop instead
-        local _bat_err
-        _bat_err="$(powershell.exe -NoProfile -Command "
-            \$desktop = [Environment]::GetFolderPath('Desktop')
-            \$bat = Join-Path \$desktop 'AcaClaw.bat'
-            Set-Content -Path \$bat -Value '@echo off'
-            Add-Content -Path \$bat -Value 'wsl.exe -d ${_distro} -- bash ${wsl_script}'
-            Write-Output 'OK'
-        " 2>&1)"
-        if [[ "$_bat_err" == *"OK"* ]]; then
-            log "Windows Desktop: app shortcut created (.bat fallback) ✓"
-        else
-            error "Failed to create app shortcut"
-            warn "Start manually: bash ${ACACLAW_DATA_DIR}/start.sh"
-        fi
+        warn "Shortcut creation failed: ${_ps_err}"
+        warn "Open http://localhost:2090/ in your browser instead"
     fi
 
     # --- Workspace shortcut: opens ~/AcaClaw in Windows Explorer ---
@@ -412,7 +477,7 @@ install_wsl2() {
         warn "Workspace shortcut skipped: ${_ws_err}"
     fi
 
-    log "Double-click 'AcaClaw' on your Windows Desktop to launch"
+    log "Double-click 'AcaClaw' on Desktop to launch (${_browser_name} app window)"
     log "Double-click 'AcaClaw Workspace' to open research files in Explorer"
 }
 
