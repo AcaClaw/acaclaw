@@ -391,6 +391,9 @@ Version found  → upgrade (skip wizard, replace app files, keep data)
 | **Skills** | `~/.openclaw/skills/` has content | **Skip** — user may have installed custom skills |
 | **AcaClaw config** | `~/.openclaw/openclaw.json` exists | **Merge** — preserves user settings (see below) |
 | **AcaClaw config** | No existing config | Create fresh from template |
+| **Plugin config** | `plugins.json` exists | **Merge** — preserves user customizations (custom deny/allow lists, retention, discipline) |
+| **Plugin config** | No existing config | Create fresh with defaults |
+| **Security mode** | `security-mode.txt` exists | **Preserve** — keeps user's chosen mode |
 | **Workspace** (`~/AcaClaw/`) | Directory exists | **Skip** — never touches user files |
 | **Desktop shortcut** | Already installed | Skip |
 | **Audit logs** | `~/.acaclaw/audit/` | **Keep** |
@@ -489,8 +492,8 @@ The install script writes the following config and settings files. On **upgrade*
 |---|---|---|---|---|
 | `version.txt` | 2154 | `echo >` | Overwrite | Installed AcaClaw version |
 | `conda-prefix.txt` | 1179 | `echo >` | Overwrite | Path to Miniforge installation |
-| `security-mode.txt` | 1784 | `echo >` | Overwrite | `default` or `maximum` |
-| `plugins.json` | 1787–1822 | `cat > <<` heredoc | Overwrite | AcaClaw plugin settings (workspace, backup, security, academic-env, compat-checker) |
+| `security-mode.txt` | 1784 | conditional | **Preserved on upgrade** | `default` or `maximum`; on upgrade reads existing value, on fresh install writes chosen mode |
+| `plugins.json` | 1787–1834 | merge / create | **Merged on upgrade** | AcaClaw plugin settings; on upgrade user customizations (custom deny commands, allowed domains, retention days, discipline) are preserved and merged with new defaults |
 | `setup-pending.json` | 1954 / 1966 | `cat > <<` heredoc | Overwrite | Wizard state; `setupComplete: true` on upgrade, `false` on fresh install |
 
 #### `~/AcaClaw/.acaclaw/` (workspace metadata)

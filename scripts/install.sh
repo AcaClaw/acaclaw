@@ -1780,11 +1780,17 @@ else
 	log "Warning: agents source directory not found — skipping identity sync"
 fi
 
-# Save installed mode
-echo "$SECURITY_MODE" > "${ACACLAW_DIR}/config/security-mode.txt"
+# Save installed mode (preserve user choice on upgrade)
+if [[ "$IS_UPGRADE" == "true" ]] && [[ -f "${ACACLAW_DIR}/config/security-mode.txt" ]]; then
+	SECURITY_MODE="$(cat "${ACACLAW_DIR}/config/security-mode.txt" 2>/dev/null || echo "$SECURITY_MODE")"
+	dimlog "Preserved security mode: ${SECURITY_MODE}"
+else
+	echo "$SECURITY_MODE" > "${ACACLAW_DIR}/config/security-mode.txt"
+fi
 
 # Create AcaClaw plugin config (separate from OpenClaw's validated config)
-cat > "${ACACLAW_DIR}/config/plugins.json" <<PLUGINJSON
+_PLUGINS_JSON="${ACACLAW_DIR}/config/plugins.json"
+_PLUGINS_TEMPLATE=$(cat <<PLUGINJSON
 {
   "acaclaw-workspace": {
     "defaultRoot": "${WORKSPACE_DIR}",
@@ -1819,6 +1825,28 @@ cat > "${ACACLAW_DIR}/config/plugins.json" <<PLUGINJSON
   }
 }
 PLUGINJSON
+)
+
+if [[ "$IS_UPGRADE" == "true" ]] && [[ -f "$_PLUGINS_JSON" ]]; then
+	# Merge: keep user-customized values, add new defaults
+	python3 -c "
+import json
+tpl = json.loads('''${_PLUGINS_TEMPLATE}''')
+with open('${_PLUGINS_JSON}') as f:
+    old = json.load(f)
+# For each plugin, keep user overrides on top of new defaults
+for plugin, defaults in tpl.items():
+    if plugin in old and isinstance(old[plugin], dict):
+        merged = {**defaults, **old[plugin]}
+        tpl[plugin] = merged
+with open('${_PLUGINS_JSON}', 'w') as f:
+    json.dump(tpl, f, indent=2)
+    f.write('\n')
+" 2>/dev/null || echo "$_PLUGINS_TEMPLATE" > "$_PLUGINS_JSON"
+	dimlog "Plugin config merged — user customizations preserved"
+else
+	echo "$_PLUGINS_TEMPLATE" > "$_PLUGINS_JSON"
+fi
 log "AcaClaw plugin config saved"
 dimlog "Plugin config: ${ACACLAW_DIR}/config/plugins.json"
 
