@@ -15,7 +15,7 @@
 # Uninstalling AcaClaw leaves OpenClaw completely untouched.
 set -euo pipefail
 
-ACACLAW_VERSION="0.1.2"
+ACACLAW_VERSION="0.1.6"
 ACACLAW_DIR="${ACACLAW_DIR:-$HOME/.acaclaw}"
 OPENCLAW_MIN_VERSION="2026.4.2"
 NODE_MIN_VERSION="22"
