@@ -16,6 +16,7 @@ permalink: /en/install/
   - [Windows (WSL2)](#windows-wsl2)
 - [Upgrading / Re-running the Installer](#upgrading--re-running-the-installer)
 - [What the Installer Does](#what-the-installer-does)
+  - [Config Files Written by the Installer](#config-files-written-by-the-installer)
   - [Network Mirrors & Timeout Configuration](#network-mirrors--timeout-configuration)
 - [Uninstall](#uninstall)
 
@@ -468,6 +469,56 @@ The browser wizard then:
 | 10 | Creates workspace directory structure | `~/AcaClaw/` |
 
 Nothing is installed outside these directories. Nothing is sent to the internet (except npm/conda package downloads and the API key test).
+
+### Config Files Written by the Installer
+
+The install script writes the following config and settings files. On **upgrade** (re-running the installer over an existing install), all files below are overwritten unless noted.
+
+#### `~/.openclaw/` (OpenClaw profile directory)
+
+| File | Line(s) | Method | Create / Overwrite | Purpose |
+|---|---|---|---|---|
+| `openclaw.json` | 1522–1577 | Python merge | Merge-overwrite (preserves user API keys, model choices) | Main gateway + agent + model config |
+| `openclaw.json` | 1585–1601 | Python write | Create (only when no existing config) | Fresh config from template |
+| `openclaw.json` | 1613–1664 | Python read-modify-write (called 3×) | Overwrite | Apply required overrides: auth, controlUi, plugins.allow, WeChat channel |
+| `openclaw.json.bak` | 1518 | `cp -f` | Overwrite | Backup before merge |
+
+#### `~/.acaclaw/config/` (AcaClaw config directory)
+
+| File | Line(s) | Method | Create / Overwrite | Purpose |
+|---|---|---|---|---|
+| `version.txt` | 2154 | `echo >` | Overwrite | Installed AcaClaw version |
+| `conda-prefix.txt` | 1179 | `echo >` | Overwrite | Path to Miniforge installation |
+| `security-mode.txt` | 1784 | `echo >` | Overwrite | `default` or `maximum` |
+| `plugins.json` | 1787–1822 | `cat > <<` heredoc | Overwrite | AcaClaw plugin settings (workspace, backup, security, academic-env, compat-checker) |
+| `setup-pending.json` | 1954 / 1966 | `cat > <<` heredoc | Overwrite | Wizard state; `setupComplete: true` on upgrade, `false` on fresh install |
+
+#### `~/AcaClaw/.acaclaw/` (workspace metadata)
+
+| File | Line(s) | Method | Create / Overwrite | Purpose |
+|---|---|---|---|---|
+| `workspace.json` | 1699–1706 | `cat > <<` heredoc | **Create-only** (skipped if `~/AcaClaw/` exists) | Workspace name, discipline, creation timestamp, workspace ID |
+
+#### `~/.acaclaw/miniforge3/.condarc` (Conda channel config)
+
+| File | Line(s) | Method | Create / Overwrite | Purpose |
+|---|---|---|---|---|
+| `.condarc` | 1062 | `cat > <<` heredoc | Overwrite | Mirror channel config (when mirror test passes) |
+| `.condarc` | 1080 | `cat > <<` heredoc | Overwrite | Official conda-forge config (when no mirror works) |
+| `.condarc` | 1137 | `cat > <<` heredoc | Overwrite | Retry with official conda-forge after mirror failure |
+
+#### Other files copied by the installer
+
+| File(s) | Line(s) | Method | Purpose |
+|---|---|---|---|
+| `~/.openclaw/extensions/*` (plugins) | 1214 | `cp -r` | AcaClaw plugin directories |
+| WeChat patches (`channel.ts`, `login-qr.ts`) | 1259, 1261 | `cp -f` | Patch WeChat plugin source |
+| UI dist assets | 1293 | `cp -r` | Web GUI static files |
+| Agent `IDENTITY.md` / `SOUL.md` | 1774 | `cp` | Agent identity files into workspace |
+| `start.sh`, `stop.sh`, `uninstall.sh` | 2139 | `cp -f` | Management scripts |
+| `environment-*.yml` | 2149 | `cp -f` | Conda environment definitions |
+
+> **Note:** `~/.condarc` (user-level) is temporarily backed up and removed during install, then restored on exit via a shell trap. It is never permanently modified.
 
 ### Network Mirrors & Timeout Configuration
 

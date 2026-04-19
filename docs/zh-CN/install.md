@@ -15,6 +15,7 @@ permalink: /zh-CN/install/
 - [各平台说明](#各平台说明)
   - [Windows（WSL2）](#windowswsl2)
 - [安装脚本做了什么](#安装脚本做了什么)
+  - [安装脚本写入的配置文件](#安装脚本写入的配置文件)
   - [网络镜像与超时配置](#网络镜像与超时配置)
 - [卸载](#卸载)
 
@@ -303,6 +304,56 @@ Node.js、npm 和 Conda 由安装脚本在 **WSL2 内部**安装 — 无需在 W
 | 7c | （仅 WSL2）在 Windows 桌面创建应用快捷方式 | `AcaClaw.lnk` → `wsl.exe -- bash start.sh` |
 
 向导随后创建 Conda 环境、保存配置、创建 `~/AcaClaw/` 结构。除包下载与密钥测试外，不向互联网发送你的私密数据。
+
+### 安装脚本写入的配置文件
+
+安装脚本写入以下配置和设置文件。**升级**（在已有安装上重新运行安装脚本）时，除特别注明外，所有文件均会被覆盖。
+
+#### `~/.openclaw/`（OpenClaw 配置目录）
+
+| 文件 | 行号 | 写入方式 | 创建 / 覆盖 | 用途 |
+|---|---|---|---|---|
+| `openclaw.json` | 1522–1577 | Python 合并 | 合并覆盖（保留用户 API 密钥和模型选择） | 主网关 + 代理 + 模型配置 |
+| `openclaw.json` | 1585–1601 | Python 写入 | 仅创建（无已有配置时） | 从模板创建全新配置 |
+| `openclaw.json` | 1613–1664 | Python 读取-修改-写入（调用 3 次） | 覆盖 | 应用必需覆盖项：auth、controlUi、plugins.allow、微信频道 |
+| `openclaw.json.bak` | 1518 | `cp -f` | 覆盖 | 合并前的备份 |
+
+#### `~/.acaclaw/config/`（AcaClaw 配置目录）
+
+| 文件 | 行号 | 写入方式 | 创建 / 覆盖 | 用途 |
+|---|---|---|---|---|
+| `version.txt` | 2154 | `echo >` | 覆盖 | 已安装的 AcaClaw 版本 |
+| `conda-prefix.txt` | 1179 | `echo >` | 覆盖 | Miniforge 安装路径 |
+| `security-mode.txt` | 1784 | `echo >` | 覆盖 | `default` 或 `maximum` |
+| `plugins.json` | 1787–1822 | `cat > <<` heredoc | 覆盖 | AcaClaw 插件设置（workspace、backup、security、academic-env、compat-checker） |
+| `setup-pending.json` | 1954 / 1966 | `cat > <<` heredoc | 覆盖 | 向导状态；升级时 `setupComplete: true`，全新安装时 `false` |
+
+#### `~/AcaClaw/.acaclaw/`（工作区元数据）
+
+| 文件 | 行号 | 写入方式 | 创建 / 覆盖 | 用途 |
+|---|---|---|---|---|
+| `workspace.json` | 1699–1706 | `cat > <<` heredoc | **仅创建**（`~/AcaClaw/` 已存在时跳过） | 工作区名称、学科、创建时间戳、工作区 ID |
+
+#### `~/.acaclaw/miniforge3/.condarc`（Conda 频道配置）
+
+| 文件 | 行号 | 写入方式 | 创建 / 覆盖 | 用途 |
+|---|---|---|---|---|
+| `.condarc` | 1062 | `cat > <<` heredoc | 覆盖 | 镜像频道配置（镜像测试通过时） |
+| `.condarc` | 1080 | `cat > <<` heredoc | 覆盖 | 官方 conda-forge 配置（无可用镜像时） |
+| `.condarc` | 1137 | `cat > <<` heredoc | 覆盖 | 镜像失败后重试使用官方 conda-forge |
+
+#### 安装脚本复制的其他文件
+
+| 文件 | 行号 | 写入方式 | 用途 |
+|---|---|---|---|
+| `~/.openclaw/extensions/*`（插件） | 1214 | `cp -r` | AcaClaw 插件目录 |
+| 微信补丁（`channel.ts`、`login-qr.ts`） | 1259、1261 | `cp -f` | 微信插件源码补丁 |
+| UI 静态资源 | 1293 | `cp -r` | Web GUI 静态文件 |
+| 代理 `IDENTITY.md` / `SOUL.md` | 1774 | `cp` | 代理身份文件同步到工作区 |
+| `start.sh`、`stop.sh`、`uninstall.sh` | 2139 | `cp -f` | 管理脚本 |
+| `environment-*.yml` | 2149 | `cp -f` | Conda 环境定义文件 |
+
+> **注意：** `~/.condarc`（用户级）在安装过程中会被临时备份并移除，安装完成后通过 shell trap 恢复。不会被永久修改。
 
 ### 网络镜像与超时配置
 
