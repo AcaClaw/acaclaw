@@ -279,7 +279,7 @@ setTimeout(() => {
 
 // ─── Tests ───
 
-describe("Provider Raw API Latency", () => {
+describe.skipIf(!!process.env.CI)("Provider Raw API Latency", () => {
 	for (const provider of PROVIDERS) {
 		describe(provider.name, () => {
 			const apiKey = resolveKey(provider.envVar);
@@ -338,7 +338,7 @@ describe("Provider Raw API Latency", () => {
 	}
 });
 
-describe("Gateway TTFT (real user experience)", () => {
+describe.skipIf(!!process.env.CI)("Gateway TTFT (real user experience)", () => {
 	it("TTFT through gateway is under 5s", { timeout: 90_000 }, () => {
 		const result = testGatewayTTFT(GATEWAY_PORT);
 
