@@ -297,11 +297,20 @@ Node.js、npm 和 Conda 由安装脚本在 **WSL2 内部**安装 — 无需在 W
 | 3 | 复制 AcaClaw 插件 | `~/.openclaw/extensions/` |
 | 4 | 从 ClawHub 安装学术技能（带镜像回退） | `~/.openclaw/skills/` |
 | 5 | 写入 AcaClaw 配置 | `~/.openclaw/openclaw.json`（复制已有 API 密钥） |
-| 6 | 注册 systemd 用户服务 | `~/.config/systemd/user/acaclaw-gateway.service` |
-| 7 | 启动网关并打开向导 | `openclaw gateway run` → `http://localhost:2090/` |
-| 7a | （仅 WSL2）打开 Windows 浏览器而非 Linux 浏览器 | `cmd.exe /c start` 或 Edge/Chrome `--app` 模式 |
-| 7b | （仅 WSL2）在 Windows 桌面创建工作区快捷方式 | `AcaClaw Workspace.lnk` → `\\wsl$\...\AcaClaw\` |
-| 7c | （仅 WSL2）在 Windows 桌面创建应用快捷方式 | `AcaClaw.lnk` → `wsl.exe -- bash start.sh` |
+| 6 | 复制管理脚本（`start.sh`、`stop.sh`、`uninstall.sh`） | `~/.acaclaw/` |
+| 6a | 保存已安装版本 | `~/.acaclaw/config/version.txt` |
+| 6b | 创建桌面快捷方式（应用 + 工作区） | 因平台而异（见下表） |
+| 7 | 注册 systemd 服务、启动网关并打开向导 | `openclaw gateway run` → `http://localhost:2090/` |
+
+**桌面快捷方式（步骤 6b）按平台分：**
+
+| 平台 | 应用快捷方式 | 工作区快捷方式 |
+|---|---|---|
+| Linux | `~/.local/share/applications/` 中的 `.desktop` 文件 | — |
+| macOS | `~/Applications/AcaClaw.app` | — |
+| WSL2 | Windows 桌面 `AcaClaw.lnk` → `wsl.exe -- bash start.sh` | Windows 桌面 `AcaClaw Workspace.lnk` → `\\wsl$\...\AcaClaw\` |
+
+> 步骤 6–6b 在网关启动**之前**执行。这确保即使网关或浏览器启动失败（WSL2 上因 systemd 问题常见），管理脚本和桌面快捷方式也始终可用。
 
 向导随后创建 Conda 环境、保存配置、创建 `~/AcaClaw/` 结构。除包下载与密钥测试外，不向互联网发送你的私密数据。
 
@@ -322,11 +331,11 @@ Node.js、npm 和 Conda 由安装脚本在 **WSL2 内部**安装 — 无需在 W
 
 | 文件 | 行号 | 写入方式 | 创建 / 覆盖 | 用途 |
 |---|---|---|---|---|
-| `version.txt` | 2154 | `echo >` | 覆盖 | 已安装的 AcaClaw 版本 |
+| `version.txt` | 1883 | `echo >` | 覆盖 | 已安装的 AcaClaw 版本 |
 | `conda-prefix.txt` | 1179 | `echo >` | 覆盖 | Miniforge 安装路径 |
-| `security-mode.txt` | 1784 | `echo >` | 覆盖 | `default` 或 `maximum` |
-| `plugins.json` | 1787–1822 | `cat > <<` heredoc | 覆盖 | AcaClaw 插件设置（workspace、backup、security、academic-env、compat-checker） |
-| `setup-pending.json` | 1954 / 1966 | `cat > <<` heredoc | 覆盖 | 向导状态；升级时 `setupComplete: true`，全新安装时 `false` |
+| `security-mode.txt` | 1759 | 条件写入 | **升级时保留** | `default` 或 `maximum`；升级时读取已有值，全新安装时写入选择的模式 |
+| `plugins.json` | 1767–1823 | 合并 / 创建 | **升级时合并** | AcaClaw 插件设置；升级时保留用户自定义并与新默认值合并 |
+| `setup-pending.json` | 2009 / 2021 | `cat > <<` heredoc | 覆盖 | 向导状态；升级时 `setupComplete: true`，全新安装时 `false` |
 
 #### `~/AcaClaw/.acaclaw/`（工作区元数据）
 

@@ -457,11 +457,20 @@ For transparency, here is exactly what the install script does:
 | 3 | Copies AcaClaw plugins | `~/.openclaw/extensions/` |
 | 4 | Installs academic skills from ClawHub (with mirror fallback) | `~/.openclaw/skills/` |
 | 5 | Writes AcaClaw config | `~/.openclaw/openclaw.json` (copies existing API keys) |
-| 6 | Registers systemd user service | `~/.config/systemd/user/acaclaw-gateway.service` |
-| 7 | Starts gateway, opens browser wizard | `openclaw gateway run` → `http://localhost:2090/` |
-| 7a | (WSL2 only) Opens Windows browser instead of Linux | `cmd.exe /c start` or Edge/Chrome `--app` mode |
-| 7b | (WSL2 only) Creates workspace symlink on Windows Desktop | `AcaClaw Workspace.lnk` → `\\wsl$\...\AcaClaw\` |
-| 7c | (WSL2 only) Creates app shortcut on Windows Desktop | `AcaClaw.lnk` → `wsl.exe -- bash start.sh` |
+| 6 | Copies management scripts (`start.sh`, `stop.sh`, `uninstall.sh`) | `~/.acaclaw/` |
+| 6a | Saves installed version | `~/.acaclaw/config/version.txt` |
+| 6b | Creates desktop shortcut (app + workspace) | Platform-specific (see below) |
+| 7 | Registers systemd user service, starts gateway, opens browser wizard | `openclaw gateway run` → `http://localhost:2090/` |
+
+**Desktop shortcut (step 6b) by platform:**
+
+| Platform | App shortcut | Workspace shortcut |
+|---|---|---|
+| Linux | `.desktop` file in `~/.local/share/applications/` | — |
+| macOS | `AcaClaw.app` in `~/Applications/` | — |
+| WSL2 | `AcaClaw.lnk` on Windows Desktop → `wsl.exe -- bash start.sh` | `AcaClaw Workspace.lnk` on Windows Desktop → `\\wsl$\...\AcaClaw\` |
+
+> Steps 6–6b run **before** the gateway starts. This ensures management scripts and desktop shortcuts are always available, even if the gateway or browser launch fails (common on WSL2 due to systemd quirks).
 
 The browser wizard then:
 
@@ -490,11 +499,11 @@ The install script writes the following config and settings files. On **upgrade*
 
 | File | Line(s) | Method | Create / Overwrite | Purpose |
 |---|---|---|---|---|
-| `version.txt` | 2154 | `echo >` | Overwrite | Installed AcaClaw version |
+| `version.txt` | 1883 | `echo >` | Overwrite | Installed AcaClaw version |
 | `conda-prefix.txt` | 1179 | `echo >` | Overwrite | Path to Miniforge installation |
-| `security-mode.txt` | 1784 | conditional | **Preserved on upgrade** | `default` or `maximum`; on upgrade reads existing value, on fresh install writes chosen mode |
-| `plugins.json` | 1787–1834 | merge / create | **Merged on upgrade** | AcaClaw plugin settings; on upgrade user customizations (custom deny commands, allowed domains, retention days, discipline) are preserved and merged with new defaults |
-| `setup-pending.json` | 1954 / 1966 | `cat > <<` heredoc | Overwrite | Wizard state; `setupComplete: true` on upgrade, `false` on fresh install |
+| `security-mode.txt` | 1759 | conditional | **Preserved on upgrade** | `default` or `maximum`; on upgrade reads existing value, on fresh install writes chosen mode |
+| `plugins.json` | 1767–1823 | merge / create | **Merged on upgrade** | AcaClaw plugin settings; on upgrade user customizations (custom deny commands, allowed domains, retention days, discipline) are preserved and merged with new defaults |
+| `setup-pending.json` | 2009 / 2021 | `cat > <<` heredoc | Overwrite | Wizard state; `setupComplete: true` on upgrade, `false` on fresh install |
 
 #### `~/AcaClaw/.acaclaw/` (workspace metadata)
 
@@ -517,9 +526,9 @@ The install script writes the following config and settings files. On **upgrade*
 | `~/.openclaw/extensions/*` (plugins) | 1214 | `cp -r` | AcaClaw plugin directories |
 | WeChat patches (`channel.ts`, `login-qr.ts`) | 1259, 1261 | `cp -f` | Patch WeChat plugin source |
 | UI dist assets | 1293 | `cp -r` | Web GUI static files |
-| Agent `IDENTITY.md` / `SOUL.md` | 1774 | `cp` | Agent identity files into workspace |
-| `start.sh`, `stop.sh`, `uninstall.sh` | 2139 | `cp -f` | Management scripts |
-| `environment-*.yml` | 2149 | `cp -f` | Conda environment definitions |
+| Agent `IDENTITY.md` / `SOUL.md` | 1749 | `cp` | Agent identity files into workspace |
+| `start.sh`, `stop.sh`, `uninstall.sh` | 1866 | `cp -f` | Management scripts (copied before gateway start) |
+| `environment-*.yml` | 1877 | `cp -f` | Conda environment definitions |
 
 > **Note:** `~/.condarc` (user-level) is temporarily backed up and removed during install, then restored on exit via a shell trap. It is never permanently modified.
 

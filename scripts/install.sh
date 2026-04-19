@@ -1736,31 +1736,6 @@ WSREADME
 	log "Workspace created at ~/AcaClaw"
 fi
 
-# --- WSL2: Create workspace shortcut on Windows Desktop ---
-if [[ "$PLATFORM" == "wsl2" ]] && command -v powershell.exe &>/dev/null; then
-	_wsl_distro="${WSL_DISTRO_NAME:-Ubuntu}"
-	_wsl_user="$(whoami)"
-	_win_workspace_target="\\\\wsl\$\\${_wsl_distro}\\home\\${_wsl_user}\\AcaClaw"
-
-	# Use wslpath for more reliable path conversion if available
-	if command -v wslpath &>/dev/null; then
-		_win_workspace_target="$(wslpath -w "$WORKSPACE_DIR" 2>/dev/null || echo "$_win_workspace_target")"
-	fi
-
-	powershell.exe -NoProfile -Command "
-		\$desktop = [Environment]::GetFolderPath('Desktop')
-		\$shortcutPath = Join-Path \$desktop 'AcaClaw Workspace.lnk'
-		if (-not (Test-Path \$shortcutPath)) {
-			\$shell = New-Object -ComObject WScript.Shell
-			\$shortcut = \$shell.CreateShortcut(\$shortcutPath)
-			\$shortcut.TargetPath = '${_win_workspace_target}'
-			\$shortcut.Description = 'AcaClaw Research Workspace (WSL2)'
-			\$shortcut.Save()
-		}
-	" >> "$INSTALL_LOG" 2>&1 && log "Windows Desktop: workspace shortcut created" \
-		|| dimlog "Windows Desktop: workspace shortcut skipped (non-fatal)"
-fi
-
 # --- Sync agent identity files ---
 # Copy IDENTITY.md + SOUL.md from the repo into the runtime workspace for each agent.
 AGENTS_SOURCE="${SCRIPT_DIR}/../agents"
@@ -1871,6 +1846,58 @@ if [[ "$SKIP_CONDA" != "true" ]]; then
 	dimlog "Scientific packages will be installed during setup wizard"
 fi
 
+# --- Clear stale caches on upgrade ---
+# The browser-app profile caches the control UI (including Service Worker).
+# After an upgrade the gateway serves new UI assets, but stale SW/browser caches
+# can keep serving the old version — causing features like WeChat QR login to
+# appear missing even though the plugin is correctly patched.
+if [[ "${IS_UPGRADE:-false}" == "true" ]]; then
+	_browser_cache="${ACACLAW_DIR}/browser-app"
+	if [[ -d "$_browser_cache" ]]; then
+		rm -rf "$_browser_cache"
+		log "Cleared stale browser cache"
+	fi
+fi
+
+# --- Copy management scripts to persistent location ---
+# Do this BEFORE the gateway/browser launch section — those steps can fail
+# on WSL2 (systemd quirks, missing Windows-side browser, etc.) and with
+# set -e the script would exit before reaching a later copy step.
+for _script in start.sh stop.sh uninstall.sh; do
+	if [[ -f "${SCRIPT_DIR}/${_script}" ]]; then
+		cp -f "${SCRIPT_DIR}/${_script}" "${ACACLAW_DIR}/${_script}"
+		chmod +x "${ACACLAW_DIR}/${_script}"
+	fi
+done
+
+# --- Copy conda env YAML files to persistent location ---
+CONDA_SRC="${SCRIPT_DIR}/../env/conda"
+CONDA_DST="${ACACLAW_DIR}/env/conda"
+if [[ -d "$CONDA_SRC" ]]; then
+	mkdir -p "$CONDA_DST"
+	cp -f "$CONDA_SRC"/environment-*.yml "$CONDA_DST/" 2>/dev/null || true
+fi
+
+# --- Save installed version ---
+mkdir -p "${ACACLAW_DIR}/config"
+echo "${ACACLAW_VERSION}" > "${ACACLAW_DIR}/config/version.txt"
+
+# --- Install desktop shortcut ---
+# Do this BEFORE the gateway start — start.sh is already copied above,
+# and the shortcut just needs the file path, not a running gateway.
+echo ""
+echo -e "  ${BOLD}${CYAN}Desktop Integration${NC}"
+
+DESKTOP_SCRIPT="${SCRIPT_DIR}/install-desktop.sh"
+if [[ "${DESKTOP_INSTALLED:-false}" == "true" ]]; then
+	log "Desktop shortcut already installed"
+elif [[ -f "$DESKTOP_SCRIPT" ]]; then
+	start_spinner "Installing desktop shortcut..."
+	bash "$DESKTOP_SCRIPT" >> "$INSTALL_LOG" 2>&1 && stop_spinner "Desktop shortcut installed" || stop_spinner_warn "Desktop shortcut skipped (non-fatal)"
+else
+	dimlog "Desktop shortcut: not available for this platform"
+fi
+
 # --- Install auto-restart service and start gateway ---
 
 echo ""
@@ -1941,7 +1968,7 @@ if check_command openclaw; then
 		if bash "$SERVICE_SCRIPT" install >> "$INSTALL_LOG" 2>&1; then
 			# openclaw daemon install rewrites the gateway config section;
 			# re-apply AcaClaw overrides so controlUi/plugins.allow are not lost.
-			_apply_config_overrides
+			_apply_config_overrides || warn "Config override re-apply failed (non-fatal)"
 			openclaw daemon start >> "$INSTALL_LOG" 2>&1 || true
 			GATEWAY_STARTED=true
 		else
@@ -1952,7 +1979,7 @@ if check_command openclaw; then
 	# Fallback: start gateway directly if systemd failed
 	if [[ "$GATEWAY_STARTED" == "false" ]]; then
 		# Also re-apply in the fallback path (daemon install may have partially run).
-		_apply_config_overrides
+		_apply_config_overrides || warn "Config override re-apply failed (non-fatal)"
 		openclaw gateway run --bind loopback --port 2090 >> "$INSTALL_LOG" 2>&1 &
 		GATEWAY_STARTED=true
 	fi
@@ -2145,41 +2172,6 @@ else
 	warn "  openclaw gateway run --bind loopback --port 2090"
 	warn "Then visit http://localhost:2090/"
 fi
-
-# --- Install desktop shortcut ---
-
-echo ""
-echo -e "  ${BOLD}${CYAN}Desktop Integration${NC}"
-
-DESKTOP_SCRIPT="${SCRIPT_DIR}/install-desktop.sh"
-if [[ "${DESKTOP_INSTALLED:-false}" == "true" ]]; then
-	log "Desktop shortcut already installed"
-elif [[ -f "$DESKTOP_SCRIPT" ]]; then
-	start_spinner "Installing desktop shortcut..."
-	bash "$DESKTOP_SCRIPT" >> "$INSTALL_LOG" 2>&1 && stop_spinner "Desktop shortcut installed" || stop_spinner_warn "Desktop shortcut skipped (non-fatal)"
-else
-	dimlog "Desktop shortcut: not available for this platform"
-fi
-
-# --- Copy management scripts to persistent location ---
-for _script in start.sh stop.sh uninstall.sh; do
-	if [[ -f "${SCRIPT_DIR}/${_script}" ]]; then
-		cp -f "${SCRIPT_DIR}/${_script}" "${ACACLAW_DIR}/${_script}"
-		chmod +x "${ACACLAW_DIR}/${_script}"
-	fi
-done
-
-# --- Copy conda env YAML files to persistent location ---
-CONDA_SRC="${SCRIPT_DIR}/../env/conda"
-CONDA_DST="${ACACLAW_DIR}/env/conda"
-if [[ -d "$CONDA_SRC" ]]; then
-	mkdir -p "$CONDA_DST"
-	cp -f "$CONDA_SRC"/environment-*.yml "$CONDA_DST/" 2>/dev/null || true
-fi
-
-# --- Save installed version ---
-mkdir -p "${ACACLAW_DIR}/config"
-echo "${ACACLAW_VERSION}" > "${ACACLAW_DIR}/config/version.txt"
 
 # --- Collect background skill install results ---
 if [[ -n "${_SKILL_INSTALL_PID:-}" ]]; then
