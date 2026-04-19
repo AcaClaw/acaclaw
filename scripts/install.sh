@@ -2097,13 +2097,27 @@ SETUPJSON
 					"/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe"
 				)
 
-				# Convert user-data-dir to Windows UNC path for the Windows browser
+				# Use Windows-native profile dir for stable app identity.
+				# \\wsl$\ paths cause Edge to lose app identity on restart
+				# (icon reverts, pinning breaks).
 				local _win_profile
-				if command -v wslpath &>/dev/null; then
-					_win_profile="$(wslpath -w "$_app_profile")"
-				else
-					_win_profile="\\\\wsl\$\\${WSL_DISTRO_NAME:-Ubuntu}${_app_profile}"
+				_win_profile="$(powershell.exe -NoProfile -Command "
+					\$d = Join-Path \$env:LOCALAPPDATA 'AcaClaw\browser-app'
+					if (-not (Test-Path \$d)) { New-Item -ItemType Directory -Path \$d -Force | Out-Null }
+					\$fr = Join-Path \$d 'First Run'
+					if (-not (Test-Path \$fr)) { New-Item -ItemType File -Path \$fr -Force | Out-Null }
+					Write-Output \$d
+				" 2>/dev/null | tr -d '\r')" || true
+
+				if [[ -z "$_win_profile" ]]; then
+					# Fallback to WSL UNC path
+					if command -v wslpath &>/dev/null; then
+						_win_profile="$(wslpath -w "$_app_profile")"
+					else
+						_win_profile="\\\\wsl\$\\${WSL_DISTRO_NAME:-Ubuntu}${_app_profile}"
+					fi
 				fi
+
 				local -a _win_flags=()
 				for _flag in "${_app_flags[@]}"; do
 					if [[ "$_flag" == --user-data-dir=* ]]; then
