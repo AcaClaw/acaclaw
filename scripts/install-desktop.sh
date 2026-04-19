@@ -420,7 +420,13 @@ install_wsl2() {
     #   1. The taskbar icon stays as AcaClaw (not Edge)
     #   2. Right-click → Pin to taskbar works correctly
     #   3. The window groups under our shortcut, not under Edge
-    local _app_args="--app=http://localhost:2090/ --user-data-dir=\"${_win_profile}\" --no-first-run --no-default-browser-check --disable-fre --disable-extensions --disable-sync --disable-translate --disable-default-apps --disable-background-networking --disable-component-update --suppress-message-center-popups --password-store=basic --disable-features=TranslateUI,OptimizationHints,MediaRouter,EdgeCollections,EdgeDiscoverWidget,msEdgeShopping,EdgeWallet,msEdgeOnRamp"
+    #
+    # IMPORTANT: The Arguments string is built inside PowerShell using
+    # [char]34 for double-quote chars. We CANNOT embed literal " from bash
+    # variables into the powershell.exe -Command "..." string, because
+    # WSL2→Windows command-line interop treats " as a quote toggle,
+    # which garbles the PowerShell command.
+    local _app_flags="--no-first-run --no-default-browser-check --disable-fre --disable-extensions --disable-sync --disable-translate --disable-default-apps --disable-background-networking --disable-component-update --suppress-message-center-popups --password-store=basic --disable-features=TranslateUI,OptimizationHints,MediaRouter,EdgeCollections,EdgeDiscoverWidget,msEdgeShopping,EdgeWallet,msEdgeOnRamp"
 
     local _ps_err
     _ps_err="$(powershell.exe -NoProfile -Command "
@@ -430,7 +436,9 @@ install_wsl2() {
             \$shell = New-Object -ComObject WScript.Shell
             \$shortcut = \$shell.CreateShortcut(\$shortcut_path)
             \$shortcut.TargetPath = '${_win_browser}'
-            \$shortcut.Arguments = '${_app_args}'
+            \$q = [char]34
+            \$profile = '${_win_profile}'
+            \$shortcut.Arguments = '--app=http://localhost:2090/ --user-data-dir=' + \$q + \$profile + \$q + ' ${_app_flags}'
             \$shortcut.Description = 'AcaClaw - AI Academic Research Assistant'
             \$shortcut.WorkingDirectory = \$env:USERPROFILE
             \$shortcut.WindowStyle = 1
