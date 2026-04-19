@@ -373,7 +373,7 @@ install_wsl2() {
         \$fr = Join-Path \$d 'First Run'
         if (-not (Test-Path \$fr)) { New-Item -ItemType File -Path \$fr -Force | Out-Null }
         Write-Output \$d
-    " 2>/dev/null | tr -d '\r')"
+    " 2>/dev/null | tr -d '\r')" || true
 
     if [[ -z "$_win_profile" ]]; then
         # Fallback to WSL path if PowerShell fails
@@ -410,7 +410,7 @@ install_wsl2() {
                 } catch {
                     Write-Output ''
                 }
-            " 2>/dev/null | tr -d '\r')"
+            " 2>/dev/null | tr -d '\r')" || true
         fi
     fi
 
@@ -441,7 +441,7 @@ install_wsl2() {
             Write-Error \$_.Exception.Message
             exit 1
         }
-    " 2>&1)"
+    " 2>&1)" || true
 
     if [[ "$_ps_err" == *"OK"* ]]; then
         log "Windows Desktop: app shortcut created (${_browser_name} app window) ✓"
@@ -466,7 +466,8 @@ VBSEOF
     _win_startup_vbs="$(wslpath -w "$_startup_vbs" 2>/dev/null || echo "\\\\wsl\$\\${_distro}${_startup_vbs}")"
 
     # Create a shortcut in Windows Startup folder pointing to the VBS
-    powershell.exe -NoProfile -Command "
+    local _gw_result
+    _gw_result="$(powershell.exe -NoProfile -Command "
         try {
             \$startup = [Environment]::GetFolderPath('Startup')
             \$shortcut_path = Join-Path \$startup 'AcaClaw Gateway.lnk'
@@ -479,8 +480,12 @@ VBSEOF
             \$shortcut.Save()
             Write-Output 'OK'
         } catch {}
-    " 2>/dev/null | grep -q 'OK' && log "Gateway auto-start at login: configured ✓" \
-        || warn "Gateway auto-start: skipped (start manually with start.sh)"
+    " 2>/dev/null | tr -d '\r')" || true
+    if [[ "$_gw_result" == *"OK"* ]]; then
+        log "Gateway auto-start at login: configured ✓"
+    else
+        warn "Gateway auto-start: skipped (start manually with start.sh)"
+    fi
 
     # --- Workspace shortcut: opens ~/AcaClaw in Windows Explorer ---
     local _workspace_dir="${HOME}/AcaClaw"
@@ -506,7 +511,7 @@ VBSEOF
             Write-Error \$_.Exception.Message
             exit 1
         }
-    " 2>&1)"
+    " 2>&1)" || true
 
     if [[ "$_ws_err" == *"OK"* ]]; then
         log "Windows Desktop: workspace shortcut created ✓"
