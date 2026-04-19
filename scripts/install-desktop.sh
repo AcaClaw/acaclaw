@@ -367,27 +367,31 @@ install_wsl2() {
     _win_profile="$(wslpath -w "$_app_profile" 2>/dev/null || echo "\\\\wsl\$\\${_distro}${_app_profile}")"
 
     # --- Convert PNG icon to ICO for the shortcut ---
+    # Store the ICO on the Windows side (%LOCALAPPDATA%\AcaClaw) so the
+    # shortcut icon is always accessible, even when WSL isn't running.
     local _win_icon=""
     local _icon_src=""
     _icon_src="$(find_icon)" || true
     if [[ -n "$_icon_src" && "$_icon_src" == *.png ]]; then
-        local _ico_path="${ACACLAW_DATA_DIR}/acaclaw.ico"
-        # Use PowerShell to convert PNG → ICO (no extra tools needed)
         local _win_png
         _win_png="$(wslpath -w "$_icon_src" 2>/dev/null || echo "")"
         if [[ -n "$_win_png" ]]; then
-            local _win_ico
-            _win_ico="$(wslpath -w "$_ico_path" 2>/dev/null || echo "")"
-            powershell.exe -NoProfile -Command "
-                Add-Type -AssemblyName System.Drawing
-                \$bmp = [System.Drawing.Bitmap]::FromFile('${_win_png}')
-                \$icon = [System.Drawing.Icon]::FromHandle(\$bmp.GetHicon())
-                \$fs = [System.IO.File]::Create('${_win_ico}')
-                \$icon.Save(\$fs)
-                \$fs.Close()
-                \$icon.Dispose()
-                \$bmp.Dispose()
-            " 2>/dev/null && _win_icon="$_win_ico"
+            _win_icon="$(powershell.exe -NoProfile -Command "
+                try {
+                    Add-Type -AssemblyName System.Drawing
+                    \$icoDir = Join-Path \$env:LOCALAPPDATA 'AcaClaw'
+                    if (-not (Test-Path \$icoDir)) { New-Item -ItemType Directory -Path \$icoDir -Force | Out-Null }
+                    \$icoPath = Join-Path \$icoDir 'acaclaw.ico'
+                    \$bmp = [System.Drawing.Bitmap]::FromFile('${_win_png}')
+                    \$icon = [System.Drawing.Icon]::FromHandle(\$bmp.GetHicon())
+                    \$fs = [System.IO.File]::Create(\$icoPath)
+                    \$icon.Save(\$fs)
+                    \$fs.Close()
+                    \$icon.Dispose()
+                    \$bmp.Dispose()
+                    Write-Output \$icoPath
+                } catch { Write-Output '' }
+            " 2>/dev/null | tr -d '\r')" || true
         fi
     fi
 
@@ -436,7 +440,7 @@ VBSEOF
             Write-Error \$_.Exception.Message
             exit 1
         }
-    " 2>&1)"
+    " 2>&1)" || true
 
     if [[ "$_ps_err" == *"OK"* ]]; then
         log "Windows Desktop: app shortcut created (${_browser_name} --app mode) ✓"
@@ -469,7 +473,7 @@ VBSEOF
             Write-Error \$_.Exception.Message
             exit 1
         }
-    " 2>&1)"
+    " 2>&1)" || true
 
     if [[ "$_ws_err" == *"OK"* ]]; then
         log "Windows Desktop: workspace shortcut created ✓"
