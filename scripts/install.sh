@@ -171,6 +171,9 @@ show_banner() {
 BANNER
 	echo -e "${NC}"
 	printf "  ${DIM}Academic AI Research Assistant${NC}  ${BOLD}v${ACACLAW_VERSION}${NC}\n"
+	if [[ "${IS_UPGRADE:-false}" == "true" ]]; then
+		printf "  ${YELLOW}${SYM_ARROW} Upgrading from v${INSTALLED_VERSION:-unknown}${NC}\n"
+	fi
 	printf "  ${DIM}$(date '+%B %d, %Y at %H:%M')${NC}\n"
 	echo ""
 
@@ -473,6 +476,19 @@ SCRIPT_DIR="${REPO_ROOT}/scripts"
 # Read actual version from package.json (replaces hardcoded ACACLAW_VERSION)
 if [[ -f "${REPO_ROOT}/package.json" ]]; then
 	ACACLAW_VERSION="$(node -e "console.log(require('${REPO_ROOT}/package.json').version)" 2>/dev/null || echo "$ACACLAW_VERSION")"
+fi
+
+# --- Upgrade detection ---
+# If a previous version is installed, this is an upgrade.
+# Upgrade principle: replace app files, preserve user data.
+IS_UPGRADE=false
+INSTALLED_VERSION=""
+VERSION_FILE="${ACACLAW_DIR}/config/version.txt"
+if [[ -f "$VERSION_FILE" ]]; then
+	INSTALLED_VERSION="$(cat "$VERSION_FILE" 2>/dev/null || echo "")"
+	if [[ -n "$INSTALLED_VERSION" ]]; then
+		IS_UPGRADE=true
+	fi
 fi
 
 # Clean up temp dir on exit if we downloaded from npm
@@ -1416,29 +1432,37 @@ _clawhub_install() {
 # Install agent-required skills from ClawHub into the AcaClaw profile.
 # These skills are defined in skills.json and needed by all agents.
 # Runs in the background so config/gateway setup proceeds in parallel.
+# On upgrade: skip — user may have installed/removed custom skills.
 CORE_SKILLS=("nano-pdf" "xurl" "summarize" "humanizer")
 
 _SKILL_RESULT_FILE="$(mktemp)"
+_SKILL_INSTALL_PID=""
 
-(
-	# Probe once before the loop (avoids re-probing per skill due to subshell)
-	CLAWHUB_BEST_REGISTRY="$(_pick_clawhub_registry)"
+if [[ "$IS_UPGRADE" == "true" ]] && [[ -d "${OPENCLAW_DIR}/skills" ]] && [[ -n "$(ls -A "${OPENCLAW_DIR}/skills" 2>/dev/null)" ]]; then
+	log "Skills preserved from previous install (upgrade mode)"
+	dimlog "Manage skills from the browser UI or: clawhub install <skill-name>"
+else
+	(
+		# Probe once before the loop (avoids re-probing per skill due to subshell)
+		CLAWHUB_BEST_REGISTRY="$(_pick_clawhub_registry)"
 
-	_count=0
-	for skill_name in "${CORE_SKILLS[@]}"; do
-		_count=$((_count + 1))
-		echo "  ${SYM_ARROW} Installing skill ${_count}/${#CORE_SKILLS[@]}: ${skill_name}..."
-		if _clawhub_install "$skill_name"; then
-			:
-		else
-			echo "  ${SYM_WARN} ${skill_name}: install failed (tried primary + mirror)"
-		fi
-	done
-	echo "$_count" > "$_SKILL_RESULT_FILE"
-) >> "$INSTALL_LOG" 2>&1 &
-_SKILL_INSTALL_PID=$!
+		_count=0
+		_success=0
+		for skill_name in "${CORE_SKILLS[@]}"; do
+			_count=$((_count + 1))
+			echo "  ${SYM_ARROW} Installing skill ${_count}/${#CORE_SKILLS[@]}: ${skill_name}..."
+			if _clawhub_install "$skill_name"; then
+				_success=$((_success + 1))
+			else
+				echo "  ${SYM_WARN} ${skill_name}: install failed (tried primary + mirror)"
+			fi
+		done
+		echo "$_success" > "$_SKILL_RESULT_FILE"
+	) >> "$INSTALL_LOG" 2>&1 &
+	_SKILL_INSTALL_PID=$!
 
-info "Skills installing in background (${#CORE_SKILLS[@]} skills: nano-pdf, xurl, summarize, humanizer)"
+	info "Skills installing in background (${#CORE_SKILLS[@]} skills: nano-pdf, xurl, summarize, humanizer)"
+fi
 
 # --- Security defaults ---
 
@@ -1489,6 +1513,9 @@ ACACLAW_CONFIG="${OPENCLAW_DIR}/openclaw.json"
 if [[ -f "$OPENCLAW_BASE_CONFIG" ]]; then
 	# Existing config found — preserve user settings, only overlay AcaClaw defaults
 	start_spinner "Merging with existing OpenClaw configuration..."
+
+	# Back up the existing config before merging (same-file read/write)
+	cp -f "$OPENCLAW_BASE_CONFIG" "${OPENCLAW_BASE_CONFIG}.bak"
 
 	python3 -c "
 import json, copy
@@ -1921,8 +1948,22 @@ if check_command openclaw; then
 		fi
 	fi
 
-	# Save setup state for the wizard to read
-	cat > "${ACACLAW_DIR}/config/setup-pending.json" <<SETUPJSON
+	# Save setup state for the wizard to read.
+	# On upgrade: mark setup as complete so the wizard is skipped.
+	if [[ "$IS_UPGRADE" == "true" ]]; then
+		cat > "${ACACLAW_DIR}/config/setup-pending.json" <<SETUPJSON
+{
+  "version": "${ACACLAW_VERSION}",
+  "condaPrefix": "${MINIFORGE_DIR:-}",
+  "dockerAvailable": ${DOCKER_AVAILABLE},
+  "securityMode": "${SECURITY_MODE}",
+  "workspaceDir": "${WORKSPACE_DIR}",
+  "envFilesDir": "${SCRIPT_DIR}/../env/conda",
+  "setupComplete": true
+}
+SETUPJSON
+	else
+		cat > "${ACACLAW_DIR}/config/setup-pending.json" <<SETUPJSON
 {
   "version": "${ACACLAW_VERSION}",
   "condaPrefix": "${MINIFORGE_DIR:-}",
@@ -1933,6 +1974,7 @@ if check_command openclaw; then
   "setupComplete": false
 }
 SETUPJSON
+	fi
 
 	SETUP_URL="http://localhost:2090/"
 
@@ -2107,6 +2149,10 @@ if [[ -d "$CONDA_SRC" ]]; then
 	cp -f "$CONDA_SRC"/environment-*.yml "$CONDA_DST/" 2>/dev/null || true
 fi
 
+# --- Save installed version ---
+mkdir -p "${ACACLAW_DIR}/config"
+echo "${ACACLAW_VERSION}" > "${ACACLAW_DIR}/config/version.txt"
+
 # --- Collect background skill install results ---
 if [[ -n "${_SKILL_INSTALL_PID:-}" ]]; then
 	wait "$_SKILL_INSTALL_PID" 2>/dev/null || true
@@ -2131,7 +2177,11 @@ printf "  ${GREEN}"
 _repeat_char '━' "$_box_w"
 printf "${NC}\n"
 echo ""
-echo -e "  ${SYM_SPARKLE}  ${BOLD}${GREEN}AcaClaw v${ACACLAW_VERSION} installed successfully!${NC}  ${SYM_SPARKLE}"
+if [[ "$IS_UPGRADE" == "true" ]]; then
+	echo -e "  ${SYM_SPARKLE}  ${BOLD}${GREEN}AcaClaw upgraded to v${ACACLAW_VERSION} (from v${INSTALLED_VERSION})!${NC}  ${SYM_SPARKLE}"
+else
+	echo -e "  ${SYM_SPARKLE}  ${BOLD}${GREEN}AcaClaw v${ACACLAW_VERSION} installed successfully!${NC}  ${SYM_SPARKLE}"
+fi
 echo ""
 printf "  ${GREEN}"
 _repeat_char '━' "$_box_w"
@@ -2142,16 +2192,30 @@ echo ""
 printf "  ${CYAN}┌"
 _repeat_char '─' $((_box_w - 2))
 printf "┐${NC}\n"
-printf "  ${CYAN}│${NC}  ${BOLD}What's Next?${NC}%*s${CYAN}│${NC}\n" $((_box_w - 16)) ''
-printf "  ${CYAN}│${NC}%*s${CYAN}│${NC}\n" $((_box_w - 2)) ''
-printf "  ${CYAN}│${NC}  Complete setup in your browser:                 ${CYAN}│${NC}\n"
-printf "  ${CYAN}│${NC}  ${BOLD}${BLUE}http://localhost:2090/${NC}%*s${CYAN}│${NC}\n" $((_box_w - 25)) ''
-printf "  ${CYAN}│${NC}%*s${CYAN}│${NC}\n" $((_box_w - 2)) ''
-printf "  ${CYAN}│${NC}  The wizard will guide you through:              ${CYAN}│${NC}\n"
-printf "  ${CYAN}│${NC}    ${SYM_DOT} Choose your research discipline%*s${CYAN}│${NC}\n" $((_box_w - 36)) ''
-printf "  ${CYAN}│${NC}    ${SYM_DOT} Connect your AI provider (API key)%*s${CYAN}│${NC}\n" $((_box_w - 40)) ''
-printf "  ${CYAN}│${NC}    ${SYM_DOT} Configure workspace location%*s${CYAN}│${NC}\n" $((_box_w - 33)) ''
-printf "  ${CYAN}│${NC}    ${SYM_DOT} Choose security level%*s${CYAN}│${NC}\n" $((_box_w - 26)) ''
+
+if [[ "$IS_UPGRADE" == "true" ]]; then
+	printf "  ${CYAN}│${NC}  ${BOLD}Upgrade Complete${NC}%*s${CYAN}│${NC}\n" $((_box_w - 20)) ''
+	printf "  ${CYAN}│${NC}%*s${CYAN}│${NC}\n" $((_box_w - 2)) ''
+	printf "  ${CYAN}│${NC}  Your data is preserved:                         ${CYAN}│${NC}\n"
+	printf "  ${CYAN}│${NC}    ${SYM_CHECK} Skills, config, API keys%*s${CYAN}│${NC}\n" $((_box_w - 31)) ''
+	printf "  ${CYAN}│${NC}    ${SYM_CHECK} Workspace files (~/AcaClaw/)%*s${CYAN}│${NC}\n" $((_box_w - 35)) ''
+	printf "  ${CYAN}│${NC}    ${SYM_CHECK} Audit logs and backups%*s${CYAN}│${NC}\n" $((_box_w - 29)) ''
+	printf "  ${CYAN}│${NC}    ${SYM_CHECK} Conda environments%*s${CYAN}│${NC}\n" $((_box_w - 26)) ''
+	printf "  ${CYAN}│${NC}%*s${CYAN}│${NC}\n" $((_box_w - 2)) ''
+	printf "  ${CYAN}│${NC}  Open the dashboard:                             ${CYAN}│${NC}\n"
+	printf "  ${CYAN}│${NC}  ${BOLD}${BLUE}http://localhost:2090/${NC}%*s${CYAN}│${NC}\n" $((_box_w - 25)) ''
+else
+	printf "  ${CYAN}│${NC}  ${BOLD}What's Next?${NC}%*s${CYAN}│${NC}\n" $((_box_w - 16)) ''
+	printf "  ${CYAN}│${NC}%*s${CYAN}│${NC}\n" $((_box_w - 2)) ''
+	printf "  ${CYAN}│${NC}  Complete setup in your browser:                 ${CYAN}│${NC}\n"
+	printf "  ${CYAN}│${NC}  ${BOLD}${BLUE}http://localhost:2090/${NC}%*s${CYAN}│${NC}\n" $((_box_w - 25)) ''
+	printf "  ${CYAN}│${NC}%*s${CYAN}│${NC}\n" $((_box_w - 2)) ''
+	printf "  ${CYAN}│${NC}  The wizard will guide you through:              ${CYAN}│${NC}\n"
+	printf "  ${CYAN}│${NC}    ${SYM_DOT} Choose your research discipline%*s${CYAN}│${NC}\n" $((_box_w - 36)) ''
+	printf "  ${CYAN}│${NC}    ${SYM_DOT} Connect your AI provider (API key)%*s${CYAN}│${NC}\n" $((_box_w - 40)) ''
+	printf "  ${CYAN}│${NC}    ${SYM_DOT} Configure workspace location%*s${CYAN}│${NC}\n" $((_box_w - 33)) ''
+	printf "  ${CYAN}│${NC}    ${SYM_DOT} Choose security level%*s${CYAN}│${NC}\n" $((_box_w - 26)) ''
+fi
 printf "  ${CYAN}│${NC}%*s${CYAN}│${NC}\n" $((_box_w - 2)) ''
 printf "  ${CYAN}└"
 _repeat_char '─' $((_box_w - 2))

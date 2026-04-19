@@ -14,6 +14,7 @@ permalink: /en/install/
 - [After Install: Adding Skills and Packages](#after-install-adding-skills-and-packages)
 - [Platform-Specific Notes](#platform-specific-notes)
   - [Windows (WSL2)](#windows-wsl2)
+- [Upgrading / Re-running the Installer](#upgrading--re-running-the-installer)
 - [What the Installer Does](#what-the-installer-does)
   - [Network Mirrors & Timeout Configuration](#network-mirrors--timeout-configuration)
 - [Uninstall](#uninstall)
@@ -348,6 +349,99 @@ Node.js, npm, and Conda are installed **inside WSL2** by the install script — 
 
 ---
 
+## Upgrading / Re-running the Installer
+
+The install script is idempotent — safe to re-run at any time. It detects existing components and applies the **upgrade principle**: replace app files, preserve user data.
+
+### Upgrade principle
+
+> **Replace app code. Keep user data.**
+
+| Category | Examples | On upgrade |
+|---|---|---|
+| **App files** (replaceable) | Plugins, UI, management scripts, conda env YAMLs | **Always replaced** with latest version |
+| **User data** (precious) | Skills, config (API keys, model choices), workspace files, audit logs, backups, conda envs | **Preserved** — never deleted or overwritten |
+| **Infrastructure** (heavy) | Node.js, OpenClaw, Miniforge | **Skipped** if version is sufficient; upgraded if too old |
+
+### Version tracking
+
+The installer saves the installed version to `~/.acaclaw/config/version.txt`. On re-run:
+
+```
+No version.txt → fresh install (full setup wizard)
+Version found  → upgrade (skip wizard, replace app files, keep data)
+```
+
+### Per-component behavior
+
+| Component | If already present | Action taken |
+|---|---|---|
+| **Node.js** | Version ≥ 22 found | Skip |
+| **Node.js** | Version < 22 found | Auto-upgrade via nvm |
+| **OpenClaw** | Version ≥ minimum | Skip |
+| **OpenClaw** | Version < minimum | Upgrade via npm |
+| **Miniforge** | Directory exists | Skip |
+| **Conda env** (`acaclaw`) | Environment exists | Skip |
+| **AcaClaw plugins** | Plugin directory exists | **Replace** — always copies fresh plugin files |
+| **UI assets** | `~/.openclaw/ui/` exists | **Replace** — deploys new build, removes stale chunks |
+| **Management scripts** | `start.sh`, `stop.sh`, `uninstall.sh` | **Replace** — always copies latest |
+| **Conda env YAMLs** | `~/.acaclaw/env/conda/` | **Replace** — copies latest environment definitions |
+| **WeChat plugin** | Installed | **Replace** — reinstalls with latest patches |
+| **Skills** | `~/.openclaw/skills/` has content | **Skip** — user may have installed custom skills |
+| **AcaClaw config** | `~/.openclaw/openclaw.json` exists | **Merge** — preserves user settings (see below) |
+| **AcaClaw config** | No existing config | Create fresh from template |
+| **Workspace** (`~/AcaClaw/`) | Directory exists | **Skip** — never touches user files |
+| **Desktop shortcut** | Already installed | Skip |
+| **Audit logs** | `~/.acaclaw/audit/` | **Keep** |
+| **Backups** | `~/.acaclaw/backups/` | **Keep** |
+| **Gateway process** | Running on port 2090 | Kill and restart |
+| **Setup wizard** | Setup already completed | **Skip** — goes straight to dashboard |
+
+### Configuration merge on upgrade
+
+When the installer detects an existing `~/.openclaw/openclaw.json`, it merges AcaClaw defaults on top while preserving your settings:
+
+| Setting | Behavior |
+|---|---|
+| API keys | Preserved from existing config |
+| Model selection | Preserved — your chosen model is not overwritten |
+| Web / browser config | Preserved |
+| Conda `pathPrepend` | Updated to current Miniforge path |
+| Gateway port / mode | Set to AcaClaw defaults if not already set |
+| Agent list | Replaced with AcaClaw template (model choice preserved) |
+| Tool restrictions | Replaced with AcaClaw template (web config preserved) |
+| Model providers | Defaults added for missing providers; existing providers untouched |
+
+If no existing config is found, a fresh config is created from the AcaClaw template.
+
+### Legacy cleanup
+
+The installer automatically removes artifacts from older AcaClaw versions:
+
+- **`openclaw-gateway-acaclaw.service`** — legacy systemd unit that used `~/.openclaw-acaclaw/` profile isolation (no longer used)
+- **`acaclaw-gateway.service` with `--profile` flag** — stale service from older installs that causes 503 errors
+- **Stale gateway process on port 2090** — killed via `lsof` or `ss` before starting a fresh gateway
+
+### Running the installer again
+
+```bash
+# Upgrade to latest version — keeps all your data
+curl -fsSL https://acaclaw.com/install.sh | bash
+
+# Skip Conda if you only want to update OpenClaw/plugins
+bash install.sh --no-conda
+```
+
+On upgrade, the installer:
+1. Detects `~/.acaclaw/config/version.txt` → enters upgrade mode
+2. Shows `Upgrading AcaClaw from X.Y.Z to A.B.C` in the banner
+3. Replaces app files (plugins, UI, scripts)
+4. Preserves user data (skills, config, workspace, audit, backups)
+5. Skips the setup wizard (opens dashboard directly)
+6. Updates `version.txt` to the new version
+
+---
+
 ## What the Installer Does
 
 For transparency, here is exactly what the install script does:
@@ -421,7 +515,7 @@ Example: use a custom GitHub mirror and longer timeouts on a slow connection:
 GITHUB_MIRROR="https://mirror.ghproxy.com" NETWORK_TIMEOUT=120 bash install.sh
 ```
 
-**If you already have OpenClaw installed:** AcaClaw never modifies `~/.openclaw/`. Your existing config, plugins, and sessions are untouched. AcaClaw inherits your API keys read-only via `$include`. However, **uninstalling AcaClaw removes both AcaClaw and OpenClaw** (`~/.acaclaw/` and `~/.openclaw/`).
+**If you already have OpenClaw installed:** AcaClaw writes its config to `~/.openclaw/openclaw.json`, merging your existing API keys and model settings on top of AcaClaw defaults. Your API keys, model choices, and web config are preserved. See [Upgrading / Re-running the Installer](#upgrading--re-running-the-installer) for the full merge behavior. **Uninstalling AcaClaw removes both AcaClaw and OpenClaw** (`~/.acaclaw/` and `~/.openclaw/`).
 
 ---
 

@@ -53,7 +53,7 @@ ACACLAW_DIR="/tmp/acaclaw-test-$$"
 OPENCLAW_DIR="/tmp/openclaw-test-$$"
 INSTALL_LOG="/dev/null"
 
-eval "$(sed -n '17,314p' '${INSTALL_SCRIPT}')"
+eval "$(sed -n '17,317p' '${INSTALL_SCRIPT}')"
 
 ${body}
 `,
