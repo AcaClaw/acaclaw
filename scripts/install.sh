@@ -15,7 +15,7 @@
 # Uninstalling AcaClaw leaves OpenClaw completely untouched.
 set -euo pipefail
 
-ACACLAW_VERSION="0.1.6"
+ACACLAW_VERSION="dev"
 ACACLAW_DIR="${ACACLAW_DIR:-$HOME/.acaclaw}"
 OPENCLAW_MIN_VERSION="2026.4.2"
 NODE_MIN_VERSION="22"
@@ -438,7 +438,7 @@ _resolve_repo_root() {
 
 	ACACLAW_CLONE_DIR="$(mktemp -d)"
 	echo -e "  ${CYAN}${SYM_ARROW}${NC} Downloading AcaClaw from npm..."
-	if npm install "@acaclaw/acaclaw@${ACACLAW_VERSION}" \
+	if npm install "@acaclaw/acaclaw@latest" \
 		--prefix="$ACACLAW_CLONE_DIR" --no-save --ignore-scripts \
 		"${_reg_flag[@]}" >> "$INSTALL_LOG" 2>&1; then
 		REPO_ROOT="${ACACLAW_CLONE_DIR}/node_modules/@acaclaw/acaclaw"
@@ -450,7 +450,7 @@ _resolve_repo_root() {
 		echo -e "  ${YELLOW}${SYM_WARN}${NC} npm mirror failed, trying official registry..."
 		rm -rf "$ACACLAW_CLONE_DIR"
 		ACACLAW_CLONE_DIR="$(mktemp -d)"
-		if npm install "@acaclaw/acaclaw@${ACACLAW_VERSION}" \
+		if npm install "@acaclaw/acaclaw@latest" \
 			--prefix="$ACACLAW_CLONE_DIR" --no-save --ignore-scripts \
 			--registry=https://registry.npmjs.org >> "$INSTALL_LOG" 2>&1; then
 			REPO_ROOT="${ACACLAW_CLONE_DIR}/node_modules/@acaclaw/acaclaw"
@@ -469,6 +469,11 @@ _resolve_repo_root() {
 
 _resolve_repo_root
 SCRIPT_DIR="${REPO_ROOT}/scripts"
+
+# Read actual version from package.json (replaces hardcoded ACACLAW_VERSION)
+if [[ -f "${REPO_ROOT}/package.json" ]]; then
+	ACACLAW_VERSION="$(node -e "console.log(require('${REPO_ROOT}/package.json').version)" 2>/dev/null || echo "$ACACLAW_VERSION")"
+fi
 
 # Clean up temp dir on exit if we downloaded from npm
 _cleanup_clone() {
