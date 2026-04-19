@@ -174,8 +174,9 @@ curl -fsSL https://acaclaw.com/install.sh | bash
 | 网关进程 | 运行在 Linux 中 | 相同 — `localhost:2090` 自动转发到 Windows |
 | 应用窗口 | 通过 Linux Chrome/Edge PWA | 打开 Windows 侧浏览器（通过 `cmd.exe /c start`） |
 | 设置向导 | 在 Linux 浏览器中打开 | 在 Windows 浏览器中打开（API 密钥在 Windows 侧输入） |
-| 桌面快捷方式 | `.desktop` 文件 | Windows 桌面 `.lnk` 文件（通过 `wsl.exe` 启动） |
+| 桌面快捷方式 | `.desktop` 文件 | Windows 桌面 `.lnk` 文件（直接启动 Edge/Chrome `--app` 模式） |
 | 工作区快捷方式 | 无 | Windows 桌面快捷方式 → `~/AcaClaw/` |
+| 网关自启动 | systemd 服务 | Windows 启动文件夹中的 VBS 脚本 |
 
 #### 1. 通过 Windows 浏览器实现独立应用窗口
 
@@ -246,34 +247,53 @@ $shortcut.Save()
 
 #### 4. Windows 桌面上的应用快捷方式
 
-第二个 `.lnk` 快捷方式创建在 Windows 桌面上，用于**启动 AcaClaw**：
+第二个 `.lnk` 快捷方式创建在 Windows 桌面上，用于**启动 AcaClaw**。快捷方式直接指向 Edge/Chrome（不通过 `wscript.exe` 或 `wsl.exe`），确保：
+
+- 任务栏始终显示 AcaClaw 图标（不会变成 Edge 图标）
+- 右键"固定到任务栏"捕获的是我们的快捷方式，而非通用 Edge 窗口
+- 窗口归组在 AcaClaw 下，而非 Edge 下
 
 ```
 Windows 桌面/
-  AcaClaw.lnk  →  wsl.exe -d Ubuntu -- bash ~/.acaclaw/start.sh
+  AcaClaw.lnk  →  msedge.exe --app=http://localhost:2090/ --user-data-dir="..." ...
 ```
 
-双击此快捷方式：
-1. 在 WSL2 内启动网关（如果尚未运行）
-2. 在 Windows 浏览器中以独立应用窗口打开 `http://localhost:2090/`
-3. 无终端窗口保留（快捷方式以最小化方式运行）
+浏览器配置存储在 `%LOCALAPPDATA%\AcaClaw\browser-app`（Windows 原生路径）。使用 `\\wsl$\` 路径会导致 Edge 在重启后丢失应用身份（图标还原、固定失效）。ICO 图标也存储在 Windows 侧 `%LOCALAPPDATA%\AcaClaw\acaclaw.ico`。
 
-通过 PowerShell 创建：
+通过 PowerShell 创建（注意：`[char]34` 在 PowerShell 内生成 `"` 字符，避免 WSL2→Windows 命令行引号问题）：
 
 ```powershell
-$shortcut.TargetPath = "wsl.exe"
-$shortcut.Arguments = "-d $distro -- bash $HOME/.acaclaw/start.sh"
-$shortcut.WindowStyle = 7  # 最小化
+$desktop = [Environment]::GetFolderPath('Desktop')
+$shell = New-Object -ComObject WScript.Shell
+$shortcut = $shell.CreateShortcut("$desktop\AcaClaw.lnk")
+$shortcut.TargetPath = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+$q = [char]34  # 避免 bash→Windows 命令行中的 "
+$shortcut.Arguments = "--app=http://localhost:2090/ --user-data-dir=" + $q + $profile + $q + " --no-first-run ..."
+$shortcut.IconLocation = "$env:LOCALAPPDATA\AcaClaw\acaclaw.ico"
+$shortcut.Save()
 ```
+
+#### 5. 登录时自动启动网关
+
+Windows 启动文件夹（`shell:startup`）中放置一个 VBS 脚本，在用户登录时静默启动网关。确保用户点击应用快捷方式时网关已在运行：
+
+```vbs
+' AcaClaw 网关启动器 — 登录时运行
+Set objShell = CreateObject("WScript.Shell")
+objShell.Run "wsl.exe -d Ubuntu -- bash -c 'if ! curl -s -o /dev/null http://localhost:2090/ 2>/dev/null; then nohup bash ~/.acaclaw/start.sh --no-browser >/dev/null 2>&1 & fi'", 0, False
+```
+
+VBS 存储在 `~/.acaclaw/gateway-start.vbs`（WSL 侧），Windows 启动文件夹中的 `.lnk` 快捷方式通过 `wscript.exe` 指向它。网关检查（`curl localhost:2090`）防止重复启动。
 
 #### WSL2 桌面集成汇总
 
-安装完成后，Windows 桌面上有两个快捷方式：
+安装完成后，创建三个项目：
 
-| 快捷方式 | 目标 | 用途 |
-|---|---|---|
-| **AcaClaw** | `wsl.exe -- bash ~/.acaclaw/start.sh` | 启动应用（网关 + 浏览器窗口） |
-| **AcaClaw Workspace** | `\\wsl$\Ubuntu\home\user\AcaClaw\` | 在 Windows 文件资源管理器中打开研究文件 |
+| 项目 | 位置 | 目标 | 用途 |
+|---|---|---|---|
+| **AcaClaw** | Windows 桌面 | `msedge.exe --app=http://localhost:2090/` | 启动应用（独立浏览器窗口） |
+| **AcaClaw Workspace** | Windows 桌面 | `\\wsl$\Ubuntu\home\user\AcaClaw\` | 在 Windows 文件资源管理器中打开研究文件 |
+| **AcaClaw Gateway** | Windows 启动文件夹 | `wscript.exe gateway-start.vbs` | 登录时自动启动网关 |
 
 #### WSL2 前置要求
 
@@ -308,7 +328,7 @@ Node.js、npm 和 Conda 由安装脚本在 **WSL2 内部**安装 — 无需在 W
 |---|---|---|
 | Linux | `~/.local/share/applications/` 中的 `.desktop` 文件 | — |
 | macOS | `~/Applications/AcaClaw.app` | — |
-| WSL2 | Windows 桌面 `AcaClaw.lnk` → `wsl.exe -- bash start.sh` | Windows 桌面 `AcaClaw Workspace.lnk` → `\\wsl$\...\AcaClaw\` |
+| WSL2 | Windows 桌面 `AcaClaw.lnk` → `msedge.exe --app=...` | Windows 桌面 `AcaClaw Workspace.lnk` → `\\wsl$\...\AcaClaw\` |
 
 > 步骤 6–6b 在网关启动**之前**执行。这确保即使网关或浏览器启动失败（WSL2 上因 systemd 问题常见），管理脚本和桌面快捷方式也始终可用。
 

@@ -236,8 +236,9 @@ The install script auto-detects WSL2 (via `WSL_DISTRO_NAME` or `/proc/version`) 
 | Gateway process | Runs in WSL2 | Same — `localhost:2090` auto-forwards to Windows |
 | App window | PWA via Linux Chrome/Edge | Opens Windows-side browser via `cmd.exe /c start` |
 | Setup wizard | Opens in Linux browser | Opens in Windows browser (API key entry on Windows side) |
-| Desktop shortcut | `.desktop` file | `.lnk` on Windows Desktop (launches via `wsl.exe`) |
-| Workspace symlink | N/A | Symlink on Windows Desktop → `~/AcaClaw/` |
+| Desktop shortcut | `.desktop` file | `.lnk` on Windows Desktop (launches Edge/Chrome `--app` mode) |
+| Workspace symlink | N/A | Shortcut on Windows Desktop → `~/AcaClaw/` |
+| Gateway auto-start | systemd service | VBS script in Windows Startup folder |
 
 #### 1. Standalone app window via Windows browser
 
@@ -286,7 +287,7 @@ case "$PLATFORM" in
 esac
 ```
 
-#### 3. Workspace symlink on Windows Desktop
+#### 3. Workspace shortcut on Windows Desktop
 
 After creating `~/AcaClaw/` inside WSL2, the installer creates a **Windows shortcut** on the user's Desktop that points to the WSL2 workspace folder:
 
@@ -308,34 +309,53 @@ $shortcut.Save()
 
 #### 4. App shortcut on Windows Desktop
 
-A second `.lnk` shortcut is created on the Windows Desktop to **launch AcaClaw**:
+A second `.lnk` shortcut is created on the Windows Desktop to **launch AcaClaw**. The shortcut targets Edge/Chrome directly (not `wscript.exe` or `wsl.exe`), which ensures:
+
+- The AcaClaw icon stays in the taskbar (doesn't change to the Edge icon)
+- Right-click → "Pin to taskbar" captures our shortcut, not a generic Edge window
+- The window groups under AcaClaw, not under Edge
 
 ```
 Windows Desktop/
-  AcaClaw.lnk  →  wsl.exe -d Ubuntu -- bash ~/.acaclaw/start.sh
+  AcaClaw.lnk  →  msedge.exe --app=http://localhost:2090/ --user-data-dir="..." ...
 ```
 
-Double-clicking this shortcut:
-1. Starts the gateway inside WSL2 (if not already running)
-2. Opens `http://localhost:2090/` in the Windows browser as a standalone app window
-3. No terminal window stays open (the shortcut runs minimized)
+The browser profile is stored at `%LOCALAPPDATA%\AcaClaw\browser-app` (Windows-native path). Using a `\\wsl$\` path would cause Edge to lose app identity across sessions (icon reverts, pinning breaks). The ICO icon is also stored on the Windows side at `%LOCALAPPDATA%\AcaClaw\acaclaw.ico`.
 
-Created via PowerShell:
+Created via PowerShell (note: `[char]34` generates `"` chars inside PowerShell to avoid WSL2→Windows command-line quoting issues):
 
 ```powershell
-$shortcut.TargetPath = "wsl.exe"
-$shortcut.Arguments = "-d $distro -- bash $HOME/.acaclaw/start.sh"
-$shortcut.WindowStyle = 7  # Minimized
+$desktop = [Environment]::GetFolderPath('Desktop')
+$shell = New-Object -ComObject WScript.Shell
+$shortcut = $shell.CreateShortcut("$desktop\AcaClaw.lnk")
+$shortcut.TargetPath = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+$q = [char]34  # avoids " in bash→Windows command line
+$shortcut.Arguments = "--app=http://localhost:2090/ --user-data-dir=" + $q + $profile + $q + " --no-first-run ..."
+$shortcut.IconLocation = "$env:LOCALAPPDATA\AcaClaw\acaclaw.ico"
+$shortcut.Save()
 ```
+
+#### 5. Gateway auto-start at Windows login
+
+A VBS script is placed in the Windows Startup folder (`shell:startup`) to silently start the gateway when the user logs in. This ensures the gateway is running when the user clicks the app shortcut:
+
+```vbs
+' AcaClaw Gateway Starter — runs at Windows login
+Set objShell = CreateObject("WScript.Shell")
+objShell.Run "wsl.exe -d Ubuntu -- bash -c 'if ! curl -s -o /dev/null http://localhost:2090/ 2>/dev/null; then nohup bash ~/.acaclaw/start.sh --no-browser >/dev/null 2>&1 & fi'", 0, False
+```
+
+The VBS is stored at `~/.acaclaw/gateway-start.vbs` (WSL side), and a `.lnk` shortcut in the Windows Startup folder points to it via `wscript.exe`. The gateway check (`curl localhost:2090`) prevents double-starting.
 
 #### WSL2 desktop integration summary
 
-After install, the Windows Desktop has two shortcuts:
+After install, three items are created:
 
-| Shortcut | Target | Purpose |
-|---|---|---|
-| **AcaClaw** | `wsl.exe -- bash ~/.acaclaw/start.sh` | Launch the app (gateway + browser window) |
-| **AcaClaw Workspace** | `\\wsl$\Ubuntu\home\user\AcaClaw\` | Open research files in Windows Explorer |
+| Item | Location | Target | Purpose |
+|---|---|---|---|
+| **AcaClaw** | Windows Desktop | `msedge.exe --app=http://localhost:2090/` | Launch the app (standalone browser window) |
+| **AcaClaw Workspace** | Windows Desktop | `\\wsl$\Ubuntu\home\user\AcaClaw\` | Open research files in Windows Explorer |
+| **AcaClaw Gateway** | Windows Startup | `wscript.exe gateway-start.vbs` | Auto-start gateway at login |
 
 #### Prerequisites for WSL2
 
@@ -468,7 +488,7 @@ For transparency, here is exactly what the install script does:
 |---|---|---|
 | Linux | `.desktop` file in `~/.local/share/applications/` | — |
 | macOS | `AcaClaw.app` in `~/Applications/` | — |
-| WSL2 | `AcaClaw.lnk` on Windows Desktop → `wsl.exe -- bash start.sh` | `AcaClaw Workspace.lnk` on Windows Desktop → `\\wsl$\...\AcaClaw\` |
+| WSL2 | `AcaClaw.lnk` on Windows Desktop → `msedge.exe --app=...` | `AcaClaw Workspace.lnk` on Windows Desktop → `\\wsl$\...\AcaClaw\` |
 
 > Steps 6–6b run **before** the gateway starts. This ensures management scripts and desktop shortcuts are always available, even if the gateway or browser launch fails (common on WSL2 due to systemd quirks).
 

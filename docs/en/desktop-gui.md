@@ -1370,7 +1370,7 @@ AcaClaw runs as a local web app: the gateway serves the UI, and the user accesse
 | **Linux** | `.desktop` file in `~/.local/share/applications/` | `xdg-open` → browser; or install as PWA in Chrome/Chromium | Appears in GNOME, KDE, XFCE launchers. Chrome/Chromium users can install as PWA for a standalone window |
 | **macOS** | `.app` bundle in `~/Applications/` | Native WKWebView window | Compiled Swift binary; shows AcaClaw icon in Dock, handles Dock relaunch, no browser needed. Falls back to `open URL` if `swiftc` unavailable |
 | **Windows** | PWA via Chrome / Edge | `start.sh` opens browser; Chrome/Edge show install prompt | Install from address bar → standalone window pinned to Taskbar, no signing |
-| **WSL2** | `.lnk` shortcut on Windows Desktop | `powershell.exe Start-Process` | Runs gateway inside WSL, opens Windows browser |
+| **WSL2** | `.lnk` shortcut on Windows Desktop | Edge/Chrome `--app` mode (targets browser directly) | Runs gateway inside WSL via auto-start VBS; shortcut targets Edge directly for stable icon/pinning. Browser profile at `%LOCALAPPDATA%\AcaClaw\browser-app` |
 | **Headless/SSH** | N/A | Prints URL to terminal | User visits URL from any browser |
 
 ### Usage
