@@ -358,13 +358,24 @@ install_wsl2() {
     local _win_browser
     _win_browser="$(wslpath -w "$_browser_exe" 2>/dev/null || echo "$_browser_exe")"
 
-    # Browser-app profile dir — gives a separate instance with its own icon/state
-    local _app_profile="${ACACLAW_DATA_DIR}/browser-app"
-    mkdir -p "$_app_profile"
-    touch "$_app_profile/First Run"  # suppress first-run experience
-
+    # Browser-app profile dir — stored on the Windows side so Edge can
+    # properly cache PWA manifest icons and maintain a stable taskbar icon.
     local _win_profile
-    _win_profile="$(wslpath -w "$_app_profile" 2>/dev/null || echo "\\\\wsl\$\\${_distro}${_app_profile}")"
+    _win_profile="$(powershell.exe -NoProfile -Command "
+        \$d = Join-Path \$env:LOCALAPPDATA 'AcaClaw\browser-app'
+        if (-not (Test-Path \$d)) { New-Item -ItemType Directory -Path \$d -Force | Out-Null }
+        \$frun = Join-Path \$d 'First Run'
+        if (-not (Test-Path \$frun)) { New-Item -ItemType File -Path \$frun -Force | Out-Null }
+        Write-Output \$d
+    " 2>/dev/null | tr -d '\r')" || true
+
+    # Fallback to WSL-side profile if PowerShell failed
+    if [[ -z "$_win_profile" ]]; then
+        local _app_profile="${ACACLAW_DATA_DIR}/browser-app"
+        mkdir -p "$_app_profile"
+        touch "$_app_profile/First Run"
+        _win_profile="$(wslpath -w "$_app_profile" 2>/dev/null || echo "\\\\wsl\$\\${_distro}${_app_profile}")"
+    fi
 
     # --- Convert PNG icon to ICO for the shortcut ---
     # Store the ICO on the Windows side (%LOCALAPPDATA%\AcaClaw) so the
