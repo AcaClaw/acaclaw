@@ -1,6 +1,6 @@
 {
   "name": "@acaclaw/acaclaw",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "Academic distribution of OpenClaw — AI-powered academic assistant",
   "type": "module",
   "license": "MIT",

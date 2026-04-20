@@ -358,51 +358,36 @@ install_wsl2() {
     local _win_browser
     _win_browser="$(wslpath -w "$_browser_exe" 2>/dev/null || echo "$_browser_exe")"
 
-    # Browser-app profile dir — stored on the Windows side so Edge can
-    # properly cache PWA manifest icons and maintain a stable taskbar icon.
-    local _win_profile
-    _win_profile="$(powershell.exe -NoProfile -Command "
-        \$d = Join-Path \$env:LOCALAPPDATA 'AcaClaw\browser-app'
-        if (-not (Test-Path \$d)) { New-Item -ItemType Directory -Path \$d -Force | Out-Null }
-        \$frun = Join-Path \$d 'First Run'
-        if (-not (Test-Path \$frun)) { New-Item -ItemType File -Path \$frun -Force | Out-Null }
-        Write-Output \$d
-    " 2>/dev/null | tr -d '\r')" || true
+    # Browser-app profile dir — gives a separate instance with its own icon/state
+    local _app_profile="${ACACLAW_DATA_DIR}/browser-app"
+    mkdir -p "$_app_profile"
+    touch "$_app_profile/First Run"  # suppress first-run experience
 
-    # Fallback to WSL-side profile if PowerShell failed
-    if [[ -z "$_win_profile" ]]; then
-        local _app_profile="${ACACLAW_DATA_DIR}/browser-app"
-        mkdir -p "$_app_profile"
-        touch "$_app_profile/First Run"
-        _win_profile="$(wslpath -w "$_app_profile" 2>/dev/null || echo "\\\\wsl\$\\${_distro}${_app_profile}")"
-    fi
+    local _win_profile
+    _win_profile="$(wslpath -w "$_app_profile" 2>/dev/null || echo "\\\\wsl\$\\${_distro}${_app_profile}")"
 
     # --- Convert PNG icon to ICO for the shortcut ---
-    # Store the ICO on the Windows side (%LOCALAPPDATA%\AcaClaw) so the
-    # shortcut icon is always accessible, even when WSL isn't running.
     local _win_icon=""
     local _icon_src=""
     _icon_src="$(find_icon)" || true
     if [[ -n "$_icon_src" && "$_icon_src" == *.png ]]; then
+        local _ico_path="${ACACLAW_DATA_DIR}/acaclaw.ico"
+        # Use PowerShell to convert PNG → ICO (no extra tools needed)
         local _win_png
         _win_png="$(wslpath -w "$_icon_src" 2>/dev/null || echo "")"
         if [[ -n "$_win_png" ]]; then
-            _win_icon="$(powershell.exe -NoProfile -Command "
-                try {
-                    Add-Type -AssemblyName System.Drawing
-                    \$icoDir = Join-Path \$env:LOCALAPPDATA 'AcaClaw'
-                    if (-not (Test-Path \$icoDir)) { New-Item -ItemType Directory -Path \$icoDir -Force | Out-Null }
-                    \$icoPath = Join-Path \$icoDir 'acaclaw.ico'
-                    \$bmp = [System.Drawing.Bitmap]::FromFile('${_win_png}')
-                    \$icon = [System.Drawing.Icon]::FromHandle(\$bmp.GetHicon())
-                    \$fs = [System.IO.File]::Create(\$icoPath)
-                    \$icon.Save(\$fs)
-                    \$fs.Close()
-                    \$icon.Dispose()
-                    \$bmp.Dispose()
-                    Write-Output \$icoPath
-                } catch { Write-Output '' }
-            " 2>/dev/null | tr -d '\r')" || true
+            local _win_ico
+            _win_ico="$(wslpath -w "$_ico_path" 2>/dev/null || echo "")"
+            powershell.exe -NoProfile -Command "
+                Add-Type -AssemblyName System.Drawing
+                \$bmp = [System.Drawing.Bitmap]::FromFile('${_win_png}')
+                \$icon = [System.Drawing.Icon]::FromHandle(\$bmp.GetHicon())
+                \$fs = [System.IO.File]::Create('${_win_ico}')
+                \$icon.Save(\$fs)
+                \$fs.Close()
+                \$icon.Dispose()
+                \$bmp.Dispose()
+            " 2>/dev/null && _win_icon="$_win_ico"
         fi
     fi
 
@@ -451,7 +436,7 @@ VBSEOF
             Write-Error \$_.Exception.Message
             exit 1
         }
-    " 2>&1)" || true
+    " 2>&1)"
 
     if [[ "$_ps_err" == *"OK"* ]]; then
         log "Windows Desktop: app shortcut created (${_browser_name} --app mode) ✓"
@@ -484,7 +469,7 @@ VBSEOF
             Write-Error \$_.Exception.Message
             exit 1
         }
-    " 2>&1)" || true
+    " 2>&1)"
 
     if [[ "$_ws_err" == *"OK"* ]]; then
         log "Windows Desktop: workspace shortcut created ✓"

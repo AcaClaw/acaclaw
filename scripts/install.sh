@@ -2097,24 +2097,12 @@ SETUPJSON
 					"/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe"
 				)
 
-				# Convert user-data-dir to Windows-native path for the Windows browser.
-				# Use %LOCALAPPDATA%\AcaClaw\browser-app so Edge can properly cache
-				# PWA manifest icons (\\wsl$\ paths cause icon instability).
+				# Convert user-data-dir to Windows UNC path for the Windows browser
 				local _win_profile
-				_win_profile="$(powershell.exe -NoProfile -Command "
-					\$d = Join-Path \$env:LOCALAPPDATA 'AcaClaw\browser-app'
-					if (-not (Test-Path \$d)) { New-Item -ItemType Directory -Path \$d -Force | Out-Null }
-					\$frun = Join-Path \$d 'First Run'
-					if (-not (Test-Path \$frun)) { New-Item -ItemType File -Path \$frun -Force | Out-Null }
-					Write-Output \$d
-				" 2>/dev/null | tr -d '\r')" || true
-				# Fallback to WSL-side UNC path if PowerShell failed
-				if [[ -z "$_win_profile" ]]; then
-					if command -v wslpath &>/dev/null; then
-						_win_profile="$(wslpath -w "$_app_profile")"
-					else
-						_win_profile="\\\\wsl\$\\${WSL_DISTRO_NAME:-Ubuntu}${_app_profile}"
-					fi
+				if command -v wslpath &>/dev/null; then
+					_win_profile="$(wslpath -w "$_app_profile")"
+				else
+					_win_profile="\\\\wsl\$\\${WSL_DISTRO_NAME:-Ubuntu}${_app_profile}"
 				fi
 				local -a _win_flags=()
 				for _flag in "${_app_flags[@]}"; do
